@@ -1,7 +1,7 @@
 [project]
 name = "timesheet-repo"
 version = "0.1.0"
-description = "Add your description here"
+description = "Voice-enabled AI timesheet assistant for Oracle Time and Labor (OTL) powered by OCI GenAI and OCI Speech."
 readme = "README.md"
 authors = [
     { name = "Shreyansh Srivastava", email = "main.doga@gmail.com" }
@@ -16,12 +16,8 @@ dependencies = [
     "uvicorn[standard]>=0.30",
 ]
 
-[project.scripts]
-timesheet-repo = "timesheet_repo:main"
-
-[build-system]
-requires = ["uv_build>=0.12.1,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
 
 [dependency-groups]
 dev = [
