@@ -1,0 +1,129 @@
+{
+  "_comment": [
+    "Dummy reference data. Passwords are PLAINTEXT here and hashed on insert by",
+    "seed.py -- never copy this file into a real deployment.",
+    "",
+    "The work_order -> project shape deliberately exercises the 1:N rule:",
+    "  WO 100 has projects 1 and 2; WO 112 has projects 11, 12 and 13; WO 106",
+    "  has a single project. Employee 9001 is on two projects under the SAME",
+    "  work order, 9002 spans two DIFFERENT work orders."
+  ],
+
+  "employees": [
+    {
+      "employee_id": "9001",
+      "username": "jane.doe",
+      "password": "Passw0rd!",
+      "full_name": "Jane Doe"
+    },
+    {
+      "employee_id": "9002",
+      "username": "raj.kumar",
+      "password": "Passw0rd!",
+      "full_name": "Raj Kumar"
+    },
+    {
+      "employee_id": "10021",
+      "username": "suraj.yadav",
+      "password": "Passw0rd!",
+      "full_name": "Suraj Yadav"
+    },
+    {
+      "employee_id": "9004",
+      "username": "amara.osei",
+      "password": "Passw0rd!",
+      "full_name": "Amara Osei"
+    },
+    {
+      "employee_id": "90407",
+      "username": "test.user",
+      "password": "Passw0rd!",
+      "full_name": "Test User"
+    }
+  ],
+
+  "work_orders": [
+    { "work_order": "100", "description": "HCM Cloud implementation" },
+    { "work_order": "106", "description": "Payroll compliance programme" },
+    { "work_order": "112", "description": "Field services and maintenance" }
+  ],
+
+  "projects": [
+    {
+      "project_no": 1,
+      "work_order": "100",
+      "project_name": "HCM Payroll Rollout",
+      "tasks": [
+        "Payroll element configuration",
+        "Costing setup and validation",
+        "Parallel payroll run analysis",
+        "Defect triage and retest"
+      ]
+    },
+    {
+      "project_no": 2,
+      "work_order": "100",
+      "project_name": "HCM Absence Config",
+      "tasks": [
+        "Absence plan setup",
+        "Accrual rule testing",
+        "Approval workflow configuration"
+      ]
+    },
+    {
+      "project_no": 7,
+      "work_order": "106",
+      "project_name": "Payroll Compliance Audit",
+      "tasks": [
+        "Reviewing statutory tax rules",
+        "Evidence collection for audit",
+        "Remediation tracking"
+      ]
+    },
+    {
+      "project_no": 11,
+      "work_order": "112",
+      "project_name": "Substation Preventive Maintenance",
+      "tasks": [
+        "Transformer inspection",
+        "Breaker servicing",
+        "Maintenance report write-up"
+      ]
+    },
+    {
+      "project_no": 12,
+      "work_order": "112",
+      "project_name": "Overhead Line Survey",
+      "tasks": [
+        "Pole condition survey",
+        "Vegetation clearance assessment",
+        "Survey data upload"
+      ]
+    },
+    {
+      "project_no": 13,
+      "work_order": "112",
+      "project_name": "Meter Replacement Programme",
+      "tasks": [
+        "Smart meter installation",
+        "Customer site visit",
+        "Installation QA check"
+      ]
+    }
+  ],
+
+  "assignments": [
+    { "employee_id": "9001", "project_no": 1 },
+    { "employee_id": "9001", "project_no": 2 },
+    { "employee_id": "9002", "project_no": 1 },
+    { "employee_id": "9002", "project_no": 7 },
+    { "employee_id": "10021", "project_no": 7 },
+    { "employee_id": "10021", "project_no": 11 },
+    { "employee_id": "10021", "project_no": 12 },
+    { "employee_id": "9004", "project_no": 11 },
+    { "employee_id": "9004", "project_no": 13 },
+    { "employee_id": "90407", "project_no": 11 },
+    { "employee_id": "90407", "project_no": 12 },
+    { "employee_id": "90407", "project_no": 13 }
+  ]
+}

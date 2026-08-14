@@ -1,0 +1,31 @@
+# Build context excludes — keep secrets, local junk, and build artifacts out.
+.venv/
+venv/
+env/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.env
+*.pem
+.streamlit/secrets.toml
+.idea/
+.vscode/
+.DS_Store
+
+# Node / frontend: install and build happen inside the image, so never copy the
+# host's node_modules or dist into the build context.
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+
+# Docs and deploy manifests aren't needed inside the runtime image.
+docs/
+deploy/
+
+# The reference database is built inside the container on first start; never
+# ship the host's copy (it holds locally-created employees).
+data/
+*.db

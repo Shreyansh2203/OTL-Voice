@@ -1,0 +1,23 @@
+# Secrets — never commit real OCI credentials
+.env
+*.pem
+
+# Local reference database — rebuild with: python -m backend.db.seed
+data/
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

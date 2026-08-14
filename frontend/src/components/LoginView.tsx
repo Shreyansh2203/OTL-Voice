@@ -1,0 +1,77 @@
+import { FormEvent, useState } from "react";
+import * as api from "../api/client";
+import type { Identity } from "../types";
+
+export default function LoginView({
+  onLogin,
+}: {
+  onLogin: (identity: Identity) => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      onLogin(await api.login(username.trim(), password));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="centered">
+      <form className="card login" onSubmit={submit}>
+        <div className="brand">
+          <img src="/favicon.svg" alt="" width={44} height={44} />
+          <div>
+            <h1>OTL Timesheet Assistant</h1>
+            <p className="muted">Sign in with your employee credentials.</p>
+          </div>
+        </div>
+
+        <label>
+          <span>Username</span>
+          <input
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="first.last"
+            required
+            autoFocus
+          />
+        </label>
+
+        <label>
+          <span>Password</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+        </label>
+
+        {error && <div className="error" role="alert">{error}</div>}
+
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+
+        <p className="muted small">
+          Your password is checked against your employee record and is never
+          sent to Oracle. The browser only keeps a session cookie.
+        </p>
+      </form>
+    </div>
+  );
+}
