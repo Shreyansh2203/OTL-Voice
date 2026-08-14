@@ -18,8 +18,7 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    FRONTEND_DIST=/app/frontend/dist \
-    OTL_DB_PATH=/app/data/otl_dummy.db
+    FRONTEND_DIST=/app/frontend/dist
 
 WORKDIR /app
 

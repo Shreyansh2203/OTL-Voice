@@ -32,7 +32,7 @@ export default function ReviewPanel({
   }
 
   return (
-    <div className="review card">
+    <div className="review card" aria-busy={busy}>
       <div className="review-head">
         <h3>Ready to submit</h3>
         <span className="muted">
@@ -77,7 +77,7 @@ export default function ReviewPanel({
 
       {result ? (
         <>
-          <div className={`result ${result.failed ? "warn" : "ok"}`}>
+          <div className={`result ${result.failed ? "warn" : "ok"}`} aria-live="polite">
             <strong>
               {result.succeeded}/{result.submitted} submitted to OTL
               {result.failed ? ` · ${result.failed} failed` : ""}.

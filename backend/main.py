@@ -24,14 +24,13 @@ mimetypes.add_type("text/javascript", ".js")
 load_dotenv()  # backend runs from the project root; loads ./.env
 
 from .core import auth
-from .services import chat, otl_client  # noqa: E402  (after load_dotenv)
+from .services import chat, otl_client, fusion_catalogue  # noqa: E402  (after load_dotenv)
 from .core.auth import SESSION_COOKIE_NAME, SessionContext
-from .db import repository, seed
 from .services.otl_client import OtlConfigError, OtlError
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    seed.ensure_seeded()
+    fusion_catalogue.load_catalogue()
     yield
 
 
@@ -108,8 +107,16 @@ class TimecardBody(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Health
+# Static Files / Fallback
 # --------------------------------------------------------------------------- #
+def _identity(ctx_or_employee: Any) -> Dict[str, Any]:
+    return {
+        "username": ctx_or_employee.username,
+        "employeeId": ctx_or_employee.employee_id,
+        "fullName": ctx_or_employee.full_name,
+    }
+
+
 @app.get("/api/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -123,22 +130,31 @@ def health_otl() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
-def _identity(ctx_or_employee: Any) -> Dict[str, Any]:
-    return {
-        "username": ctx_or_employee.username,
-        "employeeId": ctx_or_employee.employee_id,
-        "fullName": ctx_or_employee.full_name,
-    }
-
 
 @app.post("/api/auth/login")
 def login(body: LoginBody, response: Response) -> Dict[str, Any]:
-    employee = repository.verify_login(body.username, body.password)
-    if employee is None:
+    # In this new architecture, we treat "username" as the Person Number
+    person_number = body.username.strip()
+    try:
+        worker_data = otl_client.get_worker(otl_client.service_credential(), person_number)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to connect to Oracle Fusion: {str(e)}"
+        )
+
+    if not worker_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password.",
+            detail="Invalid Person Number or worker not found in Oracle Fusion.",
         )
+        
+    from .models import Employee
+    employee = Employee(
+        employee_id=worker_data["personNumber"],
+        username=worker_data["personNumber"], # Bypassing username
+        full_name=worker_data["fullName"]
+    )
     sid = auth.create_session(employee)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -173,11 +189,14 @@ def logout(
 def chat_stream(
     body: ChatBody, ctx: SessionContext = Depends(auth.current_session)
 ) -> StreamingResponse:
+    assignments = otl_client.list_worker_assignments(
+        otl_client.service_credential(), ctx.employee_id, ctx.full_name
+    )
     system_prompt = chat.build_system_prompt(
         username=ctx.username,
         employee_id=ctx.employee_id,
         employee_name=ctx.full_name,
-        assignments=repository.list_assignments(ctx.employee_id),
+        assignments=assignments,
     )
     history = [{"role": m.role, "content": m.content} for m in body.messages]
     return StreamingResponse(
@@ -227,49 +246,61 @@ def _strict_assignment() -> bool:
     return os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
 
 
-def _resolve_entry(entry: Dict[str, Any], ctx: SessionContext) -> Dict[str, Any]:
+def _resolve_entry(entry: Dict[str, Any], ctx: SessionContext, assignments: List[Dict[str, Any]]) -> Dict[str, Any]:
     resolved = dict(entry)
     resolved["employeeNumber"] = ctx.employee_id
     resolved["employeeName"] = ctx.full_name
 
     if not _strict_assignment():
         return resolved
-
+    
     project = None
     project_no = entry.get("projectNo")
-    if project_no not in (None, ""):
-        try:
-            project = repository.resolve_project(int(project_no))
-        except (TypeError, ValueError):
-            project = None
-    if project is None and entry.get("projectName"):
-        project = repository.find_project_by_name(str(entry["projectName"]))
+    
+    for order in assignments:
+        for p in order.get("projects", []):
+            if project_no and str(p.get("projectNo")) == str(project_no):
+                project = p
+                project["workOrder"] = order.get("workOrder")
+                break
+            if not project_no and entry.get("projectName") and p.get("projectName") == entry.get("projectName"):
+                project = p
+                project["workOrder"] = order.get("workOrder")
+                break
+        if project:
+            break
 
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Unknown project '{entry.get('projectName') or project_no}'. "
-                f"{_options_hint(ctx.employee_id)}"
-            ),
-        )
-    if not repository.is_assigned(ctx.employee_id, project["projectNo"]):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"{ctx.full_name} is not assigned to project {project['projectNo']} "
-                f"({project['projectName']}). {_options_hint(ctx.employee_id)}"
+                f"{_options_hint(ctx.employee_id, ctx.full_name)}"
             ),
         )
 
-    resolved.update(project)  # projectNo, workOrder, projectName
+    resolved.update({
+        "projectId": project.get("projectId"),
+        "projectNo": project.get("projectNo"),
+        "workOrder": project.get("workOrder"),
+        "projectName": project.get("projectName")
+    })
+
+    # Resolve taskId if not provided but we have taskDetails
+    if not resolved.get("taskId") and resolved.get("taskDetails"):
+        target_name = str(resolved["taskDetails"]).lower()
+        for t in project.get("tasks", []):
+            if str(t.get("taskDetails")).lower() == target_name:
+                resolved["taskId"] = t.get("taskId")
+                break
+
     return resolved
 
 
-def _options_hint(employee_id: str) -> str:
+def _options_hint(employee_id: str, full_name: str) -> str:
     projects = [
         f"{p['projectNo']} ({p['projectName']}, WO {order['workOrder']})"
-        for order in repository.list_assignments(employee_id)
+        for order in otl_client.list_worker_assignments(otl_client.service_credential(), employee_id, full_name)
         for p in order["projects"]
     ]
     if not projects:
@@ -287,7 +318,12 @@ def submit_timecard(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No timecard entries found to submit.",
         )
-    resolved = [_resolve_entry(entry, ctx) for entry in entries]
+        
+    assignments = []
+    if _strict_assignment():
+        assignments = otl_client.list_worker_assignments(otl_client.service_credential(), ctx.employee_id, ctx.full_name)
+        
+    resolved = [_resolve_entry(entry, ctx, assignments) for entry in entries]
     results = otl_client.create_many(otl_client.service_credential(), resolved)
     succeeded = sum(1 for r in results if r.get("ok"))
     return {
@@ -304,12 +340,11 @@ def list_timecards(
     offset: int = 0,
     ctx: SessionContext = Depends(auth.current_session),
 ) -> Dict[str, Any]:
-    employee = otl_client.escape_q_literal(ctx.employee_id)
+    # Fetch all recent timecards (Fusion doesn't support Employee_Number_c filter on this endpoint)
     return otl_client.list_timecard_entries(
         otl_client.service_credential(),
         limit=limit,
         offset=offset,
-        query=f"Employee_Number_c='{employee}'",
     )
 
 
@@ -323,8 +358,21 @@ def labour_assignments(
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,
-        "workOrders": repository.list_assignments(ctx.employee_id),
+        "workOrders": otl_client.list_worker_assignments(otl_client.service_credential(), ctx.employee_id, ctx.full_name),
     }
+
+
+@app.post("/api/admin/refresh-catalogue")
+async def refresh_catalogue() -> Dict[str, Any]:
+    """Re-export data from Oracle Fusion and reload the local catalogue."""
+    await fusion_catalogue.refresh_catalogue()
+    return fusion_catalogue.status()
+
+
+@app.get("/api/admin/catalogue-status")
+def catalogue_status() -> Dict[str, Any]:
+    """Returns the current catalogue status."""
+    return fusion_catalogue.status()
 
 
 # --------------------------------------------------------------------------- #

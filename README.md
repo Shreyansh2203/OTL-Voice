@@ -65,10 +65,6 @@ flowchart TB
         OTLService["OTL REST Client"]
     end
 
-    subgraph Storage["Data Tier"]
-        SQLite[("SQLite Reference DB\n(otl_dummy.db)")]
-    end
-
     subgraph Cloud["External Services (OCI & Oracle Cloud)"]
         OCIGenAI["OCI GenAI Service\n(Gemini 2.5 Flash)"]
         OCISpeech["OCI AI Speech Service\n(Neural TTS)"]
@@ -84,8 +80,6 @@ flowchart TB
     API --> ChatEngine
     API --> OTLService
     
-    Auth <--> SQLite
-    ChatEngine <--> SQLite
     ChatEngine <-->|Generative AI Inference| OCIGenAI
     API <-->|Speech Synthesis| OCISpeech
     OTLService <-->|REST API JSON| FusionOTL
@@ -157,14 +151,9 @@ Visit `http://localhost:5173`. Vite automatically proxies `/api` requests to the
 timesheet-repo/
 ├── backend/
 │   ├── core/
-│   │   └── auth.py              # HttpOnly session cookie auth & security
-│   ├── db/
-│   │   ├── connection.py        # SQLite connection factory
-│   │   ├── export_excel.py      # Spreadsheet export utility
-│   │   ├── repository.py        # Database operations & assignment queries
-│   │   ├── schema.sql           # SQLite schema & v_employee_labour view
-│   │   ├── seed.json            # Reference seed data (employees, work orders)
-│   │   └── seed.py              # Auto-seed initialization
+│   │   ├── auth.py              # Identity tracking & JWT-like session cookies
+│   │   ├── config.py            # Environment variable validation
+│   ├── models.py                # Core data models
 │   ├── prompts/
 │   │   └── prompt.txt           # Context-engineered system prompt for Gemini
 │   ├── services/
@@ -186,11 +175,10 @@ timesheet-repo/
 │   ├── docker-compose.yml       # Production container orchestration
 │   └── nginx/otl.conf           # Nginx reverse proxy configuration
 ├── docs/                        # Deep-dive documentation
-│   ├── ARCHITECTURE.md          # Detailed system design & sequence diagrams
-│   ├── API.md                   # REST & SSE API endpoint specifications
-│   ├── CONFIGURATION.md         # In-depth OCI & OTL configuration guide
-│   ├── DATABASE.md              # SQLite schema, relationships & seed guide
-│   └── DEPLOYMENT.md            # Production deployment & SSL/TLS runbook
+│   ├── ARCHITECTURE.md          # System architecture, prompt flow, and logic
+│   ├── API.md                   # REST API documentation
+│   ├── CONFIGURATION.md         # Environment variables and setups
+│   └── DEPLOYMENT.md            # Docker, Nginx, and production hosting
 ├── .env.example                 # Sanitized environment template
 ├── Containerfile                # Multi-stage production container build
 ├── CONTRIBUTING.md              # Contributor onboarding & guidelines
@@ -207,10 +195,9 @@ For detailed technical references, refer to the guides in the [`docs/`](docs/) d
 | Guide | Description |
 | :--- | :--- |
 | **[Architecture Guide](docs/ARCHITECTURE.md)** | End-to-end data flows, voice pipeline, SSE protocol, and security model. |
-| **[API Reference](docs/API.md)** | Exhaustive endpoint documentation with request/response schemas and examples. |
-| **[Configuration Guide](docs/CONFIGURATION.md)** | OCI IAM setup, API signing keys, Oracle Fusion credentials, and tuning. |
-| **[Database Guide](docs/DATABASE.md)** | SQLite table structures, views, relationships, seeding, and reporting. |
-| **[Deployment Runbook](docs/DEPLOYMENT.md)** | Multi-stage Docker builds, Nginx reverse proxy, TLS certificates, and health checks. |
+| **[API Reference](docs/API.md)** | Endpoints, request schemas, and mock Oracle connection details. |
+| **[Configuration Guide](docs/CONFIGURATION.md)** | Available environment variables and local vs production setups. |
+| **[Deployment Guide](docs/DEPLOYMENT.md)** | Instructions for single-container deployments and reverse proxies. |
 
 ---
 
@@ -231,6 +218,8 @@ Key environment variables in `.env`:
 | `OTL_SERVICE_USERNAME` | Service account username for Fusion HCM | *Required* |
 | `OTL_SERVICE_PASSWORD` | Service account password for Fusion HCM | *Required* |
 | `STRICT_ASSIGNMENT` | Enforce employee project assignment checks | `true` |
+| `DEFAULT_START_HOUR` | Default start hour for timecards when none is inferred | `9` |
+| `DEFAULT_EXPENDITURE_TYPE` | Default expenditure type string for project-based entries | `Professional Services` |
 | `SESSION_COOKIE_SECURE` | Set `Secure` flag on session cookie (set `true` with HTTPS) | `false` |
 
 *(See [.env.example](.env.example) and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full details).*
@@ -239,10 +228,9 @@ Key environment variables in `.env`:
 
 ## 🛠️ Technology Stack
 
-- **Frontend**: React 18, TypeScript 5, Vite 5, Vite PWA Plugin, Web Speech API.
-- **Backend**: FastAPI, Uvicorn, Python 3.12+, Pydantic, HTTPX.
-- **AI & Cloud Services**: Oracle Cloud Infrastructure (OCI) SDK, OCI Generative AI Inference (Google Gemini 2.5 Flash), OCI AI Speech Service.
-- **Database**: SQLite 3 with Foreign Key constraints and indexing.
+- **Frontend UI**: React 18, TypeScript, Tailwind CSS, Vite.
+- **Backend API**: Python 3.12, FastAPI, Pydantic, Uvicorn.
+- **AI Integration**: Google Gemini (`gemini-2.5-flash`), Oracle Cloud Infrastructure (OCI) SDK, OCI Generative AI Inference, OCI AI Speech Service.
 - **DevOps**: Docker, Podman/Containerfile, Nginx, Docker Compose.
 
 ---

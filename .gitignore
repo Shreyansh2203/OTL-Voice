@@ -1,6 +1,7 @@
 # Secrets — never commit real OCI credentials
 .env
 *.pem
+cookie*.txt
 
 # Local reference database — rebuild with: python -m backend.db.seed
 data/

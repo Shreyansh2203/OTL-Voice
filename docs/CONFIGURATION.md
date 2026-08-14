@@ -88,7 +88,9 @@ OTL_BASE_URL=https://<your-fusion-pod>.fa.ocs.oraclecloud.com/hcmRestApi/resourc
 | **`OTL_SERVICE_USERNAME`**| String | *None* | Integration service account username. |
 | **`OTL_SERVICE_PASSWORD`**| String | *None* | Integration service account password. |
 | **`STRICT_ASSIGNMENT`** | Boolean | `true` | When `true`, enforces strict project authorization. |
+| **`DEFAULT_START_HOUR`**| Integer | `9` | Default start hour for timecards when none is inferred. |
+| **`DEFAULT_EXPENDITURE_TYPE`**| String | `Professional Services` | Default expenditure type string for project-based entries. |
 | **`SESSION_COOKIE_SECURE`**| Boolean| `false` | When `true`, sets `Secure` attribute on cookies (requires HTTPS). |
 | **`SESSION_COOKIE_SAMESITE`**| String | `lax` | Cookie `SameSite` attribute (`lax`, `strict`, `none`). |
 | **`SESSION_TTL_SECONDS`** | Integer | `28800` | Session lifetime in seconds (8 hours default). |
-| **`OTL_DB_PATH`** | String | `./data/otl_dummy.db` | Local SQLite database file path. |
+| **`FRONTEND_DIST`** | String | `/app/frontend/dist` | Path to the built frontend bundle inside the container. |

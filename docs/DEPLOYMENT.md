@@ -25,7 +25,7 @@ The application uses a **single-origin architecture** running behind an **Nginx 
    └───────────┬───────────┘
                ▼
    ┌───────────────────────┐
-   │   SQLite Volume Mount │
+   │   /app/data Volume    │
    │      (/app/data)      │
    └───────────────────────┘
 ```
@@ -126,13 +126,7 @@ deploy-nginx-1 nginx:1.27-alpine   Up                       0.0.0.0:80->80/tcp
 
 ## 6. Backups & Disaster Recovery
 
-The SQLite reference database is persisted in the named Docker volume `otl-data`.
-
-### Creating a Database Backup
-```bash
-docker compose exec app sqlite3 /app/data/otl_dummy.db ".backup '/app/data/backup_$(date +%Y%m%d).db'"
-docker cp $(docker compose ps -q app):/app/data/backup_$(date +%Y%m%d).db ./backup.db
-```
+The `/app/data` volume is persisted as a named Docker volume (`otl-data`) or bound to `./data`. It is reserved for future local caching or session storage.
 
 ---
 

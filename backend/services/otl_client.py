@@ -122,6 +122,9 @@ def _clip(value: Any) -> Optional[str]:
 def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
     emp_num = str(entry.get("employeeNumber") or "UNKNOWN_EMP").strip()
     hours = _coerce_int(entry.get("hours")) or 0
+    if hours <= 0:
+        raise OtlError(400, f"Timecard entry hours must be greater than zero, got {hours}.")
+        
     now = datetime.now(UTC)
     start_time_str = entry.get("startTime")
     stop_time_str = entry.get("stopTime")
@@ -135,17 +138,18 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
         else:
             base_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     except Exception:
-        base_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        raise OtlError(400, f"Invalid date format '{date_str}'. Expected YYYY-MM-DD.")
 
     # Parse or synthesize start time
+    default_start_hour = int(os.getenv("DEFAULT_START_HOUR", "9"))
     try:
         if start_time_str:
             h1, m1 = map(int, start_time_str.split(":"))
             start_dt = base_dt.replace(hour=h1, minute=m1)
         else:
-            start_dt = base_dt.replace(hour=9, minute=0) # fallback 9am
+            start_dt = base_dt.replace(hour=default_start_hour, minute=0) # fallback
     except Exception:
-        start_dt = base_dt.replace(hour=9, minute=0)
+        start_dt = base_dt.replace(hour=default_start_hour, minute=0)
         
     # Parse or synthesize stop time
     try:
@@ -187,6 +191,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
         event["stopTime"] = stop_time
         
     attrs: List[Dict[str, str]] = []
+    
     if parts:
         attrs.append({
             "attributeName": "Comment",
@@ -198,6 +203,30 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
         attrs.append({
             "attributeName": "PayrollTimeType",
             "attributeValue": payroll_time_type,
+        })
+        
+    project_id = entry.get("projectId")
+    if project_id:
+        attrs.append({
+            "attributeName": "PJC_PROJECT_ID",
+            "attributeValue": str(project_id),
+        })
+        
+    task_id = entry.get("taskId")
+    if task_id:
+        attrs.append({
+            "attributeName": "PJC_TASK_ID",
+            "attributeValue": str(task_id),
+        })
+        
+    # In a full implementation, expenditure types would be fetched dynamically per project.
+    # We default to a typical value if one is provided, or from env/Professional Services as a fallback.
+    default_expenditure_type = os.getenv("DEFAULT_EXPENDITURE_TYPE", "Professional Services")
+    expenditure_type = entry.get("expenditureType", default_expenditure_type)
+    if project_id and expenditure_type:
+        attrs.append({
+            "attributeName": "PJC_EXPENDITURE_TYPE_NAME",
+            "attributeValue": expenditure_type,
         })
         
     if attrs:
@@ -249,6 +278,60 @@ def list_timecard_entries(
         resp = client.get(base_url(), params=params)
     _raise_for_status(resp)
     return resp.json()
+
+
+def hcm_base_url() -> str:
+    # Extracts the resources base path from the timeRecordEventRequests URL
+    url = base_url()
+    if "/timeRecordEventRequests" in url:
+        return url.replace("/timeRecordEventRequests", "")
+    return url
+
+
+def get_worker(cred: OtlCredential, person_number: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetches the worker details from Fusion HCM by PersonNumber.
+    """
+    with _client(cred) as client:
+        resp = client.get(
+            f"{hcm_base_url()}/workers",
+            params={
+                "q": f"PersonNumber='{escape_q_literal(person_number)}'",
+                "expand": "names",
+                "limit": 1
+            }
+        )
+    _raise_for_status(resp)
+    data = resp.json()
+    items = data.get("items", [])
+    if not items:
+        return None
+        
+    worker = items[0]
+    # Extract names (Fusion returns a dict with 'items' when expanded)
+    names = worker.get("names", [])
+    if isinstance(names, dict):
+        names = names.get("items", [])
+        
+    full_name = "Unknown Name"
+    if names and len(names) > 0:
+        full_name = names[0].get("DisplayName", full_name)
+        
+    return {
+        "personId": worker.get("PersonId"),
+        "personNumber": worker.get("PersonNumber"),
+        "fullName": full_name,
+        "isActive": True # Simplification for the demo
+    }
+
+
+def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: str = "") -> List[Dict[str, Any]]:
+    """
+    Fetches the projects and work orders this worker is allowed to charge time to.
+    Reads from the live Fusion catalogue (fetched on startup from PPM APIs).
+    """
+    from . import fusion_catalogue
+    return fusion_catalogue.list_assignments_for_worker(person_number, full_name)
 
 
 def get_timecard_entry(cred: OtlCredential, record_id: Any) -> Dict[str, Any]:

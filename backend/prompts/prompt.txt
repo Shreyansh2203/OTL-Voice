@@ -112,15 +112,18 @@ Follow this shape exactly:
     {
       "employeeNumber": "string (the Employee Number from the session context)",
       "employeeName": "string (the Employee Name from the session context)",
+      "projectId": "string (the internal project ID from the assigned work)",
       "projectNo": 0,
       "projectName": "string",
       "workOrder": "string",
+      "taskId": "string (the internal task ID if provided, else omit)",
       "taskDetails": "string (max 80 characters)",
       "hours": 0,
       "date": "string (YYYY-MM-DD)",
       "startTime": "string (HH:MM in 24-hour format if specified by the user, else omit)",
       "stopTime": "string (HH:MM in 24-hour format if specified by the user, else omit)",
       "payrollTimeType": "string (e.g. 'Regular' or 'Extended Day Overtime', if explicitly mentioned by user, else omit)",
+      "expenditureType": "string (e.g. 'Professional Services' or 'Regular Time' if explicitly mentioned, else omit)",
       "currencyCode": "USD"
     }
   ]

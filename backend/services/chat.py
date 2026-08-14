@@ -35,11 +35,15 @@ def render_assignments(work_orders: List[Dict[str, Any]]) -> str:
         suffix = f" - {description}" if description else ""
         lines.append(f"Work Order {order['workOrder']}{suffix}")
         for project in order.get("projects", []):
+            proj_id = project.get("projectId")
+            id_str = f" [ID: {proj_id}]" if proj_id else ""
             lines.append(
-                f"  Project {project['projectNo']}: {project['projectName']}"
+                f"  Project {project['projectNo']}: {project['projectName']}{id_str}"
             )
             for task in project.get("tasks", []):
-                lines.append(f"    - {task}")
+                t_id = task.get("taskId")
+                t_id_str = f" [ID: {t_id}]" if t_id else ""
+                lines.append(f"    - {task['taskDetails']}{t_id_str}")
     return "\n".join(lines)
 
 

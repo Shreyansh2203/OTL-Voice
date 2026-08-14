@@ -8,7 +8,7 @@ export default function LoginView({
   onLogin: (identity: Identity) => void;
 }) {
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const password = "dummy-password";
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,29 +37,19 @@ export default function LoginView({
         </div>
 
         <label>
-          <span>Username</span>
+          <span>Person Number</span>
           <input
             type="text"
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="first.last"
+            placeholder="e.g. 12345"
             required
             autoFocus
           />
         </label>
 
-        <label>
-          <span>Password</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-          />
-        </label>
+
 
         {error && <div className="error" role="alert">{error}</div>}
 
@@ -68,8 +58,8 @@ export default function LoginView({
         </button>
 
         <p className="muted small">
-          Your password is checked against your employee record and is never
-          sent to Oracle. The browser only keeps a session cookie.
+          Your Person Number is checked securely against Oracle Fusion Cloud.
+          The browser only keeps a session cookie.
         </p>
       </form>
     </div>

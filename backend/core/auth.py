@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 from fastapi import Cookie, HTTPException, status
 
-from ..db.repository import Employee
+from ..models import Employee
 
 SESSION_COOKIE_NAME = "otl_session"
 
@@ -89,4 +89,10 @@ def _prune() -> None:
 def current_session(
     otl_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> SessionContext:
-    return SessionContext(employee_id="90407", username="test.user", full_name="Test User (Bypass)")
+    ctx = resolve(otl_session)
+    if not ctx:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired or invalid. Please sign in again."
+        )
+    return ctx

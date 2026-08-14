@@ -53,7 +53,7 @@ uv sync
 uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The backend will automatically seed the SQLite database at `./data/otl_dummy.db` on first startup.
+The backend will load and cache catalogue data from Oracle Fusion APIs in a background thread on startup.
 
 ### 4. Frontend Setup
 

@@ -6,6 +6,7 @@ import type { ChatMessage } from "../types";
 import Composer from "./Composer";
 import MessageBubble from "./MessageBubble";
 import ReviewPanel from "./ReviewPanel";
+import TimecardHistory from "./TimecardHistory";
 import { SpeakerIcon } from "./icons";
 
 const KICKOFF = "Please begin the session now.";
@@ -38,6 +39,7 @@ export default function ChatView({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [viewTab, setViewTab] = useState<"chat" | "history">("chat");
 
   const player = useAudioPlayer();
   const voiceOnRef = useRef(voiceOn);
@@ -147,6 +149,18 @@ export default function ChatView({
         </div>
         <div className="topbar-actions">
           <button
+            className={`chip ${viewTab === "chat" ? "on" : ""}`}
+            onClick={() => setViewTab("chat")}
+          >
+            Chat
+          </button>
+          <button
+            className={`chip ${viewTab === "history" ? "on" : ""}`}
+            onClick={() => setViewTab("history")}
+          >
+            History
+          </button>
+          <button
             className={`chip ${voiceOn ? "on" : ""}`}
             onClick={() => setVoiceOn((v) => !v)}
             title="Toggle spoken replies"
@@ -165,19 +179,25 @@ export default function ChatView({
       </header>
 
       <main className="transcript">
-        {visible.map((m, i) => (
-          <MessageBubble key={i} message={m} onSpeak={speak} />
-        ))}
+        {viewTab === "history" ? (
+          <TimecardHistory onSessionExpired={onSessionExpired} />
+        ) : (
+          <>
+            {visible.map((m, i) => (
+              <MessageBubble key={i} message={m} onSpeak={speak} />
+            ))}
 
-        {entries && (
-          <ReviewPanel entries={entries} onSessionExpired={onSessionExpired} />
+            {entries && (
+              <ReviewPanel entries={entries} onSessionExpired={onSessionExpired} />
+            )}
+
+            <div ref={scrollAnchor} />
+          </>
         )}
-
-        <div ref={scrollAnchor} />
       </main>
 
       <footer className="dock">
-        <Composer disabled={sending} onSend={sendUser} />
+        <Composer disabled={sending || viewTab === "history"} onSend={sendUser} />
         <p className="hint muted small">
           The assistant collects employee, project, work order, task and hours,
           then submits to OTL. Say “submit” when you’re done.

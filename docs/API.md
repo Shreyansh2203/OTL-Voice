@@ -270,3 +270,57 @@ Queries historical timecard entries submitted for the current employee from Orac
   "offset": 0
 }
 ```
+
+---
+
+## 6. Labour Catalogue & Admin Endpoints
+
+### `GET /api/labour/assignments`
+Returns the assigned work orders, projects, and tasks for the currently authenticated employee.
+
+#### Response (`200 OK`)
+```json
+{
+  "employeeId": "90407",
+  "fullName": "Suraj Yadav",
+  "workOrders": [
+    {
+      "workOrder": "WO-101",
+      "description": "Substation Preventive Maintenance",
+      "projects": [
+        {
+          "projectNo": 1001,
+          "projectName": "Project Alpha",
+          "tasks": ["Transformer inspection", "Oil testing"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### `POST /api/admin/refresh-catalogue`
+Triggers an immediate background refresh of the Oracle Fusion HCM person-centric labour catalogue cache.
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "refresh initiated"
+}
+```
+
+---
+
+### `GET /api/admin/catalogue-status`
+Returns the current cache status and last synchronization timestamp of the labour catalogue.
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "cached",
+  "totalEmployees": 150,
+  "lastSynced": "2026-08-14T20:00:00Z"
+}
+```

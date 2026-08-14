@@ -22,15 +22,15 @@ sequenceDiagram
     actor User as Employee
     participant PWA as React PWA (Frontend)
     participant API as FastAPI Backend
-    participant DB as SQLite DB
+    participant DB as SQLite DB (Legacy)
     participant GenAI as OCI GenAI (Gemini 2.5)
     participant TTS as OCI Speech (TTS)
-    participant OTL as Oracle Fusion (OTL API)
+    participant OTL as Oracle Fusion (HCM/OTL APIs)
 
     User->>PWA: Speaks timesheet details ("Worked 8h on Project Alpha...")
     PWA->>PWA: Transcribes speech via Web Speech API
     PWA->>API: POST /api/chat (Message history + Session Cookie)
-    API->>DB: Query employee assignments (v_employee_labour)
+    API->>OTL: Fetch employee assignments via Fusion REST API
     API->>API: Build Contextual System Prompt
     API->>GenAI: Stream GenericChatRequest (Gemini 2.5 Flash)
     GenAI-->>API: Stream response tokens
@@ -62,7 +62,7 @@ The assistant uses an expert system prompt template located at [`backend/prompts
 
 When a user initiates or continues a chat session (`POST /api/chat`):
 1. The backend extracts the authenticated employee identity from the session cookie.
-2. It queries [`repository.list_assignments(employee_id)`](../backend/db/repository.py) to fetch all work orders, projects, and active tasks the user is permitted to charge time to.
+2. It calls Oracle Fusion APIs (`otl_client.list_worker_assignments()`) to fetch all work orders, projects, and active tasks the user is permitted to charge time to.
 3. It dynamically renders the system prompt with:
    - `{{USERNAME}}`, `{{EMPLOYEE_NUMBER}}`, `{{EMPLOYEE_NAME}}`
    - `{{CURRENT_DATE}}`
@@ -100,7 +100,7 @@ The frontend [`ReviewPanel.tsx`](../frontend/src/components/ReviewPanel.tsx) reg
 
 Before sending requests to the upstream Oracle Fusion API:
 - The backend executes `_resolve_entry()` in [`backend/main.py`](../backend/main.py).
-- If `STRICT_ASSIGNMENT=true`, it checks whether the project exists and whether the employee is assigned to that project in SQLite.
+- If `STRICT_ASSIGNMENT=true`, it checks whether the project exists in the list returned by Fusion for that employee.
 - If an employee attempts to log hours against an unauthorized project, the API rejects the submission with a `400 Bad Request` and returns an informative list of their valid assigned projects.
 
 ---

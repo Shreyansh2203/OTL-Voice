@@ -10,10 +10,14 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [identity, setIdentity] = useState<Identity | null>(null);
 
-  // Bypass login check for testing
   useEffect(() => {
-    setIdentity({ username: "test.user", employeeId: "90407", fullName: "Test User (Bypass)" });
-    setPhase("signed-in");
+    api
+      .getSession()
+      .then((user) => {
+        setIdentity(user);
+        setPhase(user ? "signed-in" : "signed-out");
+      })
+      .catch(() => setPhase("signed-out"));
   }, []);
 
   const handleLogin = useCallback((user: Identity) => {
