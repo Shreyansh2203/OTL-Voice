@@ -20,7 +20,13 @@ export default function MessageBubble({
           <p>{message.content}</p>
         ) : (
           <div className="md">
-            <ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                a: ({ node, ...props }) => (
+                  <a {...props} target="_blank" rel="noopener noreferrer" />
+                ),
+              }}
+            >
               {text || (message.streaming ? "…" : "")}
             </ReactMarkdown>
             {message.streaming && <span className="caret" aria-hidden />}
