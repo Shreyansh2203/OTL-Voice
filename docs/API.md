@@ -44,27 +44,30 @@ Validates connectivity and credentials against upstream Oracle Fusion HCM REST A
 ## 3. Authentication Endpoints
 
 ### `POST /api/auth/login`
-Authenticates an employee and sets the `otl_session` HttpOnly cookie.
+Authenticates an employee by Person Number or email against Oracle Fusion HCM (`/hcmRestApi/resources/11.13.18.05/workers`) and establishes an `otl_session` HttpOnly cookie.
 
 #### Request Body
 ```json
 {
-  "username": "suraj.yadav",
+  "username": "90407",
   "password": "Password123"
 }
 ```
 
+> **Note**: The `username` parameter accepts the employee's Oracle Fusion Person Number (e.g. `"90407"`). The backend verifies the worker against Oracle Fusion Cloud and returns their authoritative identity.
+
 #### Response (`200 OK`)
 ```json
 {
-  "username": "suraj.yadav",
+  "username": "90407",
   "employeeId": "90407",
   "fullName": "Suraj Yadav"
 }
 ```
 
 #### Error Responses
-- `401 Unauthorized`: Invalid credentials.
+- `401 Unauthorized`: Person number or worker not found in Oracle Fusion.
+- `500 Internal Server Error`: Failed to connect to Oracle Fusion Cloud.
 
 ---
 

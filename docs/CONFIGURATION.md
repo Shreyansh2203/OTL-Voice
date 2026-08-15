@@ -53,9 +53,10 @@ The application writes timecard records to Oracle Fusion Cloud HCM via the stand
 ### 2.1 Service Account Requirements
 
 The service account (`OTL_SERVICE_USERNAME` / `OTL_SERVICE_PASSWORD`) must have the following privileges in Oracle Fusion:
-- **`HRC_REST_SERVICE_ACCESS_TIME_RECORD_EVENT_REQUESTS_RO_PRIV`** (Read)
-- **`HRC_REST_SERVICE_ACCESS_TIME_RECORD_EVENT_REQUESTS_PRIV`** (Manage / Write)
-- Assigned role: **Time and Labor Manager** or custom integration role.
+- **`HRC_REST_SERVICE_ACCESS_TIME_RECORD_EVENT_REQUESTS_RO_PRIV`** (Read Timecards)
+- **`HRC_REST_SERVICE_ACCESS_TIME_RECORD_EVENT_REQUESTS_PRIV`** (Manage / Write Timecards)
+- **`PJF_PROJECTS_REST_SERVICE_ACCESS_RO`** (Read PPM Projects & Tasks Catalogue)
+- Assigned role: **Time and Labor Manager**, **Project Integration Specialist**, or custom integration role.
 
 ### 2.2 Endpoint Configuration
 
@@ -87,6 +88,7 @@ OTL_BASE_URL=https://<your-fusion-pod>.fa.ocs.oraclecloud.com/hcmRestApi/resourc
 | **`OTL_BASE_URL`** | String | *Standard* | Fusion HCM REST API resource endpoint. |
 | **`OTL_SERVICE_USERNAME`**| String | *None* | Integration service account username. |
 | **`OTL_SERVICE_PASSWORD`**| String | *None* | Integration service account password. |
+| **`CATALOGUE_REFRESH_SECONDS`**| Integer | `21600` | In-memory Fusion PPM catalogue auto-refresh interval (seconds). |
 | **`STRICT_ASSIGNMENT`** | Boolean | `true` | When `true`, enforces strict project authorization. |
 | **`DEFAULT_START_HOUR`**| Integer | `9` | Default start hour for timecards when none is inferred. |
 | **`DEFAULT_EXPENDITURE_TYPE`**| String | `Professional Services` | Default expenditure type string for project-based entries. |

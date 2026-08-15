@@ -151,17 +151,21 @@ Visit `http://localhost:5173`. Vite automatically proxies `/api` requests to the
 timesheet-repo/
 ├── backend/
 │   ├── core/
-│   │   ├── auth.py              # Identity tracking & JWT-like session cookies
-│   │   ├── config.py            # Environment variable validation
-│   ├── models.py                # Core data models
+│   │   └── auth.py              # Identity tracking & session cookie management
+│   ├── models.py                # Core domain models (Employee)
 │   ├── prompts/
 │   │   └── prompt.txt           # Context-engineered system prompt for Gemini
 │   ├── services/
 │   │   ├── chat.py              # SSE chat stream generator & prompt builder
+│   │   ├── fusion_catalogue.py  # Live in-memory PPM/HCM catalogue & auto-refresher
 │   │   ├── oci_gemini.py        # OCI GenAI client (Gemini 2.5 Flash)
 │   │   ├── oci_speech.py        # OCI Speech TTS client & markdown sanitizer
 │   │   └── otl_client.py        # Oracle Fusion OTL REST client
 │   └── main.py                  # FastAPI application & route definitions
+├── data/                        # Person-centric master catalogues & exported worker files
+│   ├── fusion_person_master.json # Mapped employee-to-project catalogue
+│   ├── fusion_person_master.xlsx # Consolidated multi-sheet Excel workbook
+│   └── fusion_employees.csv     # Extracted worker roster from Oracle Fusion
 ├── frontend/
 │   ├── src/
 │   │   ├── api/client.ts        # Typed API & SSE streaming client
@@ -176,12 +180,17 @@ timesheet-repo/
 │   └── nginx/otl.conf           # Nginx reverse proxy configuration
 ├── docs/                        # Deep-dive documentation
 │   ├── ARCHITECTURE.md          # System architecture, prompt flow, and logic
-│   ├── API.md                   # REST API documentation
-│   ├── CONFIGURATION.md         # Environment variables and setups
-│   └── DEPLOYMENT.md            # Docker, Nginx, and production hosting
+│   ├── API.md                   # REST API & SSE streaming documentation
+│   ├── CONFIGURATION.md         # Environment variables and IAM setups
+│   ├── DATA_CATALOGUE.md        # Fusion PPM/HCM catalogue, pipelines & data architecture
+│   └── DEPLOYMENT.md            # Docker, Nginx, batch launchers, and production hosting
+├── export_fusion_master.py      # Direct Oracle Fusion Cloud REST / BIP master exporter
+├── build_person_centric_catalogue.py # JSON/XLSX person-centric transformer
+├── explore_fusion.py            # Interactive CLI explorer for Fusion REST endpoints
+├── test_*.py                    # Automated test and integration verification suite
 ├── .env.example                 # Sanitized environment template
 ├── Containerfile                # Multi-stage production container build
-├── CONTRIBUTING.md              # Contributor onboarding & guidelines
+├── CONTRIBUTING.md              # Contributor onboarding, testing & guidelines
 ├── LICENSE                      # MIT License
 └── pyproject.toml               # Python project configuration (uv)
 ```
@@ -195,9 +204,10 @@ For detailed technical references, refer to the guides in the [`docs/`](docs/) d
 | Guide | Description |
 | :--- | :--- |
 | **[Architecture Guide](docs/ARCHITECTURE.md)** | End-to-end data flows, voice pipeline, SSE protocol, and security model. |
-| **[API Reference](docs/API.md)** | Endpoints, request schemas, and mock Oracle connection details. |
-| **[Configuration Guide](docs/CONFIGURATION.md)** | Available environment variables and local vs production setups. |
-| **[Deployment Guide](docs/DEPLOYMENT.md)** | Instructions for single-container deployments and reverse proxies. |
+| **[API Reference](docs/API.md)** | REST endpoints, SSE streams, Person Number authentication, and admin refresh routes. |
+| **[Configuration Guide](docs/CONFIGURATION.md)** | Available environment variables, OCI IAM policies, and Oracle Fusion permissions. |
+| **[Data Catalogue Guide](docs/DATA_CATALOGUE.md)** | Live Fusion PPM in-memory caching, data extraction scripts, and offline master files. |
+| **[Deployment Guide](docs/DEPLOYMENT.md)** | Single-container deployments, Nginx TLS, Docker Compose, and batch commands. |
 
 ---
 
@@ -217,6 +227,7 @@ Key environment variables in `.env`:
 | `OTL_BASE_URL` | Oracle Fusion Timecard API endpoint | *Fusion SaaS URL* |
 | `OTL_SERVICE_USERNAME` | Service account username for Fusion HCM | *Required* |
 | `OTL_SERVICE_PASSWORD` | Service account password for Fusion HCM | *Required* |
+| `CATALOGUE_REFRESH_SECONDS` | In-memory Fusion PPM catalogue auto-refresh interval | `21600` (6h) |
 | `STRICT_ASSIGNMENT` | Enforce employee project assignment checks | `true` |
 | `DEFAULT_START_HOUR` | Default start hour for timecards when none is inferred | `9` |
 | `DEFAULT_EXPENDITURE_TYPE` | Default expenditure type string for project-based entries | `Professional Services` |

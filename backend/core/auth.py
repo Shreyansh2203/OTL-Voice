@@ -42,10 +42,16 @@ class SessionContext:
 
 
 _STORE: Dict[str, _SessionRecord] = {}
-
+_LAST_PRUNE: float = 0.0
+MAX_SESSIONS: int = 10000
 
 def create_session(employee: Employee) -> str:
     _prune()
+    if len(_STORE) >= MAX_SESSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server is under heavy load. Please try again later."
+        )
     sid = secrets.token_urlsafe(32)
     _STORE[sid] = _SessionRecord(
         employee_id=employee.employee_id,
@@ -78,9 +84,14 @@ def destroy(sid: Optional[str]) -> None:
 
 
 def _prune() -> None:
+    global _LAST_PRUNE
     now = time.time()
-    for sid in [s for s, r in _STORE.items() if r.expires_at < now]:
-        _STORE.pop(sid, None)
+    if now - _LAST_PRUNE < 60.0:  # Only prune at most once per minute
+        return
+    _LAST_PRUNE = now
+    expired = [s for s, r in _STORE.items() if r.expires_at < now]
+    for s in expired:
+        _STORE.pop(s, None)
 
 
 # --------------------------------------------------------------------------- #

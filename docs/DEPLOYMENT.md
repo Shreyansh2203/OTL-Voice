@@ -64,7 +64,23 @@ docker compose up -d --build
 
 ---
 
-## 4. Enabling HTTPS / TLS Certificates
+## 4. Windows Standalone Container Launcher (`start_container.bat`)
+
+For Windows workstations with Docker Desktop, the repository includes a standalone container manager `start_container.bat`:
+
+| Command | Action |
+| :--- | :--- |
+| `start_container.bat` | Smart start: builds the image if missing, starts the container, and attaches an interactive shell. |
+| `start_container.bat build` | Force re-build the container image from `Containerfile` and recreate the container. |
+| `start_container.bat shell` | Open an interactive `sh` shell inside the running container. |
+| `start_container.bat logs` | Follow live container logs (`docker logs -f`). |
+| `start_container.bat status` | Display container runtime state and port bindings. |
+| `start_container.bat stop` | Stop the container without removing it (for rapid restart). |
+| `start_container.bat remove` | Stop and remove the container (`docker rm -f`). |
+
+---
+
+## 5. Enabling HTTPS / TLS Certificates
 
 By default, Nginx listens on HTTP port 80. To enable production TLS:
 

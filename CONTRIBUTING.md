@@ -97,11 +97,23 @@ npm run build
 ### 2. Backend Code Compilation & Linting
 
 ```bash
-# Verify Python syntax across all modules
-uv run python -m py_compile backend/main.py backend/core/auth.py backend/services/oci_gemini.py backend/services/oci_speech.py backend/services/otl_client.py backend/db/repository.py
+# Verify Python syntax across all active backend modules
+python -m py_compile backend/main.py backend/models.py backend/core/auth.py backend/services/chat.py backend/services/fusion_catalogue.py backend/services/oci_gemini.py backend/services/oci_speech.py backend/services/otl_client.py
+```
 
-# Optional: Run mypy type checking
-uv run mypy backend
+### 3. Integration & Diagnostic Test Suites
+
+Run the automated integration scripts to test Oracle Fusion connectivity, PPM catalogue lookups, and end-to-end validation flows:
+
+```bash
+# Test Oracle Fusion REST connectivity and worker query
+python test_fusion_rest.py
+
+# Test in-memory person index resolution and performance
+python test_catalogue_lookup.py
+
+# Run complete end-to-end simulation (Worker -> Assignments -> Prompt -> OTL submission)
+python test_e2e_validation.py
 ```
 
 ---
