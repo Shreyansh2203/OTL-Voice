@@ -29,7 +29,7 @@ import httpx
 
 try:
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     HAVE_OPENPYXL = True
 except ImportError:
     HAVE_OPENPYXL = False
@@ -62,7 +62,7 @@ print("=" * 70)
 
 master_data = {
     "metadata": {
-        "extracted_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "extracted_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "host": HOST_URL,
         "authenticated_user": USERNAME,
     },
@@ -376,14 +376,14 @@ if HAVE_OPENPYXL:
 print("\n" + "=" * 70)
 print(" EXTRACTION & EXPORT COMPLETE!")
 print("=" * 70)
-print(f" Summary of Extracted Data:")
+print(" Summary of Extracted Data:")
 print(f"  * Employees:           {len(master_data['employees'])}")
 print(f"  * Projects:            {len(master_data['projects'])}")
 print(f"  * Project Tasks:       {len(master_data['project_tasks'])}")
 print(f"  * Project Allocations: {len(master_data['project_allocations'])}")
 print(f"  * Timecards:           {len(master_data['timecards'])}")
 print("-" * 70)
-print(f" Structured Master Files Created:")
+print(" Structured Master Files Created:")
 print(f"  1. Excel (.xlsx): {xlsx_out_path}")
 print(f"  2. JSON  (.json): {json_out_path}")
 print("=" * 70)

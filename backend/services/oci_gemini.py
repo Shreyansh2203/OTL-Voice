@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Iterator, List, Dict
+from collections.abc import Iterator
 
 import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
@@ -54,7 +54,7 @@ def _normalize_pem(raw: str) -> str:
     return f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
 
 
-def build_oci_config() -> Dict[str, str]:
+def build_oci_config() -> dict[str, str]:
     region = _env("OCI_REGION")
     user = _env("OCI_USER_OCID")
     tenancy = _env("OCI_TENANCY_OCID")
@@ -122,8 +122,8 @@ class GeminiChatClient:
         )
 
     # -- request building ---------------------------------------------------- #
-    def _to_messages(self, system_prompt: str, history: List[Dict]) -> List[Message]:
-        messages: List[Message] = []
+    def _to_messages(self, system_prompt: str, history: list[dict]) -> list[Message]:
+        messages: list[Message] = []
         if system_prompt:
             messages.append(
                 Message(role="SYSTEM", content=[TextContent(text=system_prompt)])
@@ -134,7 +134,7 @@ class GeminiChatClient:
             messages.append(Message(role=role, content=[TextContent(text=content)]))
         return messages
 
-    def _chat_detail(self, messages: List[Message], stream: bool) -> ChatDetails:
+    def _chat_detail(self, messages: list[Message], stream: bool) -> ChatDetails:
         chat_request = GenericChatRequest(
             api_format=BaseChatRequest.API_FORMAT_GENERIC,
             messages=messages,
@@ -150,7 +150,7 @@ class GeminiChatClient:
         )
 
     # -- non-streaming ------------------------------------------------------- #
-    def complete(self, system_prompt: str, history: List[Dict]) -> str:
+    def complete(self, system_prompt: str, history: list[dict]) -> str:
         messages = self._to_messages(system_prompt, history)
         response = self.client.chat(self._chat_detail(messages, stream=False))
         return self._extract_full_text(response.data)
@@ -169,7 +169,7 @@ class GeminiChatClient:
         # Fallback: walk the serialized dict form for any "text" fields.
         try:
             blob = json.loads(str(data))
-            found: List[str] = []
+            found: list[str] = []
 
             def _walk(node):
                 if isinstance(node, dict):
@@ -189,7 +189,7 @@ class GeminiChatClient:
         return ""
 
     # -- streaming ----------------------------------------------------------- #
-    def stream(self, system_prompt: str, history: List[Dict]) -> Iterator[str]:
+    def stream(self, system_prompt: str, history: list[dict]) -> Iterator[str]:
         messages = self._to_messages(system_prompt, history)
         detail = self._chat_detail(messages, stream=True)
         produced_any = False

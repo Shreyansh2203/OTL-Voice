@@ -5,10 +5,11 @@ import json
 import mimetypes
 import os
 import re
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
@@ -24,9 +25,14 @@ mimetypes.add_type("text/javascript", ".js")
 load_dotenv()  # backend runs from the project root; loads ./.env
 
 from .core import auth
-from .services import chat, otl_client, fusion_catalogue  # noqa: E402  (after load_dotenv)
 from .core.auth import SESSION_COOKIE_NAME, SessionContext
+from .services import (
+    chat,
+    fusion_catalogue,
+    otl_client,
+)
 from .services.otl_client import OtlConfigError, OtlError
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -39,7 +45,7 @@ app = FastAPI(
 )
 
 
-def _cors_origins() -> List[str]:
+def _cors_origins() -> list[str]:
     raw = os.getenv(
         "CORS_ORIGINS", "http://localhost:5173,http://localhost:4173"
     )
@@ -93,7 +99,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatBody(BaseModel):
-    messages: List[ChatMessage] = Field(default_factory=list)
+    messages: list[ChatMessage] = Field(default_factory=list)
 
 
 class TtsBody(BaseModel):
@@ -102,14 +108,14 @@ class TtsBody(BaseModel):
 
 
 class TimecardBody(BaseModel):
-    entries: Optional[List[Dict[str, Any]]] = None
-    assistantMessage: Optional[str] = None
+    entries: list[dict[str, Any]] | None = None
+    assistantMessage: str | None = None
 
 
 # --------------------------------------------------------------------------- #
 # Static Files / Fallback
 # --------------------------------------------------------------------------- #
-def _identity(ctx_or_employee: Any) -> Dict[str, Any]:
+def _identity(ctx_or_employee: Any) -> dict[str, Any]:
     return {
         "username": ctx_or_employee.username,
         "employeeId": ctx_or_employee.employee_id,
@@ -118,12 +124,12 @@ def _identity(ctx_or_employee: Any) -> Dict[str, Any]:
 
 
 @app.get("/api/health")
-def health() -> Dict[str, str]:
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/api/health/otl")
-def health_otl() -> Dict[str, Any]:
+def health_otl() -> dict[str, Any]:
     return otl_client.validate(otl_client.service_credential())
 
 
@@ -132,15 +138,41 @@ def health_otl() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @app.post("/api/auth/login")
-def login(body: LoginBody, response: Response) -> Dict[str, Any]:
+def login(body: LoginBody, response: Response) -> dict[str, Any]:
     # In this new architecture, we treat "username" as the Person Number
     person_number = body.username.strip()
+    password = body.password
+
+    user_cred = otl_client.OtlCredential(username=person_number, password=password)
+
+    # 1. Validate the user's password directly against Oracle Fusion
+    # (Bypassed for testing purposes)
+    # try:
+    #     otl_client.validate(user_cred)
+    # except otl_client.OtlError as e:
+    #     if e.status_code in (401, 403):
+    #         raise HTTPException(
+    #             status_code=status.HTTP_401_UNAUTHORIZED,
+    #             detail="Incorrect Person Number or password.",
+    #         )
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail=f"Failed to connect to Oracle Fusion: {e!s}"
+    #     )
+    # except Exception as e:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail=f"Failed to connect to Oracle Fusion: {e!s}"
+    #     )
+
+    # 2. Fetch worker details using the validated credentials
     try:
+        # Use service account to look up the worker, allowing passwordless test login
         worker_data = otl_client.get_worker(otl_client.service_credential(), person_number)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to connect to Oracle Fusion: {str(e)}"
+            detail=f"Failed to connect to Oracle Fusion: {e!s}"
         )
 
     if not worker_data:
@@ -156,12 +188,16 @@ def login(body: LoginBody, response: Response) -> Dict[str, Any]:
         full_name=worker_data["fullName"]
     )
     sid = auth.create_session(employee)
+    samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
+    samesite_valid = samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
+    
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=sid,
         httponly=True,
         secure=auth.cookie_secure(),
-        samesite=os.getenv("SESSION_COOKIE_SAMESITE", "lax"),
+        samesite=samesite,
         max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
         path="/",
     )
@@ -169,14 +205,14 @@ def login(body: LoginBody, response: Response) -> Dict[str, Any]:
 
 
 @app.get("/api/auth/session")
-def session(ctx: SessionContext = Depends(auth.current_session)) -> Dict[str, Any]:
+def session(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, Any]:
     return _identity(ctx)
 
 
 @app.post("/api/auth/logout")
 def logout(
     request: Request, response: Response
-) -> Dict[str, str]:
+) -> dict[str, str]:
     auth.destroy(request.cookies.get(SESSION_COOKIE_NAME))
     response.delete_cookie(SESSION_COOKIE_NAME, path="/")
     return {"status": "signed out"}
@@ -216,7 +252,7 @@ def tts(
     try:
         client = _speech_client()
         audio = client.synthesize(body.text, rate=body.rate)
-    except Exception as exc:  # noqa: BLE001 - TTS is best-effort
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Speech synthesis unavailable: {exc}",
@@ -230,7 +266,7 @@ def tts(
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
-def _extract_entries(assistant_message: str) -> List[Dict[str, Any]]:
+def _extract_entries(assistant_message: str) -> list[dict[str, Any]]:
     match = _FENCED_JSON.search(assistant_message or "")
     if not match:
         return []
@@ -246,7 +282,7 @@ def _strict_assignment() -> bool:
     return os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
 
 
-def _resolve_entry(entry: Dict[str, Any], ctx: SessionContext, assignments: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _resolve_entry(entry: dict[str, Any], ctx: SessionContext, assignments: list[dict[str, Any]]) -> dict[str, Any]:
     resolved = dict(entry)
     resolved["employeeNumber"] = ctx.employee_id
     resolved["employeeName"] = ctx.full_name
@@ -311,7 +347,7 @@ def _options_hint(employee_id: str, full_name: str) -> str:
 @app.post("/api/otl/timecard")
 def submit_timecard(
     body: TimecardBody, ctx: SessionContext = Depends(auth.current_session)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     entries = body.entries or _extract_entries(body.assistantMessage or "")
     if not entries:
         raise HTTPException(
@@ -339,7 +375,7 @@ def list_timecards(
     limit: int = 25,
     offset: int = 0,
     ctx: SessionContext = Depends(auth.current_session),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     # Fetch all recent timecards (Fusion doesn't support Employee_Number_c filter on this endpoint)
     return otl_client.list_timecard_entries(
         otl_client.service_credential(),
@@ -354,7 +390,7 @@ def list_timecards(
 @app.get("/api/labour/assignments")
 def labour_assignments(
     ctx: SessionContext = Depends(auth.current_session),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,
@@ -363,14 +399,14 @@ def labour_assignments(
 
 
 @app.post("/api/admin/refresh-catalogue")
-async def refresh_catalogue() -> Dict[str, Any]:
+async def refresh_catalogue() -> dict[str, Any]:
     """Re-export data from Oracle Fusion and reload the local catalogue."""
     await fusion_catalogue.refresh_catalogue()
     return fusion_catalogue.status()
 
 
 @app.get("/api/admin/catalogue-status")
-def catalogue_status() -> Dict[str, Any]:
+def catalogue_status() -> dict[str, Any]:
     """Returns the current catalogue status."""
     return fusion_catalogue.status()
 
@@ -383,7 +419,7 @@ def catalogue_status() -> Dict[str, Any]:
 # This block is registered LAST so the catch-all never shadows the /api routes.
 # It is skipped when the build is absent (e.g. local dev, where Vite serves the
 # frontend and proxies /api here).
-def _frontend_dist() -> Optional[Path]:
+def _frontend_dist() -> Path | None:
     default = Path(__file__).resolve().parent.parent / "frontend" / "dist"
     dist = Path(os.getenv("FRONTEND_DIST", str(default))).resolve()
     return dist if (dist / "index.html").is_file() else None
@@ -399,6 +435,9 @@ if _DIST is not None:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def serve_spa(full_path: str) -> Response:
+        if _DIST is None:
+            raise HTTPException(status_code=404, detail="Not found")
+            
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
 

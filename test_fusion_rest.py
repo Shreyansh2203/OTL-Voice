@@ -1,8 +1,8 @@
-import json
 import os
 import urllib.parse
-from dotenv import load_dotenv
+
 import httpx
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -21,7 +21,7 @@ client = httpx.Client(
 
 def run_suite():
     print("=" * 60)
-    print(f"Oracle Fusion REST Data Extraction Test")
+    print("Oracle Fusion REST Data Extraction Test")
     print(f"Host: {HOST_URL}")
     print(f"User: {USERNAME}")
     print("=" * 60)

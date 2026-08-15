@@ -1,7 +1,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from xml.sax.saxutils import escape
 
@@ -22,7 +21,7 @@ def _speech_endpoint(region: str) -> str:
 
 
 def _rate_to_percent(rate: float) -> str:
-    pct = int(round(max(0.2, min(3.0, rate)) * 100))
+    pct = round(max(0.2, min(3.0, rate)) * 100)
     return f"{pct}%"
 
 
@@ -114,7 +113,7 @@ class SpeechClient:
         )
 
     # -- request building ---------------------------------------------------- #
-    def _details(self, text: str, text_type: str) -> "speech_models.SynthesizeSpeechDetails":
+    def _details(self, text: str, text_type: str) -> speech_models.SynthesizeSpeechDetails:
         model_details = speech_models.TtsOracleTts2NaturalModelDetails(
             model_name=self.model_name,
             voice_id=self.voice_id,

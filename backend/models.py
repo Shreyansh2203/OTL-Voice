@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class Employee:
     """Represents the authenticated employee for session context."""

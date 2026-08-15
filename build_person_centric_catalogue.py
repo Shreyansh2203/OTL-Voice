@@ -1,14 +1,16 @@
 import json
 from pathlib import Path
+
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Font, PatternFill
 
 data_dir = Path(__file__).resolve().parent / "data"
 catalogue_path = data_dir / "fusion_master_catalogue.json"
 
 if not catalogue_path.is_file():
     print(f"[ERROR] {catalogue_path} not found. Run export_fusion_master.py first.")
-    exit(1)
+    import sys
+    sys.exit(1)
 
 with open(catalogue_path, "r", encoding="utf-8") as f:
     master_data = json.load(f)

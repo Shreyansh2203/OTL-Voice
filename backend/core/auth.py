@@ -5,7 +5,6 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 from fastapi import Cookie, HTTPException, status
 
@@ -41,7 +40,7 @@ class SessionContext:
     full_name: str  # -> Employee_Name_c
 
 
-_STORE: Dict[str, _SessionRecord] = {}
+_STORE: dict[str, _SessionRecord] = {}
 _LAST_PRUNE: float = 0.0
 MAX_SESSIONS: int = 10000
 
@@ -62,7 +61,7 @@ def create_session(employee: Employee) -> str:
     return sid
 
 
-def resolve(sid: Optional[str]) -> Optional[SessionContext]:
+def resolve(sid: str | None) -> SessionContext | None:
     if not sid:
         return None
     record = _STORE.get(sid)
@@ -78,7 +77,7 @@ def resolve(sid: Optional[str]) -> Optional[SessionContext]:
     )
 
 
-def destroy(sid: Optional[str]) -> None:
+def destroy(sid: str | None) -> None:
     if sid:
         _STORE.pop(sid, None)
 
@@ -98,7 +97,7 @@ def _prune() -> None:
 # FastAPI dependency
 # --------------------------------------------------------------------------- #
 def current_session(
-    otl_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    otl_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> SessionContext:
     ctx = resolve(otl_session)
     if not ctx:

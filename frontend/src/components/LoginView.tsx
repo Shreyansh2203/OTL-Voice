@@ -49,8 +49,6 @@ export default function LoginView({
           />
         </label>
 
-
-
         {error && <div className="error" role="alert">{error}</div>}
 
         <button className="primary" type="submit" disabled={busy}>

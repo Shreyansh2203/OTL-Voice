@@ -1,6 +1,6 @@
 """End-to-end validation of the catalogue-backed flow."""
+
 import httpx
-import json
 
 BASE = "http://localhost"
 

@@ -64,19 +64,34 @@ docker compose up -d --build
 
 ---
 
-## 4. Windows Standalone Container Launcher (`start_container.bat`)
+## 4. Local Container Management Scripts
 
-For Windows workstations with Docker Desktop, the repository includes a standalone container manager `start_container.bat`:
+For local workstations with Docker, the repository includes helper scripts to manage the container stack:
 
-| Command | Action |
-| :--- | :--- |
-| `start_container.bat` | Smart start: builds the image if missing, starts the container, and attaches an interactive shell. |
-| `start_container.bat build` | Force re-build the container image from `Containerfile` and recreate the container. |
-| `start_container.bat shell` | Open an interactive `sh` shell inside the running container. |
-| `start_container.bat logs` | Follow live container logs (`docker logs -f`). |
-| `start_container.bat status` | Display container runtime state and port bindings. |
-| `start_container.bat stop` | Stop the container without removing it (for rapid restart). |
-| `start_container.bat remove` | Stop and remove the container (`docker rm -f`). |
+### Windows
+- `start.bat`: Starts the stack via `docker compose` and opens your browser.
+- `start_container.bat`: A wrapper script with additional commands:
+  | Command | Action |
+  | :--- | :--- |
+  | `start_container.bat` | Start the stack and attach an interactive shell to the `app` container. |
+  | `start_container.bat build` | Force re-build the images and recreate the containers. |
+  | `start_container.bat shell` | Open an interactive `bash` shell inside the running `app` container. |
+  | `start_container.bat logs` | Follow live container logs (`docker compose logs -f`). |
+  | `start_container.bat status` | Display container runtime state. |
+  | `start_container.bat stop` | Stop the stack without removing it. |
+  | `start_container.bat remove` | Stop and remove the stack. |
+
+### Mac / Linux
+- `start.sh`: Starts the stack via `docker compose` and opens your browser.
+- `Makefile`: Provides standard `make` targets:
+  | Command | Action |
+  | :--- | :--- |
+  | `make up` | Start the stack. |
+  | `make build` | Force re-build the images and recreate the containers. |
+  | `make shell` | Open an interactive `bash` shell inside the running `app` container. |
+  | `make logs` | Follow live container logs. |
+  | `make status` | Display container runtime state. |
+  | `make down` | Stop and remove the stack. |
 
 ---
 

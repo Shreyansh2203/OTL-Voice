@@ -1,6 +1,7 @@
 import json
 
-d = json.load(open("data/fusion_person_master.json", "r", encoding="utf-8"))
+with open("data/fusion_person_master.json", "r", encoding="utf-8") as f:
+    d = json.load(f)
 with_projects = [p for p in d["persons"] if p["total_assigned_projects"] > 0]
 total = len(d["persons"])
 

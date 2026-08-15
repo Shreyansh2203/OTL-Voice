@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, UTC
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -83,7 +83,7 @@ def _extract_error(resp: httpx.Response) -> str:
             msg = data.get("detail") or data.get("title") or data.get("message")
             if msg:
                 return str(msg)
-    except Exception:  # noqa: BLE001 - fall back to text below
+    except Exception:
         pass
     text = (resp.text or "").strip()
     return text or f"OTL request failed with HTTP {resp.status_code}"
@@ -97,20 +97,20 @@ def _raise_for_status(resp: httpx.Response) -> None:
 def _safe_body(resp: httpx.Response) -> Any:
     try:
         return resp.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return (resp.text or "")[:2000]
 
 
-def _coerce_int(value: Any) -> Optional[int]:
+def _coerce_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     try:
-        return int(round(float(value)))
+        return round(float(value))
     except (TypeError, ValueError):
         return None
 
 
-def _clip(value: Any) -> Optional[str]:
+def _clip(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)[:_STR_MAX]
@@ -119,7 +119,7 @@ def _clip(value: Any) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # App entry -> OTL record body
 # --------------------------------------------------------------------------- #
-def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
+def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     emp_num = str(entry.get("employeeNumber") or "UNKNOWN_EMP").strip()
     hours = _coerce_int(entry.get("hours")) or 0
     if hours <= 0:
@@ -165,7 +165,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
     stop_time = stop_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     # Build a human-readable comment from the project/task/work-order fields.
-    parts: List[str] = []
+    parts: list[str] = []
     project_name = entry.get("projectName")
     if project_name:
         project_no = entry.get("projectNo")
@@ -178,7 +178,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
         parts.append(f"WO: {work_order}")
     parts.append(f"Total Hours: {hours}")
 
-    event: Dict[str, Any] = {
+    event: dict[str, Any] = {
         "measure": hours,
         "reporterIdType": "PERSON",
         "reporterId": emp_num,
@@ -190,7 +190,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
         event["startTime"] = start_time
         event["stopTime"] = stop_time
         
-    attrs: List[Dict[str, str]] = []
+    attrs: list[dict[str, str]] = []
     
     if parts:
         attrs.append({
@@ -202,7 +202,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
     if payroll_time_type:
         attrs.append({
             "attributeName": "PayrollTimeType",
-            "attributeValue": payroll_time_type,
+            "attributeValue": str(payroll_time_type),
         })
         
     project_id = entry.get("projectId")
@@ -239,7 +239,7 @@ def map_entry_to_otl(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _default_record_name(entry: Dict[str, Any]) -> str:
+def _default_record_name(entry: dict[str, Any]) -> str:
     emp = str(entry.get("employeeNumber") or "EMP").strip()
     wo = str(entry.get("workOrder") or "WO").strip()
     return f"{emp}-{wo}-{int(time.time() * 1000) % 1_000_000}"
@@ -248,7 +248,7 @@ def _default_record_name(entry: Dict[str, Any]) -> str:
 # --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
-def validate(cred: OtlCredential) -> Dict[str, Any]:
+def validate(cred: OtlCredential) -> dict[str, Any]:
     with _client(cred) as client:
         resp = client.get(base_url(), params={"limit": 1})
     if resp.status_code in (401, 403):
@@ -269,9 +269,9 @@ def list_timecard_entries(
     cred: OtlCredential,
     limit: int = 25,
     offset: int = 0,
-    query: Optional[str] = None,
-) -> Dict[str, Any]:
-    params: Dict[str, Any] = {"limit": limit, "offset": offset}
+    query: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
     if query:
         params["q"] = query
     with _client(cred) as client:
@@ -288,7 +288,7 @@ def hcm_base_url() -> str:
     return url
 
 
-def get_worker(cred: OtlCredential, person_number: str) -> Optional[Dict[str, Any]]:
+def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
     """
     Fetches the worker details from Fusion HCM by PersonNumber.
     """
@@ -325,7 +325,7 @@ def get_worker(cred: OtlCredential, person_number: str) -> Optional[Dict[str, An
     }
 
 
-def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: str = "") -> List[Dict[str, Any]]:
+def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: str = "") -> list[dict[str, Any]]:
     """
     Fetches the projects and work orders this worker is allowed to charge time to.
     Reads from the live Fusion catalogue (fetched on startup from PPM APIs).
@@ -334,7 +334,7 @@ def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: 
     return fusion_catalogue.list_assignments_for_worker(person_number, full_name)
 
 
-def get_timecard_entry(cred: OtlCredential, record_id: Any) -> Dict[str, Any]:
+def get_timecard_entry(cred: OtlCredential, record_id: Any) -> dict[str, Any]:
     with _client(cred) as client:
         resp = client.get(f"{base_url()}/{record_id}")
     _raise_for_status(resp)
@@ -342,8 +342,8 @@ def get_timecard_entry(cred: OtlCredential, record_id: Any) -> Dict[str, Any]:
 
 
 def create_timecard_entry(
-    cred: OtlCredential, entry: Dict[str, Any]
-) -> Dict[str, Any]:
+    cred: OtlCredential, entry: dict[str, Any]
+) -> dict[str, Any]:
     body = map_entry_to_otl(entry)
     with _client(cred) as client:
         resp = client.post(
@@ -362,9 +362,9 @@ def delete_timecard_entry(cred: OtlCredential, record_id: Any) -> None:
 
 
 def create_many(
-    cred: OtlCredential, entries: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
+    cred: OtlCredential, entries: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
     for index, entry in enumerate(entries):
         try:
             created = create_timecard_entry(cred, entry)

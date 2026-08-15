@@ -11,12 +11,11 @@ The catalogue auto-refreshes on a configurable interval (default: 6 hours).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import time
 import urllib.parse
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -54,9 +53,9 @@ def _client() -> httpx.Client:
 # In-memory state
 # ---------------------------------------------------------------------------
 # Maps lowercase person name -> list of project dicts
-_person_index: Dict[str, List[dict]] = {}
+_person_index: dict[str, list[dict]] = {}
 # All projects fetched
-_all_projects: List[dict] = []
+_all_projects: list[dict] = []
 _last_refresh: float = 0.0
 _is_loaded: bool = False
 _is_loading: bool = False
@@ -65,7 +64,7 @@ _is_loading: bool = False
 # ---------------------------------------------------------------------------
 # Fetch from Fusion APIs
 # ---------------------------------------------------------------------------
-def _fetch_all_projects(client: httpx.Client) -> List[dict]:
+def _fetch_all_projects(client: httpx.Client) -> list[dict]:
     """Fetch all projects from PPM REST API with pagination."""
     projects = []
     offset = 0
@@ -98,7 +97,7 @@ def _fetch_all_projects(client: httpx.Client) -> List[dict]:
     return projects
 
 
-def _fetch_project_tasks(client: httpx.Client, project_id: str) -> List[dict]:
+def _fetch_project_tasks(client: httpx.Client, project_id: str) -> list[dict]:
     """Fetch tasks for a single project."""
     resp = client.get(
         f"{_ppm_base()}/projects/{project_id}/child/Tasks",
@@ -109,7 +108,7 @@ def _fetch_project_tasks(client: httpx.Client, project_id: str) -> List[dict]:
     return resp.json().get("items", [])
 
 
-def _fetch_project_team_members(client: httpx.Client, project_id: str) -> List[dict]:
+def _fetch_project_team_members(client: httpx.Client, project_id: str) -> list[dict]:
     """Fetch team members for a single project."""
     resp = client.get(
         f"{_ppm_base()}/projects/{project_id}/child/ProjectTeamMembers",
@@ -120,12 +119,12 @@ def _fetch_project_team_members(client: httpx.Client, project_id: str) -> List[d
     return resp.json().get("items", [])
 
 
-def _build_index(projects_data: List[dict]) -> Dict[str, List[dict]]:
+def _build_index(projects_data: list[dict]) -> dict[str, list[dict]]:
     """
     Build a person-name → projects index from the fetched data.
     Each person entry contains the projects they are assigned to, with tasks.
     """
-    index: Dict[str, List[dict]] = {}
+    index: dict[str, list[dict]] = {}
 
     for proj in projects_data:
         proj_entry = {
@@ -257,13 +256,13 @@ def load_catalogue() -> None:
 # ---------------------------------------------------------------------------
 # Lookups
 # ---------------------------------------------------------------------------
-def _find_person_projects(person_name: str) -> List[dict]:
+def _find_person_projects(person_name: str) -> list[dict]:
     """Find projects for a person by name (case-insensitive exact match)."""
     key = person_name.strip().lower()
     return _person_index.get(key, [])
 
 
-def list_assignments_for_worker(employee_number: str, full_name: str = "") -> List[Dict[str, Any]]:
+def list_assignments_for_worker(employee_number: str, full_name: str = "") -> list[dict[str, Any]]:
     """
     Return the person's assigned projects in the structure expected by
     ``otl_client.list_worker_assignments``.
@@ -279,9 +278,10 @@ def list_assignments_for_worker(employee_number: str, full_name: str = "") -> Li
     if not assigned:
         return []
 
-    result: List[Dict[str, Any]] = []
+    result: list[dict[str, Any]] = []
     for proj in assigned:
         p_num = proj.get("project_number", "")
+        project_no: Any
         try:
             project_no = int(p_num)
         except (ValueError, TypeError):
@@ -317,14 +317,14 @@ def list_assignments_for_worker(employee_number: str, full_name: str = "") -> Li
 # ---------------------------------------------------------------------------
 # Status
 # ---------------------------------------------------------------------------
-def catalogue_age_seconds() -> Optional[float]:
+def catalogue_age_seconds() -> float | None:
     """How many seconds since the last successful refresh."""
     if _last_refresh == 0:
         return None
     return time.time() - _last_refresh
 
 
-def status() -> Dict[str, Any]:
+def status() -> dict[str, Any]:
     """Return current catalogue status."""
     return {
         "isLoaded": _is_loaded,
