@@ -35,38 +35,40 @@ export default function Composer({
   }
 
   return (
-    <div className="composer">
-      {supported && (
+    <div className={`prompt-bar-container ${listening ? "listening" : ""}`}>
+      <div className="prompt-bar">
+        {supported && (
+          <button
+            type="button"
+            className={`icon-btn mic ${listening ? "active" : ""}`}
+            onClick={toggleMic}
+            title={listening ? "Stop recording" : "Speak"}
+            aria-label={listening ? "Stop recording" : "Speak"}
+          >
+            {listening ? <StopIcon /> : <MicIcon />}
+          </button>
+        )}
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={listening ? "Listening…" : "Type or speak your reply…"}
+          rows={1}
+          disabled={disabled}
+        />
+
         <button
           type="button"
-          className={`icon-btn mic ${listening ? "active" : ""}`}
-          onClick={toggleMic}
-          title={listening ? "Stop recording" : "Speak"}
-          aria-label={listening ? "Stop recording" : "Speak"}
+          className="icon-btn send"
+          onClick={send}
+          disabled={disabled || !text.trim()}
+          title="Send"
+          aria-label="Send"
         >
-          {listening ? <StopIcon /> : <MicIcon />}
+          <SendIcon />
         </button>
-      )}
-
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={listening ? "Listening…" : "Type or speak your reply…"}
-        rows={1}
-        disabled={disabled}
-      />
-
-      <button
-        type="button"
-        className="icon-btn send"
-        onClick={send}
-        disabled={disabled || !text.trim()}
-        title="Send"
-        aria-label="Send"
-      >
-        <SendIcon />
-      </button>
+      </div>
     </div>
   );
 }

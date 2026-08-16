@@ -32,11 +32,14 @@ export default function ReviewPanel({
   }
 
   return (
-    <div className="review card" aria-busy={busy}>
-      <div className="review-head">
-        <h3>Ready to submit</h3>
-        <span className="muted">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"} · {totalHours} h
+    <div className="approval-card" aria-busy={busy}>
+      <div className="approval-head">
+        <div className="approval-title">
+          <span className="approval-badge">Action Required</span>
+          <h3>Approve Timesheet</h3>
+        </div>
+        <span className="approval-meta">
+          {entries.length} {entries.length === 1 ? "entry" : "entries"} • {totalHours}h total
         </span>
       </div>
 
@@ -123,9 +126,11 @@ export default function ReviewPanel({
           </div>
         </>
       ) : (
-        <button className="primary" onClick={submit} disabled={busy}>
-          {busy ? "Submitting…" : `Submit ${entries.length} to OTL`}
-        </button>
+        <div className="approval-actions">
+          <button className="btn-approve" onClick={submit} disabled={busy}>
+            {busy ? "Approving…" : `Approve & Submit`}
+          </button>
+        </div>
       )}
     </div>
   );

@@ -377,11 +377,30 @@ def list_timecards(
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
     # Fetch all recent timecards (Fusion doesn't support Employee_Number_c filter on this endpoint)
-    return otl_client.list_timecard_entries(
+    timecards = otl_client.list_timecard_entries(
         otl_client.service_credential(),
         limit=limit,
         offset=offset,
     )
+
+    # Enrich older timecards with human-readable project names if they lack a Comment attribute.
+    for item in timecards.get("items", []):
+        for event in item.get("timeRecordEvent", []):
+            attrs = event.get("timeRecordEventAttribute", [])
+            has_comment = any(a.get("attributeName") == "Comment" for a in attrs)
+            if not has_comment:
+                proj_attr = next((a for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+                if proj_attr:
+                    proj_id = proj_attr.get("attributeValue")
+                    if proj_id:
+                        proj = fusion_catalogue.get_project_by_id(proj_id)
+                        if proj:
+                            attrs.append({
+                                "attributeName": "Comment",
+                                "attributeValue": f"Project: {proj.get('project_name')}"
+                            })
+
+    return timecards
 
 
 # --------------------------------------------------------------------------- #

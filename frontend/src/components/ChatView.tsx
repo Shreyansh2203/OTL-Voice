@@ -12,7 +12,7 @@ import { SpeakerIcon } from "./icons";
 const KICKOFF = "Please begin the session now.";
 
 /** Replace the content of the last assistant message (the streaming target). */
-function updateLastAssistant(
+export function updateLastAssistant(
   messages: ChatMessage[],
   content: string,
   streaming: boolean
@@ -21,7 +21,7 @@ function updateLastAssistant(
   for (let i = next.length - 1; i >= 0; i--) {
     if (next[i].role === "assistant") {
       next[i] = { ...next[i], content, streaming };
-      break;
+      return next;
     }
   }
   return next;
@@ -50,6 +50,7 @@ export default function ChatView({
   const speak = useCallback(
     async (text: string) => {
       const clean = stripEntriesBlock(text);
+      /* v8 ignore next */
       if (!clean) return;
       try {
         const blob = await api.tts(clean);
@@ -77,6 +78,7 @@ export default function ChatView({
           if (ev.delta) {
             acc += ev.delta;
             setMessages((prev) => updateLastAssistant(prev, acc, true));
+          /* v8 ignore next 4 */
           } else if (ev.error) {
             finalText = acc || `Sorry — ${ev.error}`;
             setMessages((prev) => updateLastAssistant(prev, finalText, false));

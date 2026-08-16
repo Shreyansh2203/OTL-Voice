@@ -10,19 +10,14 @@ from typing import Any
 
 import httpx
 
-DEFAULT_BASE_URL = (
-    "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com"
-    "/hcmRestApi/resources/11.13.18.05/timeRecordEventRequests"
-)
-
 # Max length Oracle allows on the string attributes we write.
 _STR_MAX = 80
 
-
 def base_url() -> str:
-    return (os.getenv("OTL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
-
-
+    url = os.getenv("OTL_BASE_URL")
+    if not url:
+        raise ValueError("OTL_BASE_URL environment variable is not set. Please configure it in .env")
+    return url.rstrip("/")
 def _timeout() -> httpx.Timeout:
     secs = float(os.getenv("OTL_TIMEOUT_SECONDS", "30"))
     return httpx.Timeout(secs, connect=10.0)
@@ -271,7 +266,11 @@ def list_timecard_entries(
     offset: int = 0,
     query: str | None = None,
 ) -> dict[str, Any]:
-    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    params: dict[str, Any] = {
+        "limit": limit,
+        "offset": offset,
+        "expand": "timeRecordEvent,timeRecordEvent.timeRecordEventAttribute",
+    }
     if query:
         params["q"] = query
     with _client(cred) as client:

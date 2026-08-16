@@ -22,3 +22,15 @@ env/
 .DS_Store
 .idea/
 .vscode/
+
+# Testing & Coverage
+.coverage
+htmlcov/
+coverage/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+test-results/
+playwright-report/
+

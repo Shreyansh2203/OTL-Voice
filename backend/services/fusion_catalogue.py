@@ -195,35 +195,40 @@ def _do_load_catalogue() -> None:
         raw_projects = _fetch_all_projects(client)
         logger.info("Fetched %d projects total.", len(raw_projects))
 
-        # 2. For each project, fetch tasks and team members
+        import concurrent.futures
+
+        # 2. For each project, fetch tasks and team members in parallel
         enriched = []
-        for i, p in enumerate(raw_projects):
+        def fetch_project_details(p):
             p_id = str(p.get("ProjectId", ""))
             p_num = str(p.get("ProjectNumber", ""))
             p_name = p.get("ProjectName", "")
-
+            
             tasks = _fetch_project_tasks(client, p_id)
             members = _fetch_project_team_members(client, p_id)
-
-            enriched.append({
+            
+            return {
                 "project_id": p_id,
                 "project_number": p_num,
                 "project_name": p_name,
                 "status": p.get("ProjectStatus", ""),
                 "manager": p.get("ProjectManagerName", ""),
                 "tasks": [
-                    {
-                        "task_id": str(t.get("TaskId", "")),
-                        "task_number": str(t.get("TaskNumber", "")),
-                        "task_name": t.get("TaskName", ""),
-                    }
+                    {"task_id": str(t.get("TaskId", "")), "task_number": str(t.get("TaskNumber", "")), "task_name": t.get("TaskName", "")}
                     for t in tasks
                 ],
                 "team_members": members,
-            })
+            }
 
-            if (i + 1) % 10 == 0:
-                logger.info("  Enriched %d/%d projects…", i + 1, len(raw_projects))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_proj = {executor.submit(fetch_project_details, p): p for p in raw_projects}
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_proj)):
+                try:
+                    enriched.append(future.result())
+                except Exception as exc:
+                    logger.error("Project details fetch generated an exception: %s", exc)
+                if (i + 1) % 10 == 0:
+                    logger.info("  Enriched %d/%d projects…", i + 1, len(raw_projects))
 
         # 3. Build the person-name index
         _person_index = _build_index(enriched)
@@ -249,17 +254,34 @@ def _do_load_catalogue() -> None:
 def load_catalogue() -> None:
     """Trigger background load of catalogue so startup isn't blocked."""
     import threading
-    t = threading.Thread(target=_do_load_catalogue, daemon=True)
-    t.start()
+    threading.Thread(target=_do_load_catalogue, daemon=True).start()
+
+
+def get_project_by_id(project_id: str) -> dict | None:
+    """Return a project dictionary from the cache by its ID."""
+    for p in _all_projects:
+        if str(p.get("project_id")) == str(project_id):
+            return p
+    return None
 
 
 # ---------------------------------------------------------------------------
 # Lookups
 # ---------------------------------------------------------------------------
 def _find_person_projects(person_name: str) -> list[dict]:
-    """Find projects for a person by name (case-insensitive exact match)."""
+    """Find projects for a person by name (case-insensitive fuzzy match)."""
     key = person_name.strip().lower()
-    return _person_index.get(key, [])
+    
+    # Exact match first
+    if key in _person_index:
+        return _person_index[key]
+        
+    # Fuzzy match: handle discrepancies like "JESSY JESSY.BROWN" vs "JESSY.BROWN"
+    for indexed_name, projects in _person_index.items():
+        if key in indexed_name or indexed_name in key:
+            return projects
+
+    return []
 
 
 def list_assignments_for_worker(employee_number: str, full_name: str = "") -> list[dict[str, Any]]:
@@ -271,8 +293,16 @@ def list_assignments_for_worker(employee_number: str, full_name: str = "") -> li
     the live Fusion catalogue.
     """
     if not _is_loaded:
-        logger.warning("Catalogue not loaded — returning empty assignments")
-        return []
+        if _is_loading:
+            logger.info("Catalogue is loading, waiting up to 10 seconds...")
+            for _ in range(20):
+                if _is_loaded:
+                    break
+                time.sleep(0.5)
+        
+        if not _is_loaded:
+            logger.warning("Catalogue not loaded — returning empty assignments")
+            return []
 
     assigned = _find_person_projects(full_name)
     if not assigned:

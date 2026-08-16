@@ -8,7 +8,10 @@ load_dotenv()
 
 USERNAME = os.getenv("OTL_SERVICE_USERNAME", "").strip()
 PASSWORD = os.getenv("OTL_SERVICE_PASSWORD", "")
-DEFAULT_OTL_URL = os.getenv("OTL_BASE_URL", "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com/hcmRestApi/resources/11.13.18.05/timeRecordEventRequests")
+DEFAULT_OTL_URL = os.getenv("OTL_BASE_URL", "")
+if not DEFAULT_OTL_URL:
+    print("Error: OTL_BASE_URL environment variable is not set. Please configure it in .env")
+    exit(1)
 
 parsed = urllib.parse.urlparse(DEFAULT_OTL_URL)
 HOST_URL = f"{parsed.scheme}://{parsed.netloc}"

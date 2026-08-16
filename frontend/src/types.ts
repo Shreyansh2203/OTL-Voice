@@ -28,6 +28,11 @@ export interface AssignmentsResponse {
   workOrders: AssignedWorkOrder[];
 }
 
+export interface ToolCall {
+  name: string;
+  status: "running" | "completed" | "failed";
+}
+
 export interface ChatMessage {
   role: Role;
   content: string;
@@ -35,6 +40,12 @@ export interface ChatMessage {
   hidden?: boolean;
   /** True while assistant text is still streaming in. */
   streaming?: boolean;
+  /** True if the assistant is currently in a thinking state. */
+  thinking?: boolean;
+  /** Expandable reasoning trace text. */
+  reasoning?: string;
+  /** Tool invocations associated with this message. */
+  toolCalls?: ToolCall[];
 }
 
 /** One timesheet entry, in the app shape the backend maps to TimecardEntry_c. */

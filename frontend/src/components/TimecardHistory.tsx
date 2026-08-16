@@ -60,14 +60,15 @@ export default function TimecardHistory({
           </thead>
           <tbody>
             {items.map((item: any, idx: number) => {
-              const attrs = item.timeRecordEventAttribute || [];
+              const event = item.timeRecordEvent?.[0] || item;
+              const attrs = event.timeRecordEventAttribute || [];
               const commentAttr = attrs.find((a: any) => a.attributeName === "Comment");
               const comment = commentAttr ? commentAttr.attributeValue : "N/A";
               
               // Basic date parse from start time
               let dateStr = "Unknown Date";
-              if (item.startTime) {
-                const dateObj = new Date(item.startTime);
+              if (event.startTime) {
+                const dateObj = new Date(event.startTime);
                 dateStr = dateObj.toLocaleDateString();
               }
 
@@ -76,9 +77,11 @@ export default function TimecardHistory({
                   <td>{dateStr}</td>
                   <td>{comment}</td>
                   <td>
-                    <span className="badge success">Submitted</span>
+                    <span className={`badge ${event.eventStatus === 'APPROVED' ? 'success' : 'warning'}`}>
+                      {event.eventStatus || 'Submitted'}
+                    </span>
                   </td>
-                  <td>{item.measure}</td>
+                  <td>{event.measure}</td>
                 </tr>
               );
             })}
