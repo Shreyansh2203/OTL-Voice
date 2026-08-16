@@ -14,7 +14,7 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 Ensure you have the following tools installed:
 
-- **Python**: Version `3.12+` (or `3.14`)
+- **Python**: Version `3.12+` (`requires-python = ">=3.12"`)
 - **Package Manager**: [`uv`](https://docs.astral.sh/uv/) (recommended for fast, deterministic Python management)
 - **Node.js**: Version `20.x` or `22.x LTS`
 - **Node Package Manager**: `npm` (bundled with Node)
@@ -79,6 +79,37 @@ docker compose up --build
 ```
 
 Access the application at `http://localhost`.
+
+---
+
+## Quick Launch Commands
+
+Convenience automation scripts and make targets are provided for streamlined orchestration:
+
+### 1. Make Commands (Linux / macOS)
+
+Run targets defined in the root [`Makefile`](Makefile):
+
+- `make up` — Validate `.env` and start application containers in background via Docker Compose (`http://localhost`).
+- `make down` — Stop and remove running containers.
+- `make build` — Force rebuild container images and start services.
+- `make shell` — Open an interactive `bash` shell inside the running app container.
+- `make logs` — Follow live container output logs (`docker compose logs -f`).
+- `make status` — Show container status (`docker compose ps`).
+
+### 2. Script Launchers
+
+- **Linux / macOS (`start.sh`)**:
+  ```bash
+  ./start.sh
+  ```
+  Checks if the Docker daemon is active and `.env` exists, starts containers with `docker compose up -d --build`, waits for services to bind, and automatically opens `http://localhost` in your default browser.
+
+- **Windows (`start.bat`)**:
+  ```cmd
+  start.bat
+  ```
+  Validates that Docker Desktop is running and `.env` is present before executing `docker compose up -d --build`, and launches `http://localhost` in your default browser.
 
 ---
 

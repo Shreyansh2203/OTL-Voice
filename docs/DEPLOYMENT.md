@@ -35,7 +35,7 @@ The application uses a **single-origin architecture** running behind an **Nginx 
 ## 2. Multi-Stage Container Build
 
 The [`Containerfile`](../Containerfile) uses two distinct build stages:
-1. **Frontend Stage (`node:22-slim`)**: Installs dependencies and runs `npm run build` to output compiled, hashed assets into `/fe/dist`.
+1. **Frontend Stage (`node:22-slim`)**: Installs dependencies using `npm ci --legacy-peer-deps` (with fallback to `npm install --legacy-peer-deps`) and runs `npm run build` to output compiled, hashed assets into `/fe/dist`.
 2. **Backend Runtime (`python:3.12-slim`)**: Installs Python dependencies using `uv sync --frozen --no-dev`, copies the backend application code, and mounts the built frontend assets into `/app/frontend/dist`.
 
 ---
@@ -64,12 +64,14 @@ docker compose up -d --build
 
 ---
 
-## 4. Local Container Management Scripts
+## 4. Windows: Batch Scripts (`start.bat` & `start_container.bat`)
 
-For local workstations with Docker, the repository includes helper scripts to manage the container stack:
+For local Windows workstations with Docker, helper scripts manage the container stack:
 
-### Windows
-- `start.bat`: Starts the stack via `docker compose` and opens your browser.
+- `start.bat`: One-click launcher with built-in pre-flight checks:
+  - Validates that the Docker daemon is running (exits with error if not).
+  - Validates that the `.env` configuration file exists (exits with error if missing).
+  - Starts the stack via `docker compose up -d --build`, waits 5 seconds before opening the browser to `http://localhost`.
 - `start_container.bat`: A wrapper script with additional commands:
   | Command | Action |
   | :--- | :--- |
@@ -81,21 +83,26 @@ For local workstations with Docker, the repository includes helper scripts to ma
   | `start_container.bat stop` | Stop the stack without removing it. |
   | `start_container.bat remove` | Stop and remove the stack. |
 
-### Mac / Linux
-- `start.sh`: Starts the stack via `docker compose` and opens your browser.
-- `Makefile`: Provides standard `make` targets:
+---
+
+## 5. Linux/macOS: Makefile & start.sh
+
+For Linux and macOS environments, the repository provides both a one-click launcher and a Makefile:
+
+- `start.sh` — Equivalent one-click launcher for Linux/macOS that validates Docker daemon is running and `.env` exists, starts containers via `docker compose up -d --build`, waits 5 seconds, and opens `http://localhost` in your default browser.
+- `Makefile` — Provides standard lifecycle targets:
   | Command | Action |
   | :--- | :--- |
-  | `make up` | Start the stack. |
-  | `make build` | Force re-build the images and recreate the containers. |
-  | `make shell` | Open an interactive `bash` shell inside the running `app` container. |
-  | `make logs` | Follow live container logs. |
-  | `make status` | Display container runtime state. |
-  | `make down` | Stop and remove the stack. |
+  | `make` or `make up` | Smart start (validates `.env`, runs Docker Compose) |
+  | `make build` | Force rebuild |
+  | `make down` | Stop and remove containers |
+  | `make shell` | Open bash shell in container |
+  | `make logs` | Follow live logs |
+  | `make status` | Show running service status |
 
 ---
 
-## 5. Enabling HTTPS / TLS Certificates
+## 6. Enabling HTTPS / TLS Certificates
 
 By default, Nginx listens on HTTP port 80. To enable production TLS:
 
@@ -138,7 +145,7 @@ docker compose restart
 
 ---
 
-## 5. Health Probes & Monitoring
+## 7. Health Probes & Monitoring
 
 The container defines an automated Docker healthcheck probing `/api/health` every 30 seconds:
 
@@ -155,16 +162,18 @@ deploy-nginx-1 nginx:1.27-alpine   Up                       0.0.0.0:80->80/tcp
 
 ---
 
-## 6. Backups & Disaster Recovery
+## 8. Backups & Disaster Recovery
 
 The `/app/data` volume is persisted as a named Docker volume (`otl-data`) or bound to `./data`. It is reserved for future local caching or session storage.
 
 ---
 
-## 7. Troubleshooting Common Issues
+## 9. Troubleshooting Common Issues
 
 | Symptom | Cause | Resolution |
 | :--- | :--- | :--- |
+| **`Docker daemon is not running`** | Docker Desktop or engine not running | Start Docker Desktop (Windows/macOS) or `systemctl start docker` (Linux) before running scripts or `make`. |
+| **`.env file is missing`** | Environment file not created | Copy `.env.example` to `.env` and populate required credentials. |
 | **`HTTP 500 OtlConfigError`** | Missing `OTL_SERVICE_USERNAME` or `OTL_SERVICE_PASSWORD` | Check `.env` variables and ensure they are populated without surrounding quotes. |
 | **`401 Unauthorized` on OTL requests** | Invalid Oracle Fusion HCM service account credentials | Validate credentials against Oracle Fusion using `GET /api/health/otl`. |
 | **`OCI Private Key Not Found`** | PEM key file path invalid inside container | Ensure the volume mount in `docker-compose.yml` points to the correct host `.pem` file. |

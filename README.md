@@ -89,15 +89,23 @@ flowchart TB
 
 ## 🚀 Quickstart
 
-### Option 1: One-Click Launch (Windows)
+### Option 1: Quick Launch (Pre-Flight Checks + Automated Start)
 
-Double-click `start.bat` or run:
+Launch the full stack with automatic pre-flight verification (validates Docker daemon status and `.env` configuration) and browser launch:
 
-```bat
-start.bat
-```
+- **Windows**: Double-click `start.bat` or run:
+  ```bat
+  start.bat
+  ```
+  *(Validates Docker Desktop is running and `.env` exists before starting)*
 
-This starts the Docker Compose stack in the background and opens `http://localhost` in your default browser.
+- **Linux / macOS**: Run `./start.sh` or use `make`:
+  ```bash
+  chmod +x start.sh && ./start.sh
+  # or
+  make
+  ```
+  *(Cross-platform Makefile supporting `make up`, `make down`, `make build`, `make shell`, `make logs`, `make status`)*
 
 ---
 
@@ -192,7 +200,10 @@ timesheet-repo/
 ├── Containerfile                # Multi-stage production container build
 ├── CONTRIBUTING.md              # Contributor onboarding, testing & guidelines
 ├── LICENSE                      # MIT License
-└── pyproject.toml               # Python project configuration (uv)
+├── Makefile                     # Standard lifecycle automation targets
+├── pyproject.toml               # Python project configuration (uv)
+├── start.bat                    # One-click Windows launcher with pre-flight checks
+└── start.sh                     # One-click Linux/macOS launcher with pre-flight checks
 ```
 
 ---
@@ -240,7 +251,7 @@ Key environment variables in `.env`:
 ## 🛠️ Technology Stack
 
 - **Frontend UI**: React 18, TypeScript, Tailwind CSS, Vite.
-- **Backend API**: Python 3.12, FastAPI, Pydantic, Uvicorn.
+- **Backend API**: Python 3.12+, FastAPI, Pydantic, Uvicorn.
 - **AI Integration**: Google Gemini (`gemini-2.5-flash`), Oracle Cloud Infrastructure (OCI) SDK, OCI Generative AI Inference, OCI AI Speech Service.
 - **DevOps**: Docker, Podman/Containerfile, Nginx, Docker Compose.
 

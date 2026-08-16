@@ -22,7 +22,7 @@ sequenceDiagram
     actor User as Employee
     participant PWA as React PWA (Frontend)
     participant API as FastAPI Backend
-    participant DB as SQLite DB (Legacy)
+    participant DB as Oracle Fusion HCM (Live)
     participant GenAI as OCI GenAI (Gemini 2.5)
     participant TTS as OCI Speech (TTS)
     participant OTL as Oracle Fusion (HCM/OTL APIs)
@@ -128,14 +128,20 @@ graph LR
         Nginx["Nginx Reverse Proxy (:80 / :443)"]
         FastAPI["FastAPI App (:8000)"]
         Static["/app/frontend/dist"]
-        DB[("SQLite Volume")]
+    end
+    subgraph External["External Cloud Services"]
+        Fusion["Oracle Fusion Cloud (HCM / OTL REST)"]
     end
 
     Client -->|Cookie: otl_session\nSameSite=Lax\nHttpOnly| Nginx
     Nginx -->|/api/*| FastAPI
     Nginx -->|/*| Static
-    FastAPI --> DB
+    FastAPI -->|REST API / Service Account| Fusion
 ```
 
+- **Authentication & Worker Lookup Flow**:
+  1. The login endpoint (`POST /api/auth/login`) accepts an employee's Person Number as the `username` (password validation is currently bypassed for testing; worker lookup uses the backend service account).
+  2. The backend looks up the worker in Oracle Fusion HCM via `otl_client.get_worker(service_credential, person_number)`.
+  3. The `SameSite` cookie attribute (`SESSION_COOKIE_SAMESITE`, defaulting to `lax`) is validated safely and cast to a `Literal["lax", "strict", "none"]` type before setting the cookie.
 - **HttpOnly Cookies**: Session tokens (`otl_session`) are stored in cryptographically random in-memory session records with automatic expiration and pruning.
 - **Single-Origin**: In production, the built frontend assets are served alongside the `/api` routes under a single origin, eliminating CORS complexity and cross-site cookie vulnerabilities.
