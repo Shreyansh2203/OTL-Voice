@@ -2,13 +2,26 @@ import { useState } from "react";
 import * as api from "../api/client";
 import type { SubmitResponse, TimecardEntry } from "../types";
 
+/**
+ * Properties for the ReviewPanel component.
+ */
+export interface ReviewPanelProps {
+  /** The timecard entries extracted from the assistant's response to be reviewed. */
+  entries: TimecardEntry[];
+  /** Callback fired when an API call indicates the session has expired. */
+  onSessionExpired: () => void;
+}
+
+/**
+ * An interactive panel allowing the user to review, approve, and submit extracted 
+ * timecard entries to Oracle Fusion. Displays submission success/failure results.
+ * 
+ * @param props - Component properties.
+ */
 export default function ReviewPanel({
   entries,
   onSessionExpired,
-}: {
-  entries: TimecardEntry[];
-  onSessionExpired: () => void;
-}) {
+}: ReviewPanelProps) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);

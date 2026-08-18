@@ -78,16 +78,25 @@ OTL_BASE_URL=https://<your-fusion-pod>.fa.ocs.oraclecloud.com/hcmRestApi/resourc
 | **`OCI_FINGERPRINT`** | String | *None* | Fingerprint of the uploaded RSA public key. |
 | **`OCI_REGION`** | String | `us-ashburn-1` | OCI Region (e.g., `us-ashburn-1`, `us-phoenix-1`, `eu-frankfurt-1`). |
 | **`OCI_PRIVATE_KEY_PATH`**| String | *None* | Filesystem path to the OCI RSA PEM private key. |
+| **`OCI_PRIVATE_KEY`** | String | *None* | Inline PEM string of the private key (alternative to path). |
+| **`OCI_PRIVATE_KEY_PASSPHRASE`**| String | *None* | Passphrase if the OCI private key is encrypted. |
+| **`OCI_CONFIG_PROFILE`** | String | `DEFAULT` | Fallback OCI SDK profile in ~/.oci/config. |
+| **`OCI_SERVICE_ENDPOINT`**| String | *None* | Custom OCI Generative AI endpoint. |
+| **`OCI_SPEECH_ENDPOINT`** | String | *None* | Custom OCI Speech service endpoint. |
 | **`CHAT_MODEL_ID`** | String | `google.gemini-2.5-flash` | GenAI model name or custom endpoint OCID. |
 | **`CHAT_TEMPERATURE`** | Float | `0.3` | Model temperature (lower = more deterministic formatting). |
 | **`CHAT_TOP_P`** | Float | `0.95` | Nucleus sampling probability threshold. |
 | **`CHAT_MAX_TOKENS`** | Integer | `2048` | Maximum output generation tokens. |
+| **`REQUEST_TIMEOUT_SECONDS`**| Integer | `300` | Timeout in seconds for GenAI chat requests. |
 | **`TTS_VOICE_ID`** | String | `Brian` | Neural voice identifier for OCI Speech TTS. |
 | **`TTS_MODEL_NAME`** | String | `TTS_2_NATURAL` | TTS synthesis engine profile. |
+| **`TTS_LANGUAGE_CODE`** | String | `en-US` | Language code for speech synthesis. |
+| **`TTS_SAMPLE_RATE`** | Integer | `22050` | Audio sampling rate for speech synthesis. |
 | **`TTS_OUTPUT_FORMAT`** | String | `MP3` | Audio format (`MP3`, `OGG`, `PCM`). |
 | **`OTL_BASE_URL`** | String | *Standard* | Fusion HCM REST API resource endpoint. |
 | **`OTL_SERVICE_USERNAME`**| String | *None* | Integration service account username. |
 | **`OTL_SERVICE_PASSWORD`**| String | *None* | Integration service account password. |
+| **`OTL_TIMEOUT_SECONDS`** | Integer | `30` | API Timeout for OTL requests (seconds). |
 | **`CATALOGUE_REFRESH_SECONDS`**| Integer | `21600` | In-memory Fusion PPM catalogue auto-refresh interval (seconds). |
 | **`STRICT_ASSIGNMENT`** | Boolean | `true` | When `true`, enforces strict project authorization. |
 | **`DEFAULT_START_HOUR`**| Integer | `9` | Default start hour for timecards when none is inferred. |
@@ -95,4 +104,5 @@ OTL_BASE_URL=https://<your-fusion-pod>.fa.ocs.oraclecloud.com/hcmRestApi/resourc
 | **`SESSION_COOKIE_SECURE`**| Boolean| `false` | When `true`, sets `Secure` attribute on cookies (requires HTTPS). |
 | **`SESSION_COOKIE_SAMESITE`**| String | `lax` | Cookie `SameSite` attribute (`lax`, `strict`, `none`). |
 | **`SESSION_TTL_SECONDS`** | Integer | `28800` | Session lifetime in seconds (8 hours default). |
+| **`CORS_ORIGINS`** | String | *None* | Allowed CORS origins (comma-separated). |
 | **`FRONTEND_DIST`** | String | `/app/frontend/dist` | Path to the built frontend bundle inside the container. |

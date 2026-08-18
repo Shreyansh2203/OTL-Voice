@@ -43,6 +43,14 @@ function jsonInit(method: string, body?: unknown): RequestInit {
 // --------------------------------------------------------------------------- //
 // Auth
 // --------------------------------------------------------------------------- //
+/**
+ * Authenticates an employee using their Oracle Fusion credentials.
+ * 
+ * @param username - The Oracle Fusion Person Number or username.
+ * @param password - The user's password.
+ * @returns The authenticated identity.
+ * @throws {ApiError} If authentication fails.
+ */
 export async function login(
   username: string,
   password: string
@@ -60,6 +68,11 @@ export async function getSession(): Promise<Identity | null> {
   return res.json();
 }
 
+/**
+ * Terminates the active session and clears the session cookie.
+ * 
+ * @throws {ApiError} If the logout request fails.
+ */
 export async function logout(): Promise<void> {
   await fetch(`${API}/auth/logout`, jsonInit("POST"));
 }
@@ -67,6 +80,14 @@ export async function logout(): Promise<void> {
 // --------------------------------------------------------------------------- //
 // Chat (SSE)
 // --------------------------------------------------------------------------- //
+/**
+ * Streams assistant responses via Server-Sent Events (SSE).
+ * 
+ * @param messages - The message history and new user message.
+ * @param onEvent - Callback fired when a new SSE token or event arrives.
+ * @param signal - Optional AbortSignal to cancel the streaming request.
+ * @throws {ApiError} If the stream initiation fails.
+ */
 export async function chatStream(
   messages: ChatMessage[],
   onEvent: (event: ChatEvent) => void,
@@ -84,6 +105,14 @@ export async function chatStream(
 // --------------------------------------------------------------------------- //
 // Text-to-speech
 // --------------------------------------------------------------------------- //
+/**
+ * Synthesizes speech audio from provided text using OCI AI Speech Service.
+ * 
+ * @param text - The text to synthesize.
+ * @param rate - The speech rate multiplier (default: 1.0).
+ * @returns A Blob containing the binary audio data (e.g. MP3).
+ * @throws {ApiError} If the TTS service is unavailable.
+ */
 export async function tts(text: string, rate = 1.0): Promise<Blob> {
   const res = await fetch(`${API}/tts`, jsonInit("POST", { text, rate }));
   if (!res.ok) throw await parseError(res);
@@ -103,6 +132,13 @@ export async function getAssignments(): Promise<AssignmentsResponse> {
 // --------------------------------------------------------------------------- //
 // OTL timecard
 // --------------------------------------------------------------------------- //
+/**
+ * Submits validated timecard entries to Oracle Fusion Cloud HCM.
+ * 
+ * @param entries - Array of prepared timecard entries to submit.
+ * @returns The submission results, including succeeded and failed counts.
+ * @throws {ApiError} If the submission is rejected.
+ */
 export async function submitTimecard(
   entries: TimecardEntry[]
 ): Promise<SubmitResponse> {
@@ -111,11 +147,66 @@ export async function submitTimecard(
   return res.json();
 }
 
+/**
+ * Queries historical timecard entries from Oracle Fusion for the current employee.
+ * 
+ * @param limit - Maximum number of records to fetch (default: 25).
+ * @param offset - Pagination offset (default: 0).
+ * @returns Paginated list of historical timecards.
+ * @throws {ApiError} If the fetch fails.
+ */
 export async function listTimecards(limit = 25, offset = 0): Promise<unknown> {
   const res = await fetch(
     `${API}/otl/timecards?limit=${limit}&offset=${offset}`,
     { credentials: "include" }
   );
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+// --------------------------------------------------------------------------- //
+// Health & Admin
+// --------------------------------------------------------------------------- //
+/**
+ * Basic service liveness check.
+ * 
+ * @returns The health status of the API.
+ */
+export async function getHealth(): Promise<{ status: string }> {
+  const res = await fetch(`${API}/health`);
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+/**
+ * Validates connectivity and credentials against the upstream Oracle Fusion HCM REST API.
+ * 
+ * @returns Status of the Fusion API connection.
+ */
+export async function getHealthOtl(): Promise<unknown> {
+  const res = await fetch(`${API}/health/otl`);
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+/**
+ * Re-exports data from Oracle Fusion and reloads the local catalogue cache.
+ * 
+ * @returns Status of the refresh operation.
+ */
+export async function refreshCatalogue(): Promise<unknown> {
+  const res = await fetch(`${API}/admin/refresh-catalogue`, jsonInit("POST"));
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+/**
+ * Returns the current cache status and last synchronization timestamp of the labour catalogue.
+ * 
+ * @returns The catalogue status.
+ */
+export async function getCatalogueStatus(): Promise<unknown> {
+  const res = await fetch(`${API}/admin/catalogue-status`);
   if (!res.ok) throw await parseError(res);
   return res.json();
 }

@@ -4,6 +4,15 @@ The **OTL Timesheet Assistant** provides a REST and Server-Sent Events (SSE) API
 
 ---
 
+## Interactive API Documentation (Swagger UI)
+
+Because the backend is built with FastAPI, it automatically generates interactive OpenAPI documentation. When running the backend locally, you can access the Swagger UI and ReDoc interfaces to explore, test, and introspect the API endpoints directly:
+
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+---
+
 ## 1. Authentication & Security
 
 All API endpoints (except `/api/health`, `/api/health/otl`, and `/api/auth/login`) require an authenticated session.

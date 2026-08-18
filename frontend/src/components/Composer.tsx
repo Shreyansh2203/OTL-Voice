@@ -2,13 +2,26 @@ import { KeyboardEvent, useState } from "react";
 import { useSpeechInput } from "../lib/voice";
 import { MicIcon, SendIcon, StopIcon } from "./icons";
 
+/**
+ * Properties for the Composer component.
+ */
+export interface ComposerProps {
+  /** If true, the input field and send button are disabled. */
+  disabled: boolean;
+  /** Callback fired when the user submits a message. */
+  onSend: (text: string) => void;
+}
+
+/**
+ * A chat input component supporting both text typing and microphone voice dictation 
+ * via the Web Speech API.
+ * 
+ * @param props - Component properties.
+ */
 export default function Composer({
   disabled,
   onSend,
-}: {
-  disabled: boolean;
-  onSend: (text: string) => void;
-}) {
+}: ComposerProps) {
   const [text, setText] = useState("");
   const { supported, listening, start, stop } = useSpeechInput();
 

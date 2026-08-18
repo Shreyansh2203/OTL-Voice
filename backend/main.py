@@ -125,11 +125,23 @@ def _identity(ctx_or_employee: Any) -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
+    """
+    Basic service liveness check.
+
+    Returns:
+        dict[str, str]: Status indicating the service is healthy.
+    """
     return {"status": "ok"}
 
 
 @app.get("/api/health/otl")
 def health_otl() -> dict[str, Any]:
+    """
+    Validates connectivity and credentials against the upstream Oracle Fusion HCM REST API.
+
+    Returns:
+        dict[str, Any]: Status of the connection.
+    """
     return otl_client.validate(otl_client.service_credential())
 
 
@@ -139,6 +151,19 @@ def health_otl() -> dict[str, Any]:
 
 @app.post("/api/auth/login")
 def login(body: LoginBody, response: Response) -> dict[str, Any]:
+    """
+    Authenticates an employee by their Oracle Fusion Person Number.
+
+    Args:
+        body (LoginBody): The login credentials containing username and password.
+        response (Response): The FastAPI response object to set the session cookie.
+
+    Raises:
+        HTTPException: If authentication fails or Oracle Fusion is unreachable.
+
+    Returns:
+        dict[str, Any]: The authenticated employee's identity.
+    """
     # In this new architecture, we treat "username" as the Person Number
     person_number = body.username.strip()
     password = body.password
@@ -206,6 +231,15 @@ def login(body: LoginBody, response: Response) -> dict[str, Any]:
 
 @app.get("/api/auth/session")
 def session(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, Any]:
+    """
+    Retrieves the currently authenticated employee's identity from the session.
+
+    Args:
+        ctx (SessionContext): The current session context injected by dependency.
+
+    Returns:
+        dict[str, Any]: The authenticated employee's identity.
+    """
     return _identity(ctx)
 
 
@@ -213,6 +247,16 @@ def session(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, An
 def logout(
     request: Request, response: Response
 ) -> dict[str, str]:
+    """
+    Terminates the active session and clears the session cookie.
+
+    Args:
+        request (Request): The incoming request to read the session cookie.
+        response (Response): The response object to delete the session cookie.
+
+    Returns:
+        dict[str, str]: Status indicating the session was signed out.
+    """
     auth.destroy(request.cookies.get(SESSION_COOKIE_NAME))
     response.delete_cookie(SESSION_COOKIE_NAME, path="/")
     return {"status": "signed out"}
@@ -225,6 +269,16 @@ def logout(
 def chat_stream(
     body: ChatBody, ctx: SessionContext = Depends(auth.current_session)
 ) -> StreamingResponse:
+    """
+    Streams assistant responses via Server-Sent Events (SSE) using OCI GenAI.
+
+    Args:
+        body (ChatBody): The message history and new user message.
+        ctx (SessionContext): The current session context.
+
+    Returns:
+        StreamingResponse: An SSE stream of the assistant's response tokens.
+    """
     assignments = otl_client.list_worker_assignments(
         otl_client.service_credential(), ctx.employee_id, ctx.full_name
     )
@@ -249,6 +303,19 @@ def chat_stream(
 def tts(
     body: TtsBody, _: SessionContext = Depends(auth.current_session)
 ) -> Response:
+    """
+    Synthesizes speech audio from provided text using OCI AI Speech Service.
+
+    Args:
+        body (TtsBody): The text to synthesize and optional rate.
+        _ (SessionContext): The current session context (authentication required).
+
+    Raises:
+        HTTPException: If the speech synthesis service is unavailable.
+
+    Returns:
+        Response: Binary audio stream (e.g., MP3).
+    """
     try:
         client = _speech_client()
         audio = client.synthesize(body.text, rate=body.rate)
@@ -348,6 +415,19 @@ def _options_hint(employee_id: str, full_name: str) -> str:
 def submit_timecard(
     body: TimecardBody, ctx: SessionContext = Depends(auth.current_session)
 ) -> dict[str, Any]:
+    """
+    Submits validated timecard entries to Oracle Fusion Cloud HCM.
+
+    Args:
+        body (TimecardBody): The timecard entries to submit, or raw assistant JSON output.
+        ctx (SessionContext): The current session context.
+
+    Raises:
+        HTTPException: If no valid entries are provided or assignment authorization fails.
+
+    Returns:
+        dict[str, Any]: Submission results including succeeded and failed counts.
+    """
     entries = body.entries or _extract_entries(body.assistantMessage or "")
     if not entries:
         raise HTTPException(
@@ -376,6 +456,17 @@ def list_timecards(
     offset: int = 0,
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
+    """
+    Queries historical timecard entries from Oracle Fusion for the current employee.
+
+    Args:
+        limit (int, optional): Maximum records to fetch. Defaults to 25.
+        offset (int, optional): Pagination offset. Defaults to 0.
+        ctx (SessionContext): The current session context.
+
+    Returns:
+        dict[str, Any]: Paginated list of timecard entries.
+    """
     # Fetch all recent timecards (Fusion doesn't support Employee_Number_c filter on this endpoint)
     timecards = otl_client.list_timecard_entries(
         otl_client.service_credential(),
@@ -410,6 +501,15 @@ def list_timecards(
 def labour_assignments(
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
+    """
+    Retrieves the assigned work orders, projects, and tasks for the employee.
+
+    Args:
+        ctx (SessionContext): The current session context.
+
+    Returns:
+        dict[str, Any]: The employee's authorized labour catalogue assignments.
+    """
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,

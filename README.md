@@ -5,6 +5,7 @@
 **An intelligent, voice-powered enterprise timesheet assistant for Oracle Time and Labor (OTL), powered by OCI GenAI (Gemini 2.5 Flash), OCI Speech Synthesis, and FastAPI.**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-Swagger%20UI-85EA2D.svg?logo=swagger&logoColor=black)](http://localhost:8000/docs)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
@@ -216,6 +217,7 @@ For detailed technical references, refer to the guides in the [`docs/`](docs/) d
 | :--- | :--- |
 | **[Architecture Guide](docs/ARCHITECTURE.md)** | End-to-end data flows, voice pipeline, SSE protocol, and security model. |
 | **[API Reference](docs/API.md)** | REST endpoints, SSE streams, Person Number authentication, and admin refresh routes. |
+| **[Interactive API Docs](http://localhost:8000/docs)** | Auto-generated OpenAPI / Swagger UI for testing endpoints locally. |
 | **[Configuration Guide](docs/CONFIGURATION.md)** | Available environment variables, OCI IAM policies, and Oracle Fusion permissions. |
 | **[Data Catalogue Guide](docs/DATA_CATALOGUE.md)** | Live Fusion PPM in-memory caching, data extraction scripts, and offline master files. |
 | **[Deployment Guide](docs/DEPLOYMENT.md)** | Single-container deployments, Nginx TLS, Docker Compose, and batch commands. |

@@ -27,15 +27,29 @@ export function updateLastAssistant(
   return next;
 }
 
+/**
+ * Properties for the ChatView component.
+ */
+export interface ChatViewProps {
+  /** The username of the authenticated employee. */
+  username: string;
+  /** Callback fired when the user intentionally logs out. */
+  onLogout: () => void;
+  /** Callback fired when an API call indicates the session has expired. */
+  onSessionExpired: () => void;
+}
+
+/**
+ * The main chat interface orchestrating the voice interaction, SSE streaming, 
+ * and timecard review presentation.
+ * 
+ * @param props - Component properties.
+ */
 export default function ChatView({
   username,
   onLogout,
   onSessionExpired,
-}: {
-  username: string;
-  onLogout: () => void;
-  onSessionExpired: () => void;
-}) {
+}: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);

@@ -14,6 +14,15 @@ import httpx
 _STR_MAX = 80
 
 def base_url() -> str:
+    """
+    Retrieves the base URL for the OTL REST API from the environment.
+
+    Raises:
+        ValueError: If OTL_BASE_URL is not set.
+
+    Returns:
+        str: The normalized base URL.
+    """
     url = os.getenv("OTL_BASE_URL")
     if not url:
         raise ValueError("OTL_BASE_URL environment variable is not set. Please configure it in .env")
@@ -50,6 +59,15 @@ class OtlConfigError(RuntimeError):
     pass
 
 def service_credential() -> OtlCredential:
+    """
+    Constructs the OTL service account credentials from environment variables.
+
+    Raises:
+        OtlConfigError: If service account credentials are not configured.
+
+    Returns:
+        OtlCredential: The credentials for the Oracle Fusion service account.
+    """
     username = os.getenv("OTL_SERVICE_USERNAME", "").strip()
     password = os.getenv("OTL_SERVICE_PASSWORD", "")
     if not username or not password:
@@ -115,6 +133,18 @@ def _clip(value: Any) -> str | None:
 # App entry -> OTL record body
 # --------------------------------------------------------------------------- #
 def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
+    """
+    Maps a standardized timecard entry dictionary to the Oracle Fusion HCM payload format.
+
+    Args:
+        entry (dict[str, Any]): The raw timecard entry.
+
+    Raises:
+        OtlError: If the hours are <= 0 or the date format is invalid.
+
+    Returns:
+        dict[str, Any]: The payload formatted for the timeRecordEventRequests endpoint.
+    """
     emp_num = str(entry.get("employeeNumber") or "UNKNOWN_EMP").strip()
     hours = _coerce_int(entry.get("hours")) or 0
     if hours <= 0:
@@ -244,6 +274,18 @@ def _default_record_name(entry: dict[str, Any]) -> str:
 # Public API
 # --------------------------------------------------------------------------- #
 def validate(cred: OtlCredential) -> dict[str, Any]:
+    """
+    Validates the provided OTL credentials by making a minimal API request.
+
+    Args:
+        cred (OtlCredential): The credentials to validate.
+
+    Raises:
+        OtlError: If the credentials are rejected or the API request fails.
+
+    Returns:
+        dict[str, Any]: A success status dictionary.
+    """
     with _client(cred) as client:
         resp = client.get(base_url(), params={"limit": 1})
     if resp.status_code in (401, 403):
@@ -266,6 +308,18 @@ def list_timecard_entries(
     offset: int = 0,
     query: str | None = None,
 ) -> dict[str, Any]:
+    """
+    Retrieves a paginated list of timecard entries from Oracle Fusion.
+
+    Args:
+        cred (OtlCredential): The credentials used for authentication.
+        limit (int, optional): The maximum number of entries to return. Defaults to 25.
+        offset (int, optional): The offset for pagination. Defaults to 0.
+        query (str | None, optional): An optional query string to filter entries. Defaults to None.
+
+    Returns:
+        dict[str, Any]: The paginated timecard response payload from Oracle Fusion.
+    """
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
@@ -334,6 +388,16 @@ def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: 
 
 
 def get_timecard_entry(cred: OtlCredential, record_id: Any) -> dict[str, Any]:
+    """
+    Fetches a specific timecard entry by its ID.
+
+    Args:
+        cred (OtlCredential): The credentials used for authentication.
+        record_id (Any): The unique identifier of the timecard record.
+
+    Returns:
+        dict[str, Any]: The timecard entry details.
+    """
     with _client(cred) as client:
         resp = client.get(f"{base_url()}/{record_id}")
     _raise_for_status(resp)
@@ -343,6 +407,16 @@ def get_timecard_entry(cred: OtlCredential, record_id: Any) -> dict[str, Any]:
 def create_timecard_entry(
     cred: OtlCredential, entry: dict[str, Any]
 ) -> dict[str, Any]:
+    """
+    Creates a single timecard entry in Oracle Fusion.
+
+    Args:
+        cred (OtlCredential): The credentials used for authentication.
+        entry (dict[str, Any]): The timecard entry payload.
+
+    Returns:
+        dict[str, Any]: The created timecard entry response.
+    """
     body = map_entry_to_otl(entry)
     with _client(cred) as client:
         resp = client.post(
@@ -355,6 +429,13 @@ def create_timecard_entry(
 
 
 def delete_timecard_entry(cred: OtlCredential, record_id: Any) -> None:
+    """
+    Deletes a specific timecard entry by its ID.
+
+    Args:
+        cred (OtlCredential): The credentials used for authentication.
+        record_id (Any): The unique identifier of the timecard record to delete.
+    """
     with _client(cred) as client:
         resp = client.delete(f"{base_url()}/{record_id}")
     _raise_for_status(resp)
@@ -363,6 +444,16 @@ def delete_timecard_entry(cred: OtlCredential, record_id: Any) -> None:
 def create_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
+    """
+    Submits multiple timecard entries to Oracle Fusion, handling individual successes and failures.
+
+    Args:
+        cred (OtlCredential): The credentials used for authentication.
+        entries (list[dict[str, Any]]): A list of timecard entry payloads to submit.
+
+    Returns:
+        list[dict[str, Any]]: A list of dictionaries detailing the success or failure of each entry.
+    """
     results: list[dict[str, Any]] = []
     for index, entry in enumerate(entries):
         try:
