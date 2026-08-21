@@ -165,17 +165,6 @@ export default function ChatView({
                sentenceQueue.push(match[1]);
                unvoicedAcc = match[2];
                processQueue();
-               
-               // Open mic for barge-in early once bot starts talking
-               if (!mic.listening && mic.supported) {
-                 mic.start((spoken) => {
-                   playMicStop();
-                   sendUserRef.current?.(spoken);
-                 }, undefined, () => {
-                   const evt = new CustomEvent("otl:barge-in");
-                   window.dispatchEvent(evt);
-                 });
-               }
             }
           /* v8 ignore next 4 */
           } else if (ev.error) {
