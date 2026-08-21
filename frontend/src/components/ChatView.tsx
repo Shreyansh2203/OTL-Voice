@@ -348,7 +348,7 @@ export default function ChatView({
           listening={mic.listening}
           onStartMic={mic.start}
           onStopMic={mic.stop}
-          permissionDenied={mic.permissionDenied}
+          errorMsg={mic.errorMsg}
         />
         <p className="hint muted small">
           The assistant collects employee, project, work order, task and hours,

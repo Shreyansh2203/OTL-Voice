@@ -15,7 +15,7 @@ function getRecognition(): RecognitionCtor | null {
 export function useSpeechInput() {
   const [supported] = useState(() => getRecognition() !== null);
   const [listening, setListening] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const recRef = useRef<any>(null);
 
   const manualStopRef = useRef(false);
@@ -36,6 +36,7 @@ export function useSpeechInput() {
     onInterim?: (text: string) => void,
     onSpeechStart?: () => void
   ) => {
+    setErrorMsg(null);
     const Ctor = getRecognition();
     if (!Ctor) return;
     const rec = new Ctor();
@@ -83,11 +84,19 @@ export function useSpeechInput() {
       onInterim?.((finalText + interim).trim());
     };
     rec.onerror = (e: any) => {
+      console.error("Speech API error:", e.error);
       if (silenceTimer) clearTimeout(silenceTimer);
       setListening(false);
+      
+      let msg = "Microphone error: " + e.error;
       if (e.error === "not-allowed") {
-        setPermissionDenied(true);
+        msg = "Microphone access blocked. Please enable it in your browser settings (and ensure you are using HTTPS).";
+      } else if (e.error === "network") {
+        msg = "Network error occurred during speech recognition. Are you connected to the internet?";
+      } else if (e.error === "no-speech") {
+        msg = "No speech was detected. Please try again.";
       }
+      setErrorMsg(msg);
     };
     rec.onend = () => {
       if (silenceTimer) clearTimeout(silenceTimer);
@@ -110,7 +119,7 @@ export function useSpeechInput() {
 
   useEffect(() => () => recRef.current?.abort?.(), []);
 
-  return { supported, listening, isListening, permissionDenied, start, stop };
+  return { supported, listening, isListening, errorMsg, start, stop };
 }
 
 /** Plays TTS audio blobs, one at a time, cleaning up object URLs. */

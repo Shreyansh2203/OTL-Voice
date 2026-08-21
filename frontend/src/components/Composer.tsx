@@ -19,7 +19,7 @@ export interface ComposerProps {
     onSpeechStart?: () => void
   ) => void;
   onStopMic?: () => void;
-  permissionDenied?: boolean;
+  errorMsg?: string | null;
 }
 
 /**
@@ -35,7 +35,7 @@ export default function Composer({
   listening = false,
   onStartMic,
   onStopMic,
-  permissionDenied = false,
+  errorMsg = null,
 }: ComposerProps) {
   const [text, setText] = useState("");
 
@@ -84,9 +84,9 @@ export default function Composer({
 
   return (
     <div className="composer-wrapper">
-      {permissionDenied && (
+      {errorMsg && (
         <div className="error small" style={{ marginBottom: 8, padding: '6px 12px' }}>
-          Microphone access blocked. Please enable it in your browser settings to use voice features.
+          {errorMsg}
         </div>
       )}
       <div className={`prompt-bar-container ${listening ? "listening" : ""}`}>
