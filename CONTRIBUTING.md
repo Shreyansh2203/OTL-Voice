@@ -115,37 +115,27 @@ Run targets defined in the root [`Makefile`](Makefile):
 
 ## Quality Standards & Validation
 
-Before submitting your pull request, run the following verification steps:
-
-### 1. Frontend Typecheck & Build
+### 1. Frontend Validation
 
 ```bash
 cd frontend
 npm run typecheck
-npm run build
+npm run lint
+npm run test:unit
 ```
 
-### 2. Backend Code Compilation & Linting
+### 2. Backend Validation
 
 ```bash
-# Verify Python syntax across all active backend modules
-python -m py_compile backend/main.py backend/models.py backend/core/auth.py backend/services/chat.py backend/services/fusion_catalogue.py backend/services/oci_gemini.py backend/services/oci_speech.py backend/services/otl_client.py
+# Verify Python syntax and formatting (Ruff)
+uv run ruff check backend
+
+# Run the complete test suite
+uv run pytest
 ```
 
-### 3. Integration & Diagnostic Test Suites
-
-Run the automated integration scripts to test Oracle Fusion connectivity, PPM catalogue lookups, and end-to-end validation flows:
-
-```bash
-# Test Oracle Fusion REST connectivity and worker query
-python test_fusion_rest.py
-
-# Test in-memory person index resolution and performance
-python test_catalogue_lookup.py
-
-# Run complete end-to-end simulation (Worker -> Assignments -> Prompt -> OTL submission)
-python test_e2e_validation.py
-```
+### 3. Pre-Commit Hooks
+When you attempt to commit code, Husky will automatically run the above verification steps. Do not bypass these hooks unless absolutely necessary.
 
 ---
 

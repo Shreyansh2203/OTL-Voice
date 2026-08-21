@@ -35,7 +35,7 @@ The application uses a **single-origin architecture** running behind an **Nginx 
 ## 2. Multi-Stage Container Build
 
 The [`Containerfile`](../Containerfile) uses two distinct build stages:
-1. **Frontend Stage (`node:22-slim`)**: Installs dependencies using `npm ci --legacy-peer-deps` (with fallback to `npm install --legacy-peer-deps`) and runs `npm run build` to output compiled, hashed assets into `/fe/dist`.
+1. **Frontend Stage (`node:22-slim`)**: Installs dependencies using `npm ci --legacy-peer-deps --ignore-scripts` (with fallback to `npm install --legacy-peer-deps --ignore-scripts`) and runs `npm run build` to output compiled, hashed assets into `/fe/dist`.
 2. **Backend Runtime (`python:3.12-slim`)**: Installs Python dependencies using `uv sync --frozen --no-dev`, copies the backend application code, and mounts the built frontend assets into `/app/frontend/dist`.
 
 ---

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as api from "../api/client";
 import type { SubmitResponse, TimecardEntry } from "../types";
 
@@ -10,6 +10,8 @@ export interface ReviewPanelProps {
   entries: TimecardEntry[];
   /** Callback fired when an API call indicates the session has expired. */
   onSessionExpired: () => void;
+  /** Automatically trigger submission on mount. */
+  autoSubmit?: boolean;
 }
 
 /**
@@ -21,14 +23,18 @@ export interface ReviewPanelProps {
 export default function ReviewPanel({
   entries,
   onSessionExpired,
+  autoSubmit = false,
 }: ReviewPanelProps) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [countdown, setCountdown] = useState<number | null>(null);
+
   const totalHours = entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
 
-  async function submit() {
+  const submit = async () => {
+    setCountdown(null);
     setBusy(true);
     setError(null);
     try {
@@ -42,7 +48,28 @@ export default function ReviewPanel({
     } finally {
       setBusy(false);
     }
-  }
+  };
+
+  const hasAutoSubmitted = useRef(false);
+
+  useEffect(() => {
+    if (autoSubmit && !hasAutoSubmitted.current && !result && !error) {
+      hasAutoSubmitted.current = true;
+      setCountdown(4);
+    }
+  }, [autoSubmit, result, error]);
+
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      submit();
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   return (
     <div className="approval-card" aria-busy={busy}>
@@ -139,10 +166,19 @@ export default function ReviewPanel({
           </div>
         </>
       ) : (
-        <div className="approval-actions">
-          <button className="btn-approve" onClick={submit} disabled={busy}>
-            {busy ? "Approving…" : `Approve & Submit`}
-          </button>
+        <div className="approval-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {countdown !== null ? (
+            <>
+              <span className="muted small">Auto-submitting in {countdown}s...</span>
+              <button className="ghost" onClick={() => setCountdown(null)}>
+                Cancel Auto-Submit
+              </button>
+            </>
+          ) : (
+            <button className="btn-approve" onClick={submit} disabled={busy}>
+              {busy ? "Approving…" : `Approve & Submit`}
+            </button>
+          )}
         </div>
       )}
     </div>

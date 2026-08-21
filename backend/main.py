@@ -168,7 +168,7 @@ def login(body: LoginBody, response: Response) -> dict[str, Any]:
     person_number = body.username.strip()
     password = body.password
 
-    user_cred = otl_client.OtlCredential(username=person_number, password=password)
+    otl_client.OtlCredential(username=person_number, password=password)
 
     # 1. Validate the user's password directly against Oracle Fusion
     # (Bypassed for testing purposes)
@@ -282,11 +282,32 @@ def chat_stream(
     assignments = otl_client.list_worker_assignments(
         otl_client.service_credential(), ctx.employee_id, ctx.full_name
     )
+    
+    recent_history_str = ""
+    try:
+        # Smart Defaults: fetch the single most recent timecard to suggest it
+        recent = otl_client.list_timecard_entries(
+            otl_client.service_credential(), limit=1, offset=0, person_number=ctx.employee_id
+        )
+        items = recent.get("items", [])
+        if items:
+            latest = items[0]
+            attrs = latest.get("timeRecordEventAttribute") or latest.get("timeAttributes", [])
+            proj = next((a.get("attributeValue") for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+            hours = latest.get("measure", "")
+            if proj:
+                p_info = fusion_catalogue.get_project_by_id(proj)
+                if p_info:
+                   recent_history_str = f"User recently logged {hours} hours on {p_info.get('project_name')} (Project {p_info.get('project_number')})."
+    except Exception:
+        pass
+
     system_prompt = chat.build_system_prompt(
         username=ctx.username,
         employee_id=ctx.employee_id,
         employee_name=ctx.full_name,
         assignments=assignments,
+        recent_history=recent_history_str,
     )
     history = [{"role": m.role, "content": m.content} for m in body.messages]
     return StreamingResponse(
@@ -467,30 +488,54 @@ def list_timecards(
     Returns:
         dict[str, Any]: Paginated list of timecard entries.
     """
-    # Fetch all recent timecards (Fusion doesn't support Employee_Number_c filter on this endpoint)
     timecards = otl_client.list_timecard_entries(
         otl_client.service_credential(),
         limit=limit,
         offset=offset,
+        person_number=ctx.employee_id,
     )
 
-    # Enrich older timecards with human-readable project names if they lack a Comment attribute.
+    # Enrich timecards with human-readable project names if they lack a Comment attribute.
     for item in timecards.get("items", []):
-        for event in item.get("timeRecordEvent", []):
-            attrs = event.get("timeRecordEventAttribute", [])
-            has_comment = any(a.get("attributeName") == "Comment" for a in attrs)
-            if not has_comment:
-                proj_attr = next((a for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
-                if proj_attr:
-                    proj_id = proj_attr.get("attributeValue")
-                    if proj_id:
-                        proj = fusion_catalogue.get_project_by_id(proj_id)
+        # timeRecords endpoint has attributes directly under timeAttributes
+        attrs = item.get("timeAttributes", [])
+        
+        # Maintain compatibility with old timeRecordEventRequests format if it's ever used
+        if "timeRecordEvent" in item:
+            for event in item.get("timeRecordEvent", []):
+                evt_attrs = event.get("timeRecordEventAttribute", [])
+                has_comment = any(a.get("attributeName") == "Comment" for a in evt_attrs)
+                if not has_comment:
+                    proj_attr = next((a for a in evt_attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+                    if proj_attr and proj_attr.get("attributeValue"):
+                        proj = fusion_catalogue.get_project_by_id(proj_attr.get("attributeValue"))
                         if proj:
-                            attrs.append({
+                            evt_attrs.append({
                                 "attributeName": "Comment",
                                 "attributeValue": f"Project: {proj.get('project_name')}"
                             })
-
+        else:
+            # Handle new timeRecords format
+            # ensure timeRecordEventAttribute is populated for frontend compatibility
+            item["timeRecordEventAttribute"] = attrs
+            has_comment = any(a.get("attributeName") == "Comment" for a in attrs)
+            if not has_comment:
+                proj_attr = next((a for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+                if proj_attr and proj_attr.get("attributeValue"):
+                    proj = fusion_catalogue.get_project_by_id(proj_attr.get("attributeValue"))
+                    if proj:
+                        attrs.append({
+                            "attributeName": "Comment",
+                            "attributeValue": f"Project: {proj.get('project_name')}"
+                        })
+            
+            # Use top level comment if present
+            if item.get("comment") and not has_comment:
+                attrs.append({
+                    "attributeName": "Comment",
+                    "attributeValue": item.get("comment")
+                })
+                
     return timecards
 
 

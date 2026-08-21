@@ -8,11 +8,16 @@ export interface Identity {
   fullName: string;
 }
 
+export interface AssignedTask {
+  taskId: string | number;
+  taskDetails: string;
+}
+
 /** One project an employee may log against, with its usual tasks. */
 export interface AssignedProject {
-  projectNo: number;
+  projectNo: string | number;
   projectName: string;
-  tasks: string[];
+  tasks: AssignedTask[];
 }
 
 /** A work order and the assigned projects beneath it (one WO, many projects). */

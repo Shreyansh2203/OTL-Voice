@@ -1,19 +1,21 @@
 import ReactMarkdown from "react-markdown";
 import { stripEntriesBlock } from "../lib/entries";
 import type { ChatMessage } from "../types";
-import { SpeakerIcon } from "./icons";
 import ThinkingState from "./ThinkingState";
 import ToolChip from "./ToolChip";
 
 export default function MessageBubble({
   message,
-  onSpeak,
 }: {
   message: ChatMessage;
-  onSpeak?: (text: string) => void;
 }) {
   const isUser = message.role === "user";
-  const text = isUser ? message.content : stripEntriesBlock(message.content);
+  let text = isUser ? message.content : stripEntriesBlock(message.content);
+  
+  if (!isUser) {
+    // Strip SSML tags for visual rendering (e.g. <break time="300ms"/>)
+    text = text.replace(/<[^>]+>/g, "");
+  }
 
   return (
     <div className={`bubble-row ${isUser ? "user" : "assistant"}`}>
@@ -36,7 +38,8 @@ export default function MessageBubble({
               <div className={`md ${message.streaming ? "streaming" : ""}`}>
                 <ReactMarkdown
                   components={{
-                    a: ({ node, ...props }) => (
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    a: ({ node: _node, ...props }) => (
                       <a {...props} target="_blank" rel="noopener noreferrer" />
                     ),
                   }}
@@ -47,16 +50,6 @@ export default function MessageBubble({
               </div>
             )}
 
-            {!isUser && !message.streaming && text && onSpeak && (
-              <button
-                className="icon-btn speak"
-                title="Play aloud"
-                aria-label="Play this reply aloud"
-                onClick={() => onSpeak(text)}
-              >
-                <SpeakerIcon />
-              </button>
-            )}
           </div>
         )}
       </div>

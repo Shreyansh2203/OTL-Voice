@@ -1,15 +1,17 @@
-import os
 import json
+import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from backend.services.oci_gemini import (
+    GeminiChatClient,
     _env,
     _normalize_pem,
-    build_oci_config,
     _service_endpoint,
-    GeminiChatClient,
+    build_oci_config,
 )
+
 
 def test_env():
     os.environ["TEST_ENV"] = " value "
@@ -187,6 +189,6 @@ def test_extract_delta():
 @patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
 @patch.dict(os.environ, {"OCI_COMPARTMENT_ID": "c1", "OCI_REGION": "r1", "OCI_USER_OCID": "ocid1.user.oc1..aaaaaa", "OCI_TENANCY_OCID": "ocid1.tenancy.oc1..bbbbb", "OCI_FINGERPRINT": "00:11:22:33:44", "OCI_PRIVATE_KEY": "k1"}, clear=True)
 def test_ping(mock_client):
-    with patch.object(GeminiChatClient, 'complete', return_value="OK") as mock_complete:
+    with patch.object(GeminiChatClient, 'complete', return_value="OK"):
         client = GeminiChatClient()
         assert client.ping() == "OK"

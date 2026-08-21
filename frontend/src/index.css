@@ -368,6 +368,12 @@ th.num, td.num { text-align: right; white-space: nowrap; }
 .prompt-bar-container.listening .prompt-bar {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
+  animation: pulse-brand 2s infinite;
+}
+@keyframes pulse-brand {
+  0% { box-shadow: 0 0 0 0 rgba(11, 95, 255, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(11, 95, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(11, 95, 255, 0); }
 }
 .prompt-bar {
   display: flex;

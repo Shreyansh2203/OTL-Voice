@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+# This script runs automatically before every git commit to ensure the codebase is healthy.
+echo "Running pre-commit checks..."
+
+# 1. Verify Python Compilation
+echo "-> Verifying Python compilation..."
+python -m py_compile backend/main.py backend/services/otl_client.py
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Error: Python compilation failed. Aborting commit."
+  echo "Please fix the syntax errors above and try committing again."
+  exit 1
+fi
+
+# 2. Verify TypeScript
+echo "-> Verifying TypeScript types..."
+cd frontend
+npm run typecheck
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Error: TypeScript checks failed. Aborting commit."
+  exit 1
+fi
+
+# 3. Run Linters
+echo "-> Running Python Linter (Ruff)..."
+cd ..
+uv run ruff check backend
+if [ $? -ne 0 ]; then
+  echo "❌ Error: Ruff linting failed."
+  exit 1
+fi
+
+echo "-> Running Frontend Linter (ESLint)..."
+cd frontend
+npm run lint
+if [ $? -ne 0 ]; then
+  echo "❌ Error: ESLint failed."
+  exit 1
+fi
+cd ..
+
+echo "✅ All verification checks passed!"
+exit 0

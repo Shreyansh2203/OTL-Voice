@@ -119,12 +119,46 @@ def _fetch_project_team_members(client: httpx.Client, project_id: str) -> list[d
     return resp.json().get("items", [])
 
 
-def _build_index(projects_data: list[dict]) -> dict[str, list[dict]]:
+def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
+    """Fetch all project resource assignments."""
+    assignments = []
+    offset = 0
+    limit = 100
+
+    while True:
+        resp = client.get(
+            f"{_ppm_base()}/projectResourceAssignments",
+            params={
+                "fields": "ProjectId,ResourceHCMPersonId,ResourceName",
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        if resp.status_code != 200:
+            logger.error("Failed to fetch resource assignments (HTTP %d)", resp.status_code)
+            break
+
+        items = resp.json().get("items", [])
+        if not items:
+            break
+
+        assignments.extend(items)
+        if len(items) < limit:
+            break
+        offset += limit
+
+    return assignments
+
+
+def _build_index(projects_data: list[dict], assignments_data: list[dict] | None = None) -> dict[str, list[dict]]:
     """
     Build a person-name → projects index from the fetched data.
     Each person entry contains the projects they are assigned to, with tasks.
     """
     index: dict[str, list[dict]] = {}
+    
+    if assignments_data is None:
+        assignments_data = []
 
     for proj in projects_data:
         proj_entry = {
@@ -136,6 +170,7 @@ def _build_index(projects_data: list[dict]) -> dict[str, list[dict]]:
             "tasks": proj.get("tasks", []),
         }
 
+        # 1. Add people from ProjectTeamMembers
         for member in proj.get("team_members", []):
             person_name = (member.get("PersonName") or "").strip().lower()
             if not person_name:
@@ -148,6 +183,27 @@ def _build_index(projects_data: list[dict]) -> dict[str, list[dict]]:
                 **proj_entry,
                 "role": member.get("ProjectRole", "Team Member"),
             })
+
+        # 2. Add people from projectResourceAssignments
+        for assign in assignments_data:
+            if str(assign.get("ProjectId")) == proj_entry["project_id"]:
+                person_name = (assign.get("ResourceName") or "").strip().lower()
+                if not person_name:
+                    continue
+                    
+                if person_name not in index:
+                    index[person_name] = []
+                    
+                # Avoid adding duplicate project entries for the same person
+                already = any(
+                    p["project_number"] == proj_entry["project_number"]
+                    for p in index.get(person_name, [])
+                )
+                if not already:
+                    index[person_name].append({
+                        **proj_entry,
+                        "role": "Resource Assignment",
+                    })
 
         # Also index by project manager name
         mgr_name = (proj.get("manager") or "").strip().lower()
@@ -230,8 +286,15 @@ def _do_load_catalogue() -> None:
                 if (i + 1) % 10 == 0:
                     logger.info("  Enriched %d/%d projects…", i + 1, len(raw_projects))
 
-        # 3. Build the person-name index
-        _person_index = _build_index(enriched)
+        logger.info("Fetched details for %d projects.", len(enriched))
+        
+        logger.info("Fetching project resource assignments...")
+        assignments = _fetch_all_resource_assignments(client)
+        logger.info("Fetched %d resource assignments.", len(assignments))
+
+        logger.info("Building in-memory project index...")
+        _person_index = _build_index(enriched, assignments_data=assignments)
+        
         _all_projects = enriched
         _last_refresh = time.time()
         _is_loaded = True

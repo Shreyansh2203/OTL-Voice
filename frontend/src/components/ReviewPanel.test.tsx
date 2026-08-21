@@ -38,7 +38,7 @@ describe('ReviewPanel', () => {
 
   it('submits successfully', async () => {
     const onSessionExpired = vi.fn();
-    const mockSubmit = vi.spyOn(api, 'submitTimecard').mockResolvedValue({
+    vi.spyOn(api, 'submitTimecard').mockResolvedValue({
       submitted: 2,
       succeeded: 1,
       failed: 1,

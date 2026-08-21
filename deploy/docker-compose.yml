@@ -25,8 +25,8 @@ services:
     volumes:
       # Mount the local data directory (contains fusion catalogue + SQLite DB)
       - ../data:/app/data
-      # Mount the OCI PEM key
-      - ../ssrivastava@acsesolutions.com-2026-08-12T18_58_44.434Z.pem:/app/ssrivastava@acsesolutions.com-2026-08-12T18_58_44.434Z.pem:ro
+      # Optional: Mount OCI PEM key if using OCI_PRIVATE_KEY_PATH (not needed if using inline OCI_PRIVATE_KEY)
+      # - ../oci_api_key.pem:/app/oci_api_key.pem:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]

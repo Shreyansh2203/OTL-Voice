@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import * as api from "./api/client";
@@ -66,7 +66,7 @@ describe("App", () => {
       expect(screen.getByTestId("login-view")).toBeInTheDocument();
     });
     
-    screen.getByText("Simulate Login").click();
+    fireEvent.click(screen.getByText("Simulate Login"));
     
     await waitFor(() => {
       expect(screen.getByTestId("chat-view")).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe("App", () => {
       expect(screen.getByTestId("chat-view")).toBeInTheDocument();
     });
     
-    screen.getByText("Simulate Logout").click();
+    fireEvent.click(screen.getByText("Simulate Logout"));
     
     await waitFor(() => {
       expect(screen.getByTestId("login-view")).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("App", () => {
       expect(screen.getByTestId("chat-view")).toBeInTheDocument();
     });
     
-    screen.getByText("Simulate Logout").click();
+    fireEvent.click(screen.getByText("Simulate Logout"));
     
     await waitFor(() => {
       expect(screen.getByTestId("login-view")).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("App", () => {
       expect(screen.getByTestId("chat-view")).toBeInTheDocument();
     });
     
-    screen.getByText("Simulate Expire").click();
+    fireEvent.click(screen.getByText("Simulate Expire"));
     
     await waitFor(() => {
       expect(screen.getByTestId("login-view")).toBeInTheDocument();

@@ -1,11 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Composer from './Composer';
-import * as voiceLib from '../lib/voice';
-
-vi.mock('../lib/voice', () => ({
-  useSpeechInput: vi.fn(),
-}));
 
 describe('Composer', () => {
   beforeEach(() => {
@@ -13,14 +8,8 @@ describe('Composer', () => {
   });
 
   it('calls onSend and clears input when sending a message', () => {
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: false,
-      start: vi.fn(),
-      stop: vi.fn(),
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} />);
     
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
     const sendButton = screen.getByRole('button', { name: /send/i });
@@ -37,14 +26,8 @@ describe('Composer', () => {
   });
 
   it('submits on Enter key (without shift)', () => {
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: false,
-      start: vi.fn(),
-      stop: vi.fn(),
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} />);
     
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
 
@@ -55,14 +38,8 @@ describe('Composer', () => {
   });
 
   it('does not send if input is empty or disabled', () => {
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: false,
-      start: vi.fn(),
-      stop: vi.fn(),
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={true} onSend={mockSend} />);
+    render(<Composer disabled={true} onSend={mockSend} supported={true} />);
     
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
     const sendButton = screen.getByRole('button', { name: /send/i });
@@ -73,7 +50,7 @@ describe('Composer', () => {
     expect(mockSend).not.toHaveBeenCalled();
 
     // Empty test
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} />);
     const activeTextarea = screen.getAllByPlaceholderText(/Type or speak/i)[1];
     fireEvent.change(activeTextarea, { target: { value: '   ' } });
     fireEvent.keyDown(activeTextarea, { key: 'Enter', shiftKey: false });
@@ -82,14 +59,8 @@ describe('Composer', () => {
 
   it('toggles microphone to start listening', () => {
     const start = vi.fn((cb) => cb('spoken text'));
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: false,
-      start,
-      stop: vi.fn(),
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} listening={false} onStartMic={start} />);
     
     const micBtn = screen.getByTitle('Speak');
     fireEvent.click(micBtn);
@@ -106,29 +77,18 @@ describe('Composer', () => {
   
   it('toggles microphone to stop listening', () => {
     const stop = vi.fn();
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: true,
-      start: vi.fn(),
-      stop,
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} listening={true} onStopMic={stop} />);
     
     const micBtn = screen.getByTitle('Stop recording');
     fireEvent.click(micBtn);
     
     expect(stop).toHaveBeenCalled();
   });
+  
   it('ignores other keys or shift+enter', () => {
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
-      supported: true,
-      listening: false,
-      start: vi.fn(),
-      stop: vi.fn(),
-    });
     const mockSend = vi.fn();
-    render(<Composer disabled={false} onSend={mockSend} />);
+    render(<Composer disabled={false} onSend={mockSend} supported={true} />);
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
     fireEvent.change(textarea, { target: { value: 'Test' } });
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });

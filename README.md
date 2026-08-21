@@ -134,21 +134,19 @@ Launch the full stack with automatic pre-flight verification (validates Docker d
 - Python 3.12+ with [`uv`](https://docs.astral.sh/uv/)
 - Node.js 20+ with `npm`
 
-#### 1. Start the Backend
-```bash
-# From the project root
-cp .env.example .env
-uv sync
-uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
+#### Quick Start (Both Servers)
 
-#### 2. Start the Frontend
-```bash
-# In a new terminal
-cd frontend
-npm install
-npm run dev
-```
+Run the included development script to start both the FastAPI backend and the React frontend in a single terminal with color-coded logs:
+
+- **Windows**: Double-click `dev.bat` or run:
+  ```bat
+  dev.bat
+  ```
+
+- **Linux / macOS**: Run `./dev.sh`:
+  ```bash
+  chmod +x dev.sh && ./dev.sh
+  ```
 
 Visit `http://localhost:5173`. Vite automatically proxies `/api` requests to the FastAPI backend at port 8000.
 
@@ -193,10 +191,11 @@ timesheet-repo/
 │   ├── CONFIGURATION.md         # Environment variables and IAM setups
 │   ├── DATA_CATALOGUE.md        # Fusion PPM/HCM catalogue, pipelines & data architecture
 │   └── DEPLOYMENT.md            # Docker, Nginx, batch launchers, and production hosting
-├── export_fusion_master.py      # Direct Oracle Fusion Cloud REST / BIP master exporter
-├── build_person_centric_catalogue.py # JSON/XLSX person-centric transformer
-├── explore_fusion.py            # Interactive CLI explorer for Fusion REST endpoints
-├── test_*.py                    # Automated test and integration verification suite
+├── scripts/
+│   ├── build_person_centric_catalogue.py # JSON/XLSX person-centric transformer
+│   ├── explore_fusion.py            # Interactive CLI explorer for Fusion REST endpoints
+│   └── scratch/                     # One-off local dev/debug scripts (gitignored)
+├── test_*.py                        # Root-level integration test scripts
 ├── .env.example                 # Sanitized environment template
 ├── Containerfile                # Multi-stage production container build
 ├── CONTRIBUTING.md              # Contributor onboarding, testing & guidelines

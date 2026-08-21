@@ -53,6 +53,7 @@ def build_system_prompt(
     employee_id: str,
     employee_name: str,
     assignments: list[dict[str, Any]] | None = None,
+    recent_history: str = "",
 ) -> str:
     date_str = datetime.now(UTC).strftime("%A, %Y-%m-%d")
 
@@ -62,6 +63,7 @@ def build_system_prompt(
     prompt = prompt.replace("{{EMPLOYEE_NAME}}", employee_name or "not provided")
     prompt = prompt.replace("{{CURRENT_DATE}}", date_str)
     prompt = prompt.replace("{{ASSIGNMENTS}}", render_assignments(assignments or []))
+    prompt = prompt.replace("{{RECENT_HISTORY}}", recent_history or "No recent history available.")
     return prompt
 
 

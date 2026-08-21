@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 type RecognitionCtor = new () => any;
 
@@ -16,33 +15,88 @@ function getRecognition(): RecognitionCtor | null {
 export function useSpeechInput() {
   const [supported] = useState(() => getRecognition() !== null);
   const [listening, setListening] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const recRef = useRef<any>(null);
 
-  const stop = useCallback(() => {
-    recRef.current?.stop();
+  const manualStopRef = useRef(false);
+
+  const stop = useCallback((cancel = false) => {
+    manualStopRef.current = cancel;
+    if (cancel) {
+      recRef.current?.stop?.(); // Use graceful stop instead of buggy abort
+      setListening(false);
+      recRef.current = null;
+    } else {
+      recRef.current?.stop?.();
+    }
   }, []);
 
-  const start = useCallback((onFinal: (text: string) => void) => {
+  const start = useCallback((
+    onFinal: (text: string) => void,
+    onInterim?: (text: string) => void,
+    onSpeechStart?: () => void
+  ) => {
     const Ctor = getRecognition();
     if (!Ctor) return;
     const rec = new Ctor();
     rec.lang = "en-US";
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.maxAlternatives = 1;
-    rec.continuous = false;
+    rec.continuous = true;
+    manualStopRef.current = false;
 
     let finalText = "";
-    rec.onresult = (e: any) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    let speechStarted = false;
+
+    const resetSilenceTimeout = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        rec.stop();
+      }, 5000); // 5 seconds of silence auto-stops the mic and auto-sends
+    };
+
+    // Start the timer when listening begins
+    resetSilenceTimeout();
+
+    rec.onspeechstart = () => {
+      if (!speechStarted) {
+        speechStarted = true;
+        onSpeechStart?.();
       }
     };
-    rec.onerror = () => setListening(false);
+
+    rec.onresult = (e: any) => {
+      if (!speechStarted) {
+        speechStarted = true;
+        onSpeechStart?.();
+      }
+      resetSilenceTimeout();
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          finalText += e.results[i][0].transcript;
+        } else {
+          interim += e.results[i][0].transcript;
+        }
+      }
+      onInterim?.((finalText + interim).trim());
+    };
+    rec.onerror = (e: any) => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      setListening(false);
+      if (e.error === "not-allowed") {
+        setPermissionDenied(true);
+      }
+    };
     rec.onend = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
       setListening(false);
       recRef.current = null;
       const text = finalText.trim();
-      if (text) onFinal(text);
+      const wasCanceled = manualStopRef.current;
+      manualStopRef.current = false;
+      if (text && !wasCanceled) onFinal(text);
     };
 
     recRef.current = rec;
@@ -50,9 +104,13 @@ export function useSpeechInput() {
     rec.start();
   }, []);
 
+  const isListening = useCallback(() => {
+    return recRef.current !== null;
+  }, []);
+
   useEffect(() => () => recRef.current?.abort?.(), []);
 
-  return { supported, listening, start, stop };
+  return { supported, listening, isListening, permissionDenied, start, stop };
 }
 
 /** Plays TTS audio blobs, one at a time, cleaning up object URLs. */
@@ -67,21 +125,35 @@ export function useAudioPlayer() {
   }, []);
 
   const play = useCallback(
-    async (blob: Blob) => {
-      audioRef.current?.pause();
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      const url = URL.createObjectURL(blob);
-      urlRef.current = url;
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => setPlaying(false);
-      audio.onpause = () => setPlaying(false);
-      try {
-        await audio.play();
-        setPlaying(true);
-      } catch {
-        setPlaying(false); // autoplay may be blocked until a user gesture
-      }
+    (blob: Blob): Promise<boolean> => {
+      return new Promise((resolve) => {
+        audioRef.current?.pause();
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        
+        audio.onended = () => {
+          setPlaying(false);
+          resolve(true); // natural completion
+        };
+        audio.onpause = () => {
+          setPlaying(false);
+          resolve(false); // interrupted or stopped
+        };
+        audio.onerror = () => {
+          setPlaying(false);
+          resolve(false);
+        };
+
+        audio.play().then(() => {
+          setPlaying(true);
+        }).catch(() => {
+          setPlaying(false); // autoplay may be blocked until a user gesture
+          resolve(false);
+        });
+      });
     },
     []
   );

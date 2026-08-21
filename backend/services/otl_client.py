@@ -307,6 +307,7 @@ def list_timecard_entries(
     limit: int = 25,
     offset: int = 0,
     query: str | None = None,
+    person_number: str | None = None,
 ) -> dict[str, Any]:
     """
     Retrieves a paginated list of timecard entries from Oracle Fusion.
@@ -316,6 +317,7 @@ def list_timecard_entries(
         limit (int, optional): The maximum number of entries to return. Defaults to 25.
         offset (int, optional): The offset for pagination. Defaults to 0.
         query (str | None, optional): An optional query string to filter entries. Defaults to None.
+        person_number (str | None, optional): Filter records by the worker's person number.
 
     Returns:
         dict[str, Any]: The paginated timecard response payload from Oracle Fusion.
@@ -323,12 +325,22 @@ def list_timecard_entries(
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
-        "expand": "timeRecordEvent,timeRecordEvent.timeRecordEventAttribute",
+        "expand": "timeAttributes",
     }
+    
+    q_parts = []
     if query:
-        params["q"] = query
+        q_parts.append(query)
+    if person_number:
+        q_parts.append(f"personNumber='{escape_q_literal(person_number)}'")
+        
+    if q_parts:
+        params["q"] = " AND ".join(q_parts)
+        
+    url = base_url().replace("/timeRecordEventRequests", "/timeRecords")
+    
     with _client(cred) as client:
-        resp = client.get(base_url(), params=params)
+        resp = client.get(url, params=params)
     _raise_for_status(resp)
     return resp.json()
 

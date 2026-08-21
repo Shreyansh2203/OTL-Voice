@@ -1,12 +1,15 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import oci
+import pytest
+
 from backend.services.oci_speech import (
-    _speech_endpoint,
+    SpeechClient,
     _rate_to_percent,
+    _speech_endpoint,
     clean_for_speech,
-    SpeechClient
 )
+
 
 def test_speech_endpoint(monkeypatch):
     monkeypatch.delenv("OCI_SPEECH_ENDPOINT", raising=False)

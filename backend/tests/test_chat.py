@@ -1,15 +1,14 @@
-import pytest
-from unittest.mock import patch, MagicMock
-import json
+from unittest.mock import MagicMock, patch
 
 from backend.services.chat import (
-    render_assignments,
     _client,
-    load_prompt_template,
-    build_system_prompt,
     _sse,
+    build_system_prompt,
+    load_prompt_template,
+    render_assignments,
     stream_sse,
 )
+
 
 def test_render_assignments():
     work_orders = [

@@ -57,9 +57,13 @@ describe('ChatView', () => {
     expect(screen.getByText('Hello')).toBeInTheDocument();
   });
 
-  it('switches to history tab and back to chat', () => {
+  it('switches to history tab and back to chat', async () => {
     render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
     
+    await waitFor(() => {
+      expect(api.chatStream).toHaveBeenCalled();
+    });
+
     const historyBtn = screen.getByText('History');
     fireEvent.click(historyBtn);
     
@@ -71,9 +75,13 @@ describe('ChatView', () => {
     expect(screen.queryByTestId('timecard-history')).not.toBeInTheDocument();
   });
   
-  it('toggles voice', () => {
+  it('toggles voice', async () => {
     render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
     
+    await waitFor(() => {
+      expect(api.chatStream).toHaveBeenCalled();
+    });
+
     const voiceBtn = screen.getByTitle('Toggle spoken replies');
     expect(screen.getByText('Voice on')).toBeInTheDocument();
     
@@ -81,10 +89,14 @@ describe('ChatView', () => {
     expect(screen.getByText('Voice off')).toBeInTheDocument();
   });
   
-  it('calls onLogout', () => {
+  it('calls onLogout', async () => {
     const onLogout = vi.fn();
     render(<ChatView username="Test" onLogout={onLogout} onSessionExpired={vi.fn()} />);
     
+    await waitFor(() => {
+      expect(api.chatStream).toHaveBeenCalled();
+    });
+
     fireEvent.click(screen.getByText('Sign out'));
     expect(onLogout).toHaveBeenCalled();
   });

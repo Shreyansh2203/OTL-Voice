@@ -149,6 +149,22 @@ class SpeechClient:
         if not clean:
             return b""
 
+        # If the prompt explicitly generated SSML tags, treat the whole payload as SSML
+        is_ssml = "<break" in clean or "<emphasis" in clean or "<prosody" in clean
+        
+        if is_ssml:
+            # We don't escape it if it already has XML tags, but we wrap in <speak>
+            # Actually, to be safe, if we don't escape, bare '&' or '<' might fail.
+            # Assuming Gemini generates valid SSML snippet:
+            ssml_payload = f"<speak>{clean}</speak>"
+            if abs(rate - 1.0) > 1e-3:
+                ssml_payload = f'<speak><prosody rate="{_rate_to_percent(rate)}">{clean}</prosody></speak>'
+            
+            try:
+                return self._call(self._details(ssml_payload, "SSML"))
+            except oci.exceptions.ServiceError:
+                pass # fallback to text
+
         if abs(rate - 1.0) < 1e-3:
             return self._call(self._details(clean, "TEXT"))
 

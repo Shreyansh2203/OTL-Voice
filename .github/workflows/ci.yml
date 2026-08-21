@@ -1,0 +1,53 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  verify-code:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Run Ruff (Python Linting)
+      run: uv run ruff check backend
+
+    - name: Verify Python Compilation
+      run: |
+        python -m py_compile backend/main.py backend/services/otl_client.py
+
+    - name: Run Backend Tests (Pytest)
+      run: uv run pytest
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Verify TypeScript
+      working-directory: ./frontend
+      run: npm run typecheck
+
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Run Frontend Tests (Vitest)
+      working-directory: ./frontend
+      run: npm run test:unit

@@ -107,4 +107,22 @@ test.describe('Chat View UI', () => {
     const assistantMessage = page.locator('.md', { hasText: 'Timesheet submitted for 5 hours.' });
     await expect(assistantMessage).toBeVisible();
   });
+
+  test('should toggle voice button between on and off', async ({ page }) => {
+    await page.goto('/');
+
+    const voiceBtn = page.getByRole('button', { name: /Voice on/i });
+    await expect(voiceBtn).toBeVisible();
+    await expect(voiceBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Click to turn off voice
+    await voiceBtn.click();
+    const voiceOffBtn = page.getByRole('button', { name: /Voice off/i });
+    await expect(voiceOffBtn).toBeVisible();
+    await expect(voiceOffBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Click to turn voice back on
+    await voiceOffBtn.click();
+    await expect(page.getByRole('button', { name: /Voice on/i })).toBeVisible();
+  });
 });

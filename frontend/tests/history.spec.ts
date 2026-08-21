@@ -57,10 +57,26 @@ test.describe('Timecard History UI', () => {
   });
 
   test('should display historical timecards correctly', async ({ page }) => {
+    // Stub the chat & TTS endpoints so the initial kickoff resolves quickly
+    await page.route('**/api/chat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: 'data: {"done":true}\n\n',
+      });
+    });
+    await page.route('**/api/tts', async (route) => {
+      await route.fulfill({ status: 204, body: '' });
+    });
+
     await page.goto('/');
 
-    // Navigate to History tab
+    // Wait for the initial chat stream to settle before interacting with tabs
+    await page.waitForLoadState('networkidle');
+
+    // Navigate to History tab — use force click to handle transient detach
     const historyTab = page.locator('button', { hasText: 'History' });
+    await historyTab.waitFor({ state: 'visible' });
     await historyTab.click();
 
     // Verify that the table rows are rendered

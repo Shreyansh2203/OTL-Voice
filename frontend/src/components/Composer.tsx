@@ -1,5 +1,4 @@
 import { KeyboardEvent, useState } from "react";
-import { useSpeechInput } from "../lib/voice";
 import { MicIcon, SendIcon, StopIcon } from "./icons";
 
 /**
@@ -10,6 +9,17 @@ export interface ComposerProps {
   disabled: boolean;
   /** Callback fired when the user submits a message. */
   onSend: (text: string) => void;
+  
+  // Microphone props hoisted to parent
+  supported?: boolean;
+  listening?: boolean;
+  onStartMic?: (
+    onFinal: (spoken: string) => void,
+    onInterim?: (spoken: string) => void,
+    onSpeechStart?: () => void
+  ) => void;
+  onStopMic?: () => void;
+  permissionDenied?: boolean;
 }
 
 /**
@@ -21,9 +31,13 @@ export interface ComposerProps {
 export default function Composer({
   disabled,
   onSend,
+  supported = false,
+  listening = false,
+  onStartMic,
+  onStopMic,
+  permissionDenied = false,
 }: ComposerProps) {
   const [text, setText] = useState("");
-  const { supported, listening, start, stop } = useSpeechInput();
 
   function send() {
     const trimmed = text.trim();
@@ -41,46 +55,74 @@ export default function Composer({
 
   function toggleMic() {
     if (listening) {
-      stop();
+      onStopMic?.();
       return;
     }
-    start((spoken) => setText((prev) => (prev ? prev + " " : "") + spoken));
+
+    // Immediately stop any playing TTS when the user explicitly clicks the mic,
+    // otherwise the newly opened mic might pick up the TTS audio as "random words".
+    const playerStopEvent = new CustomEvent("otl:barge-in");
+    window.dispatchEvent(playerStopEvent);
+
+    const baseText = text ? text + " " : "";
+    onStartMic?.(
+      (spoken) => {
+        const finalStr = (baseText + spoken).trim();
+        setText("");
+        if (finalStr) {
+          onSend(finalStr);
+        }
+      },
+      (spoken) => setText(baseText + spoken),
+      () => {
+        // Barge-in: also stop any playing audio immediately when speech is detected
+        const evt = new CustomEvent("otl:barge-in");
+        window.dispatchEvent(evt);
+      }
+    );
   }
 
   return (
-    <div className={`prompt-bar-container ${listening ? "listening" : ""}`}>
-      <div className="prompt-bar">
-        {supported && (
+    <div className="composer-wrapper">
+      {permissionDenied && (
+        <div className="error small" style={{ marginBottom: 8, padding: '6px 12px' }}>
+          Microphone access blocked. Please enable it in your browser settings to use voice features.
+        </div>
+      )}
+      <div className={`prompt-bar-container ${listening ? "listening" : ""}`}>
+        <div className="prompt-bar">
+          {supported && (
+            <button
+              type="button"
+              className={`icon-btn mic ${listening ? "active" : ""}`}
+              onClick={toggleMic}
+              title={listening ? "Stop recording" : "Speak"}
+              aria-label={listening ? "Stop recording" : "Speak"}
+            >
+              {listening ? <StopIcon /> : <MicIcon />}
+            </button>
+          )}
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={listening ? "Listening…" : "Type or speak your reply…"}
+            rows={1}
+            disabled={disabled}
+          />
+
           <button
             type="button"
-            className={`icon-btn mic ${listening ? "active" : ""}`}
-            onClick={toggleMic}
-            title={listening ? "Stop recording" : "Speak"}
-            aria-label={listening ? "Stop recording" : "Speak"}
+            className="icon-btn send"
+            onClick={send}
+            disabled={disabled || !text.trim()}
+            title="Send"
+            aria-label="Send"
           >
-            {listening ? <StopIcon /> : <MicIcon />}
+            <SendIcon />
           </button>
-        )}
-
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={listening ? "Listening…" : "Type or speak your reply…"}
-          rows={1}
-          disabled={disabled}
-        />
-
-        <button
-          type="button"
-          className="icon-btn send"
-          onClick={send}
-          disabled={disabled || !text.trim()}
-          title="Send"
-          aria-label="Send"
-        >
-          <SendIcon />
-        </button>
+        </div>
       </div>
     </div>
   );

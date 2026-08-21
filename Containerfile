@@ -8,7 +8,7 @@ FROM node:22-slim AS frontend
 WORKDIR /fe
 # Install deps first for better layer caching (lockfile optional).
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
+RUN npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts || npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
 COPY frontend/ ./
 RUN npm run build            # -> /fe/dist
 

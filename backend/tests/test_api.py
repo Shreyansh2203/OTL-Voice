@@ -1,13 +1,16 @@
-import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from fastapi.testclient import TestClient
 
 from backend.main import (
-    app, _extract_entries, _otl_error_handler, _otl_config_error_handler,
-    _speech_client, _options_hint
+    _extract_entries,
+    _options_hint,
+    _otl_config_error_handler,
+    _otl_error_handler,
+    app,
 )
-from backend.services.otl_client import OtlError, OtlConfigError
+from backend.services.otl_client import OtlConfigError, OtlError
+
 
 @pytest.fixture(autouse=True)
 def disable_secure_cookies():
@@ -26,7 +29,7 @@ async def test_otl_error_handler():
     assert res.status_code == 500
 
 def test_speech_client_init():
-    with patch("backend.main._speech_client") as mocked:
+    with patch("backend.main._speech_client"):
         from backend.main import _speech_client
         # actually, to test the real init, we patch oci_speech
     with patch("backend.services.oci_speech.SpeechClient"):
@@ -208,7 +211,7 @@ def test_labour_assignments(auth_client, mock_otl_client):
 
 @pytest.mark.asyncio
 async def test_refresh_catalogue(client, mock_fusion_catalogue):
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
     mock_fusion_catalogue.refresh_catalogue = AsyncMock()
     mock_fusion_catalogue.status.return_value = {"status": "ok"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

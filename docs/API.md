@@ -176,9 +176,9 @@ Retrieves all work orders, project numbers, names, and allowable tasks assigned 
           "projectNo": 1001,
           "projectName": "Project Alpha",
           "tasks": [
-            "API Architecture & Integration",
-            "Database Schema Design",
-            "Performance Optimization"
+            { "taskId": "1", "taskDetails": "API Architecture & Integration" },
+            { "taskId": "2", "taskDetails": "Database Schema Design" },
+            { "taskId": "3", "taskDetails": "Performance Optimization" }
           ]
         }
       ]
@@ -303,7 +303,10 @@ Returns the assigned work orders, projects, and tasks for the currently authenti
         {
           "projectNo": 1001,
           "projectName": "Project Alpha",
-          "tasks": ["Transformer inspection", "Oil testing"]
+          "tasks": [
+            { "taskId": "1", "taskDetails": "Transformer inspection" },
+            { "taskId": "2", "taskDetails": "Oil testing" }
+          ]
         }
       ]
     }

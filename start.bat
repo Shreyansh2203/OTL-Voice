@@ -1,5 +1,6 @@
 @echo off
 setlocal
+cd /d "%~dp0"
 
 echo Starting the Timesheet Assistant...
 
@@ -32,9 +33,18 @@ echo Waiting for the server to be fully ready...
 echo =======================================================
 
 REM Wait a few seconds for services to bind
-timeout /t 5 /nobreak >nul
+ping 127.0.0.1 -n 6 >nul
 
 echo Opening your web browser to http://localhost ...
 start http://localhost
+
+echo.
+echo =======================================================
+echo Application is running at:
+echo   Web App:  http://localhost
+echo   API Docs: http://localhost/api/docs
+echo =======================================================
+echo.
+pause
 
 endlocal

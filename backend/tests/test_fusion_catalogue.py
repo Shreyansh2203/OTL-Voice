@@ -1,26 +1,26 @@
-import pytest
-from unittest.mock import MagicMock, patch, call
 import time
-import urllib.parse
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+import backend.services.fusion_catalogue as fc
 from backend.services.fusion_catalogue import (
     _build_index,
-    _host_url,
-    _ppm_base,
     _client,
+    _do_load_catalogue,
     _fetch_all_projects,
     _fetch_project_tasks,
     _fetch_project_team_members,
-    _do_load_catalogue,
-    load_catalogue,
-    get_project_by_id,
     _find_person_projects,
-    list_assignments_for_worker,
+    _host_url,
+    _ppm_base,
     catalogue_age_seconds,
-    status,
+    get_project_by_id,
+    list_assignments_for_worker,
+    load_catalogue,
     refresh_catalogue,
+    status,
 )
-import backend.services.fusion_catalogue as fc
-
 
 
 def test_build_index():
@@ -73,7 +73,7 @@ def test_client(mock_service_credential, mock_client):
     mock_cred = MagicMock()
     mock_cred.auth = ("user", "pass")
     mock_service_credential.return_value = mock_cred
-    client = _client()
+    _client()
     mock_client.assert_called_once()
     assert mock_client.call_args[1]['auth'] == ("user", "pass")
 

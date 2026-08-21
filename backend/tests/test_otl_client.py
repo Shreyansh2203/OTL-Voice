@@ -1,13 +1,34 @@
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from backend.services.otl_client import (
-    OtlCredential, OtlError, OtlConfigError, base_url, _timeout, service_credential,
-    _client, _extract_error, _raise_for_status, _safe_body, _coerce_int, _clip,
-    map_entry_to_otl, _default_record_name, validate, escape_q_literal,
-    list_timecard_entries, hcm_base_url, get_worker, list_worker_assignments,
-    get_timecard_entry, create_timecard_entry, delete_timecard_entry, create_many
+    OtlConfigError,
+    OtlCredential,
+    OtlError,
+    _clip,
+    _coerce_int,
+    _default_record_name,
+    _extract_error,
+    _raise_for_status,
+    _safe_body,
+    _timeout,
+    base_url,
+    create_many,
+    create_timecard_entry,
+    delete_timecard_entry,
+    escape_q_literal,
+    get_timecard_entry,
+    get_worker,
+    hcm_base_url,
+    list_timecard_entries,
+    list_worker_assignments,
+    map_entry_to_otl,
+    service_credential,
+    validate,
 )
+
 
 def test_base_url_missing():
     with patch.dict(os.environ, clear=True):
@@ -31,9 +52,8 @@ def test_otl_error():
     assert str(err) == "Not Found"
 
 def test_service_credential_missing():
-    with patch.dict(os.environ, clear=True):
-        with pytest.raises(OtlConfigError):
-            service_credential()
+    with patch.dict(os.environ, clear=True), pytest.raises(OtlConfigError):
+        service_credential()
     
     with patch.dict(os.environ, {"OTL_SERVICE_USERNAME": "u"}, clear=True):
         with pytest.raises(OtlConfigError):
@@ -190,7 +210,7 @@ def test_list_timecard_entries(mock_get):
         res = list_timecard_entries(cred, query="test")
         assert res == {"items": []}
         mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
+        _args, kwargs = mock_get.call_args
         assert kwargs["params"]["q"] == "test"
 
 def test_hcm_base_url():

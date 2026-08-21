@@ -1,17 +1,19 @@
-import pytest
 import time
-from fastapi import HTTPException
 from unittest.mock import patch
+
+import pytest
+from fastapi import HTTPException
+
 from backend.core.auth import (
-    create_session,
-    resolve,
-    destroy,
-    _prune,
-    current_session,
     _STORE,
-    SessionContext,
+    _prune,
+    create_session,
+    current_session,
+    destroy,
+    resolve,
 )
 from backend.models import Employee
+
 
 @pytest.fixture(autouse=True)
 def clear_store():
@@ -103,8 +105,9 @@ def test_current_session():
     assert exc.value.status_code == 401
 
 def test_cookie_secure():
-    from backend.core.auth import cookie_secure
     import os
+
+    from backend.core.auth import cookie_secure
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "false"}):
         assert cookie_secure() is False
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "true"}):
