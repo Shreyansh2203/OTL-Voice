@@ -75,11 +75,15 @@ export default function ReviewPanel({
     <div className="approval-card" aria-busy={busy}>
       <div className="approval-head">
         <div className="approval-title">
-          <span className="approval-badge">Action Required</span>
-          <h3>Approve Timesheet</h3>
+          {!result ? (
+            <span className="approval-badge">Action Required</span>
+          ) : (
+            <span className="approval-badge" style={{ background: 'var(--accent-color)' }}>Completed</span>
+          )}
+          <h3>{!result ? "Approve Timesheet" : "Timesheet Submitted"}</h3>
         </div>
         <span className="approval-meta">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"} • {totalHours}h total
+          {entries.length} {entries.length === 1 ? "entry" : "entries"} &bull; {totalHours}h total
         </span>
       </div>
 

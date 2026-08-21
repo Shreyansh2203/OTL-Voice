@@ -30,7 +30,7 @@ export default function MessageBubble({
         
         {message.thinking && <ThinkingState reasoning={message.reasoning} />}
         
-        {(!message.thinking || text) && (
+        {(text || message.streaming || (isUser && message.content)) && (
           <div className="bubble">
             {isUser ? (
               <p>{message.content}</p>
