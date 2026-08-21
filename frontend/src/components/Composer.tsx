@@ -1,5 +1,6 @@
 import { KeyboardEvent, useState } from "react";
 import { MicIcon, SendIcon, StopIcon } from "./icons";
+import { playMicStart, playMicStop } from "../lib/audio";
 
 /**
  * Properties for the Composer component.
@@ -53,8 +54,9 @@ export default function Composer({
     }
   }
 
-  function toggleMic() {
+  async function toggleMic() {
     if (listening) {
+      playMicStop();
       onStopMic?.();
       return;
     }
@@ -63,6 +65,9 @@ export default function Composer({
     // otherwise the newly opened mic might pick up the TTS audio as "random words".
     const playerStopEvent = new CustomEvent("otl:barge-in");
     window.dispatchEvent(playerStopEvent);
+
+    await playMicStart();
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     const baseText = text ? text + " " : "";
     onStartMic?.(
