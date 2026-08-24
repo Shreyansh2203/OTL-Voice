@@ -13,11 +13,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+        enable-cache: true
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        cache: 'pip'
+
+    - name: Install Python dependencies
+      run: uv sync --all-groups
 
     - name: Run Ruff (Python Linting)
       run: uv run ruff check backend

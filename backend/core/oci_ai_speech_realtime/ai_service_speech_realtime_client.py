@@ -79,8 +79,8 @@ class RealtimeSpeechClient:
     def __init__(
         self,
         config,
-        realtime_speech_parameters: RealtimeParameters = None,
-        listener: RealtimeSpeechClientListener = None,
+        realtime_speech_parameters: RealtimeParameters | None = None,
+        listener: RealtimeSpeechClientListener | None = None,
         service_endpoint=None,
         signer=None,
         compartment_id=None,
