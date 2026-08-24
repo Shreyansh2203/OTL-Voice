@@ -1,35 +1,60 @@
 import { useEffect, useState } from "react";
 import * as api from "../api/client";
 
+interface TimeAttribute {
+  attributeName: string;
+  attributeValue: string;
+}
+
+interface TimeRecordEvent {
+  startTime?: string;
+  timeRecordEventAttribute?: TimeAttribute[];
+  eventStatus?: string;
+  measure?: number;
+}
+
+interface TimecardItem {
+  timeRecordEvent?: TimeRecordEvent[];
+  timeRecordEventAttribute?: TimeAttribute[];
+  startTime?: string;
+  eventStatus?: string;
+  measure?: number;
+}
+
+interface TimecardsResponse {
+  items: TimecardItem[];
+}
+
 export default function TimecardHistory({
   onSessionExpired,
 }: {
   onSessionExpired: () => void;
 }) {
+  const [data, setData] = useState<TimecardsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    let active = true;
+    let mounted = true;
     api
-      .listTimecards(50, 0)
+      .listTimecards()
       .then((res) => {
-        if (!active) return;
-        setData(res);
-        setLoading(false);
+        if (mounted) {
+          setData(res as TimecardsResponse);
+          setLoading(false);
+        }
       })
       .catch((err) => {
-        if (!active) return;
-        if (err instanceof api.ApiError && err.status === 401) {
-          onSessionExpired();
-          return;
+        if (!mounted) return;
+        if (err.status === 401) {
+            onSessionExpired();
+            return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load timesheets");
+        setError(err.message || "Failed to load timesheets");
         setLoading(false);
       });
     return () => {
-      active = false;
+      mounted = false;
     };
   }, [onSessionExpired]);
 
@@ -42,27 +67,28 @@ export default function TimecardHistory({
   }
 
   const items = data?.items || [];
+  if (items.length === 0) {
+    return <div className="text-slate-400">No recent timesheets found.</div>;
+  }
 
   return (
-    <div className="card history-panel">
-      <h3>Submitted Timesheets (Fusion OTL)</h3>
-      {items.length === 0 ? (
-        <p className="muted">No recent timesheets found.</p>
-      ) : (
-        <table className="timecard-table">
-          <thead>
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold text-slate-100">Recent Timecards</h2>
+      <div className="overflow-x-auto rounded border border-slate-700">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-800 text-slate-300">
             <tr>
-              <th>Date</th>
-              <th>Project</th>
-              <th>Status</th>
-              <th>Hours</th>
+              <th className="p-3">Date</th>
+              <th className="p-3">Project / Comment</th>
+              <th className="p-3">Status</th>
+              <th className="p-3 text-right">Hours</th>
             </tr>
           </thead>
-          <tbody>
-            {items.map((item: any, idx: number) => {
+          <tbody className="divide-y divide-slate-800 bg-slate-900/50">
+            {items.map((item: TimecardItem, idx: number) => {
               const event = item.timeRecordEvent?.[0] || item;
               const attrs = event.timeRecordEventAttribute || [];
-              const commentAttr = attrs.find((a: any) => a.attributeName === "Comment");
+              const commentAttr = attrs.find((a: TimeAttribute) => a.attributeName === "Comment");
               const comment = commentAttr ? commentAttr.attributeValue : "N/A";
               
               // Basic date parse from start time
@@ -87,7 +113,7 @@ export default function TimecardHistory({
             })}
           </tbody>
         </table>
-      )}
+      </div>
     </div>
   );
 }

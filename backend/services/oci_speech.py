@@ -199,26 +199,28 @@ class _STTListener(RealtimeSpeechClientListener):
     def __init__(self, result_queue: asyncio.Queue):
         self.result_queue = result_queue
         self.done = asyncio.Event()
+        self.connected = asyncio.Event()
 
     def on_result(self, result):
-        try:
-            if result.get("transcriptions"):
-                tx = result["transcriptions"][0]
-                text = tx.get("transcription", "")
-                is_final = tx.get("isFinal", False)
-                if text:
+        transcriptions = result.get("transcriptions", [])
+        if transcriptions:
+            tx = transcriptions[0]
+            text = tx.get("transcription", "")
+            is_final = tx.get("isFinal", False)
+            if text:
+                try:
                     self.result_queue.put_nowait({"text": text, "isFinal": is_final})
-        except Exception:
-            pass
+                except asyncio.QueueFull:
+                    pass
 
     def on_ack_message(self, ackmessage):
         pass
 
     def on_connect(self):
-        pass
+        self.connected.set()
 
     def on_connect_message(self, connectmessage):
-        pass
+        self.connected.set()
 
     def on_network_event(self, ackmessage):
         pass
@@ -283,7 +285,11 @@ class STTClient:
         )
 
         loop_task = asyncio.create_task(client.connect())
-        # Give it a moment to connect
-        await asyncio.sleep(0.5)
+        
+        # Wait until the websocket successfully opens
+        try:
+            await asyncio.wait_for(listener.connected.wait(), timeout=10.0)
+        except TimeoutError:
+            pass # fallback if connection is extremely slow or fails
         
         return client, result_queue, listener.done, loop_task

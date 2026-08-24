@@ -37,7 +37,11 @@ _DB_PATH = Path(__file__).parent.parent.parent / "data" / "catalogue.db"
 def _get_db() -> sqlite3.Connection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    
+    # Ensure tables exist
     conn.execute('''CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)''')

@@ -5,18 +5,24 @@ class STTProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.buffer = [];
+    this.lastVal = 0;
   }
   process(inputs) {
     const input = inputs[0];
     if (input.length > 0) {
       const channelData = input[0];
-      // simple 3:1 decimation (48k -> 16k)
+      // 1st-order IIR low-pass filter to prevent aliasing distortion,
+      // followed by a simple 3:1 decimation (48k -> 16k).
+      // Alpha ~ 0.3 acts as a ~8kHz low-pass filter at 48kHz sampling rate.
+      const alpha = 0.3;
+      
       for (let i = 0; i < channelData.length; i += 3) {
-         let sum = channelData[i];
-         let count = 1;
-         if (i+1 < channelData.length) { sum+=channelData[i+1]; count++; }
-         if (i+2 < channelData.length) { sum+=channelData[i+2]; count++; }
-         const val = Math.max(-1, Math.min(1, sum/count));
+         // Apply filter to all samples
+         for (let j = 0; j < 3 && (i + j) < channelData.length; j++) {
+             this.lastVal = this.lastVal + alpha * (channelData[i + j] - this.lastVal);
+         }
+         
+         const val = Math.max(-1, Math.min(1, this.lastVal));
          this.buffer.push(val * 0x7FFF);
       }
       if (this.buffer.length >= 4096) {

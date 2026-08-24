@@ -23,12 +23,18 @@ def cookie_secure() -> bool:
 # --------------------------------------------------------------------------- #
 # Session store (Stateless JWT)
 # --------------------------------------------------------------------------- #
+import secrets
+
 import jwt
 
 JWT_ALGORITHM = "HS256"
 
+# Generate a strong fallback secret once at startup if missing.
+_FALLBACK_SECRET = secrets.token_urlsafe(32)
+
 def _jwt_secret() -> str:
-    return os.getenv("SESSION_SECRET_KEY", "insecure-default-secret-change-in-production")
+    # Do NOT use a hardcoded insecure secret in production.
+    return os.getenv("SESSION_SECRET_KEY") or _FALLBACK_SECRET
 
 
 @dataclass
