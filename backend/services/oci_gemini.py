@@ -168,7 +168,14 @@ class GeminiChatClient:
 
         # Fallback: walk the serialized dict form for any "text" fields.
         try:
-            blob = json.loads(str(data))
+            blob = oci.util.to_dict(data) if hasattr(oci, "util") and hasattr(oci.util, "to_dict") else None
+            if not blob and isinstance(data, dict):
+                blob = data
+            elif not blob:
+                try:
+                    blob = json.loads(str(data))
+                except Exception:
+                    blob = {}
             found: list[str] = []
 
             def _walk(node):

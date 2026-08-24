@@ -36,7 +36,9 @@ dev = [
 ignore = ["B008", "BLE001", "S110", "TRY002", "SIM117"]
 
 [tool.pytest.ini_options]
-addopts = "--ignore=backend/scripts"
+testpaths = ["backend/tests"]
+norecursedirs = ["scripts", "backend/scripts", "frontend"]
+addopts = "--ignore=backend/scripts --ignore=scripts"
 
 [tool.mypy]
 ignore_missing_imports = true

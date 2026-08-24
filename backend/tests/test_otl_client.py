@@ -8,7 +8,7 @@ from backend.services.otl_client import (
     OtlCredential,
     OtlError,
     _clip,
-    _coerce_int,
+    _coerce_number,
     _default_record_name,
     _extract_error,
     _raise_for_status,
@@ -111,11 +111,14 @@ def test_safe_body():
     resp.text = "a" * 3000
     assert len(_safe_body(resp)) == 2000
 
-def test_coerce_int():
-    assert _coerce_int(None) is None
-    assert _coerce_int("") is None
-    assert _coerce_int("4.6") == 5
-    assert _coerce_int("abc") is None
+def test_coerce_number():
+    assert _coerce_number(None) is None
+    assert _coerce_number("") is None
+    assert _coerce_number("4.6") == 4.6
+    assert _coerce_number("7.5") == 7.5
+    assert _coerce_number(8.0) == 8
+    assert _coerce_number(8) == 8
+    assert _coerce_number("abc") is None
 
 def test_clip():
     assert _clip(None) is None

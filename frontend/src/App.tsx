@@ -26,12 +26,12 @@ function AppContent() {
     qc.setQueryData(["session"], null);
   }, [qc]);
 
-  // Keep session alive while the user has the app open
+  // Keep session alive while the user has the app open (proactive refresh every 15 mins)
   useEffect(() => {
     if (!identity) return;
     const interval = setInterval(() => {
       api.refreshSession().catch(() => handleSessionExpired());
-    }, 1000 * 60 * 60); // Every hour
+    }, 1000 * 60 * 15); // Every 15 minutes
     return () => clearInterval(interval);
   }, [identity, handleSessionExpired]);
 

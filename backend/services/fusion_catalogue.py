@@ -178,10 +178,12 @@ def _build_index(projects_data: list[dict], assignments_data: list[dict] | None 
                 continue
             if person_name not in index:
                 index[person_name] = []
-            index[person_name].append({
-                **proj_entry,
-                "role": member.get("ProjectRole", "Team Member"),
-            })
+            already = any(p["project_number"] == proj_entry["project_number"] for p in index[person_name])
+            if not already:
+                index[person_name].append({
+                    **proj_entry,
+                    "role": member.get("ProjectRole", "Team Member"),
+                })
 
         # 2. Resource Assignments
         for assign in assignments_data:

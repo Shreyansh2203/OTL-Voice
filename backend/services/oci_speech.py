@@ -286,10 +286,18 @@ class STTClient:
 
         loop_task = asyncio.create_task(client.connect())
         
-        # Wait until the websocket successfully opens
+        # Wait until the websocket successfully opens or closes/fails
+        conn_task = asyncio.create_task(listener.connected.wait())
+        done_task = asyncio.create_task(listener.done.wait())
         try:
-            await asyncio.wait_for(listener.connected.wait(), timeout=10.0)
-        except TimeoutError:
-            pass # fallback if connection is extremely slow or fails
+            _done, pending = await asyncio.wait(
+                [conn_task, done_task],
+                timeout=10.0,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                t.cancel()
+        except Exception:
+            pass
         
         return client, result_queue, listener.done, loop_task

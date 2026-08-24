@@ -37,7 +37,23 @@ from .services.otl_client import OtlConfigError, OtlError
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     fusion_catalogue.load_catalogue()
-    yield
+    
+    async def _periodic_refresh():
+        interval = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                fusion_catalogue.load_catalogue()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    refresh_task = asyncio.create_task(_periodic_refresh())
+    try:
+        yield
+    finally:
+        refresh_task.cancel()
 
 
 app = FastAPI(
@@ -277,12 +293,18 @@ async def refresh_session(
         employee_id=ctx.employee_id,
     )
     new_token = auth.create_session(employee)
+    samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
+    samesite_valid = samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
+
     response.set_cookie(
         key=auth.SESSION_COOKIE_NAME,
         value=new_token,
         httponly=True,
         secure=auth.cookie_secure(),
-        samesite="lax",
+        samesite=samesite,
+        max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
+        path="/",
     )
     return {"status": "refreshed"}
 
@@ -495,11 +517,11 @@ def _resolve_entry(entry: dict[str, Any], ctx: SessionContext, assignments: list
     for order in assignments:
         for p in order.get("projects", []):
             if project_no and str(p.get("projectNo")) == str(project_no):
-                project = p
+                project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
             if not project_no and entry.get("projectName") and p.get("projectName") == entry.get("projectName"):
-                project = p
+                project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
         if project:

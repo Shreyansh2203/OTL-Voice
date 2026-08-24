@@ -114,11 +114,12 @@ def _safe_body(resp: httpx.Response) -> Any:
         return (resp.text or "")[:2000]
 
 
-def _coerce_int(value: Any) -> int | None:
+def _coerce_number(value: Any) -> float | int | None:
     if value is None or value == "":
         return None
     try:
-        return round(float(value))
+        f = float(value)
+        return int(f) if f.is_integer() else f
     except (TypeError, ValueError):
         return None
 
@@ -146,7 +147,7 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
         dict[str, Any]: The payload formatted for the timeRecordEventRequests endpoint.
     """
     emp_num = str(entry.get("employeeNumber") or "UNKNOWN_EMP").strip()
-    hours = _coerce_int(entry.get("hours")) or 0
+    hours = _coerce_number(entry.get("hours")) or 0
     if hours <= 0:
         raise OtlError(400, f"Timecard entry hours must be greater than zero, got {hours}.")
         

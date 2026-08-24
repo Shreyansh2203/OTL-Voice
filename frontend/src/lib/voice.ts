@@ -2,28 +2,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const WORKLET_CODE = `
 class STTProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.buffer = [];
     this.lastVal = 0;
+    this.inputSampleRate = options?.processorOptions?.sampleRate || 48000;
+    this.targetSampleRate = 16000;
+    this.ratio = this.inputSampleRate / this.targetSampleRate;
+    this.sampleAcc = 0;
   }
   process(inputs) {
     const input = inputs[0];
     if (input.length > 0) {
       const channelData = input[0];
-      // 1st-order IIR low-pass filter to prevent aliasing distortion,
-      // followed by a simple 3:1 decimation (48k -> 16k).
-      // Alpha ~ 0.3 acts as a ~8kHz low-pass filter at 48kHz sampling rate.
-      const alpha = 0.3;
+      // 1st-order IIR low-pass filter to prevent aliasing
+      const alpha = Math.min(1.0, Math.max(0.1, 16000 / this.inputSampleRate));
       
-      for (let i = 0; i < channelData.length; i += 3) {
-         // Apply filter to all samples
-         for (let j = 0; j < 3 && (i + j) < channelData.length; j++) {
-             this.lastVal = this.lastVal + alpha * (channelData[i + j] - this.lastVal);
+      for (let i = 0; i < channelData.length; i++) {
+         this.lastVal = this.lastVal + alpha * (channelData[i] - this.lastVal);
+         this.sampleAcc += 1;
+         if (this.sampleAcc >= this.ratio) {
+             this.sampleAcc -= this.ratio;
+             const val = Math.max(-1, Math.min(1, this.lastVal));
+             this.buffer.push(val * 0x7FFF);
          }
-         
-         const val = Math.max(-1, Math.min(1, this.lastVal));
-         this.buffer.push(val * 0x7FFF);
       }
       if (this.buffer.length >= 4096) {
          const out = new Int16Array(this.buffer);
@@ -38,7 +40,7 @@ registerProcessor("stt-processor", STTProcessor);
 `;
 
 export function useSpeechInput() {
-  const [supported] = useState(() => !!navigator.mediaDevices?.getUserMedia && !!window.AudioContext);
+  const [supported] = useState(() => !!navigator.mediaDevices?.getUserMedia && !!(window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext));
   const [listening, setListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
@@ -107,7 +109,8 @@ export function useSpeechInput() {
       };
 
       ws.onopen = async () => {
-         const actx = new AudioContext({ sampleRate: 48000 });
+         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+         const actx = new AudioCtx();
          ctxRef.current = actx;
          
          const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
@@ -116,7 +119,9 @@ export function useSpeechInput() {
          URL.revokeObjectURL(url);
          
          const source = actx.createMediaStreamSource(stream);
-         const node = new AudioWorkletNode(actx, "stt-processor");
+         const node = new AudioWorkletNode(actx, "stt-processor", {
+            processorOptions: { sampleRate: actx.sampleRate }
+         });
          nodeRef.current = node;
          
          node.port.onmessage = (e) => {

@@ -144,9 +144,9 @@ export default function ChatView({
             acc += ev.delta;
             setMessages((prev) => updateLastAssistant(prev, acc, true));
             
-            // TTS Streaming Chunking
+            // TTS Streaming Chunking: Avoid splitting on decimals (7.5, 1.0) or short abbreviations (Mr., WO., No., Dr.)
             unvoicedAcc += ev.delta;
-            const match = unvoicedAcc.match(/^(.*?[.?!])\s+(.*)$/s);
+            const match = unvoicedAcc.match(/^(.*?(?<!\b\d)(?<!\b(?:Mr|Mrs|Dr|WO|Proj|No|vs))[.?!])\s+(.*)$/is);
             if (match && voiceOnRef.current) {
                sentenceQueue.push(match[1]);
                unvoicedAcc = match[2];
