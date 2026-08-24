@@ -2,6 +2,12 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Voice Input State Machine', () => {
   test.beforeEach(async ({ page }) => {
+    // Pipe browser console logs to terminal
+    page.on('console', msg => console.log(`BROWSER: ${msg.text()}`));
+
+    // Disable assistant TTS to prevent it from auto-starting the mic and racing with our tests
+    await page.addInitScript(() => window.localStorage.setItem('otl_voice_on', 'false'));
+
     // Mock authentication session
     await page.route(/\/api\/auth\/session/, async (route) => {
       await route.fulfill({
@@ -73,7 +79,6 @@ test.describe('Voice Input State Machine', () => {
           }, 10);
         }
 
-        // Test utility to trigger a mock speech result
         simulateSpeech(text: string) {
           if (this.onspeechstart) this.onspeechstart();
           
@@ -116,6 +121,7 @@ test.describe('Voice Input State Machine', () => {
 
     // Verify it turns to "Stop recording"
     await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();
+    await expect(page.locator('textarea')).toHaveAttribute('placeholder', /Listening/i);
 
     // 2. Simulate the user speaking via our mock API
     await page.evaluate(() => {
@@ -149,7 +155,12 @@ test.describe('Voice Input State Machine', () => {
 
     // 1. Click the microphone button to start dictation
     const micBtn = page.getByRole('button', { name: /Speak/i });
+    await expect(micBtn).toBeVisible();
     await micBtn.click();
+    
+    // Wait for the recording to actually start before accessing the mock mic
+    await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();
+    await expect(page.locator('textarea')).toHaveAttribute('placeholder', /Listening/i);
     
     // 2. Simulate the user speaking via our mock API
     await page.evaluate(() => {

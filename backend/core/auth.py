@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 import time
 from dataclasses import dataclass
 
@@ -22,14 +21,14 @@ def cookie_secure() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Session store
+# Session store (Stateless JWT)
 # --------------------------------------------------------------------------- #
-@dataclass
-class _SessionRecord:
-    employee_id: str
-    username: str
-    full_name: str
-    expires_at: float
+import jwt
+
+JWT_ALGORITHM = "HS256"
+
+def _jwt_secret() -> str:
+    return os.getenv("SESSION_SECRET_KEY", "insecure-default-secret-change-in-production")
 
 
 @dataclass
@@ -40,57 +39,35 @@ class SessionContext:
     full_name: str  # -> Employee_Name_c
 
 
-_STORE: dict[str, _SessionRecord] = {}
-_LAST_PRUNE: float = 0.0
-MAX_SESSIONS: int = 10000
-
 def create_session(employee: Employee) -> str:
-    _prune()
-    if len(_STORE) >= MAX_SESSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Server is under heavy load. Please try again later."
+    payload = {
+        "sub": employee.employee_id,
+        "username": employee.username,
+        "full_name": employee.full_name,
+        "exp": time.time() + _ttl_seconds(),
+        "iat": time.time(),
+    }
+    return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def resolve(token: str | None) -> SessionContext | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return SessionContext(
+            employee_id=payload["sub"],
+            username=payload["username"],
+            full_name=payload["full_name"],
         )
-    sid = secrets.token_urlsafe(32)
-    _STORE[sid] = _SessionRecord(
-        employee_id=employee.employee_id,
-        username=employee.username,
-        full_name=employee.full_name,
-        expires_at=time.time() + _ttl_seconds(),
-    )
-    return sid
-
-
-def resolve(sid: str | None) -> SessionContext | None:
-    if not sid:
+    except jwt.PyJWTError:
         return None
-    record = _STORE.get(sid)
-    if record is None:
-        return None
-    if record.expires_at < time.time():
-        _STORE.pop(sid, None)
-        return None
-    return SessionContext(
-        employee_id=record.employee_id,
-        username=record.username,
-        full_name=record.full_name,
-    )
 
 
 def destroy(sid: str | None) -> None:
-    if sid:
-        _STORE.pop(sid, None)
-
-
-def _prune() -> None:
-    global _LAST_PRUNE
-    now = time.time()
-    if now - _LAST_PRUNE < 60.0:  # Only prune at most once per minute
-        return
-    _LAST_PRUNE = now
-    expired = [s for s, r in _STORE.items() if r.expires_at < now]
-    for s in expired:
-        _STORE.pop(s, None)
+    # JWTs are stateless and cannot be destroyed server-side without a blocklist.
+    # We rely on the client deleting the cookie.
+    pass
 
 
 # --------------------------------------------------------------------------- #

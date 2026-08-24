@@ -13,21 +13,7 @@ import { SpeakerIcon } from "./icons";
 
 const KICKOFF = "Please begin the session now.";
 
-/** Replace the content of the last assistant message (the streaming target). */
-export function updateLastAssistant(
-  messages: ChatMessage[],
-  content: string,
-  streaming: boolean
-): ChatMessage[] {
-  const next = [...messages];
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === "assistant") {
-      next[i] = { ...next[i], content, streaming };
-      return next;
-    }
-  }
-  return next;
-}
+import { updateLastAssistant } from "../lib/chat";
 
 /**
  * Properties for the ChatView component.
@@ -262,88 +248,120 @@ export default function ChatView({
   const visible = messages.filter((m) => !m.hidden);
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand-mini">
-          <img src="/favicon.svg" alt="" width={26} height={26} />
-          <span>OTL Timesheet</span>
+    <div className="app-layout">
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="brand-logo">
+            <img src="/favicon.svg" alt="" width={22} height={22} />
+          </div>
+          <span className="brand-title">OTL Timesheet</span>
         </div>
-        <div className="topbar-actions">
+
+        <nav className="sidebar-nav">
+          <div className="nav-group-title">Menu</div>
           <button
-            className={`chip ${viewTab === "chat" ? "on" : ""}`}
+            className={`nav-item ${viewTab === "chat" ? "active" : ""}`}
             onClick={() => setViewTab("chat")}
           >
-            Chat
+            Assistant
           </button>
           <button
-            className={`chip ${viewTab === "projects" ? "on" : ""}`}
+            className={`nav-item ${viewTab === "projects" ? "active" : ""}`}
             onClick={() => setViewTab("projects")}
           >
             Projects
           </button>
           <button
-            className={`chip ${viewTab === "history" ? "on" : ""}`}
+            className={`nav-item ${viewTab === "history" ? "active" : ""}`}
             onClick={() => setViewTab("history")}
           >
             History
           </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="nav-group-title">Settings</div>
           <button
-            className={`chip ${voiceOn ? "on" : ""}`}
+            className={`nav-item ${voiceOn ? "active" : ""}`}
             onClick={() => setVoiceOn((v) => !v)}
             title="Toggle spoken replies"
             aria-pressed={voiceOn}
           >
             <SpeakerIcon size={16} />
-            <span>{voiceOn ? "Voice on" : "Voice off"}</span>
+            <span>{voiceOn ? "Voice On" : "Voice Off"}</span>
           </button>
-          <span className="user muted" title={username}>
-            {username}
-          </span>
-          <button className="ghost" onClick={onLogout}>
-            Sign out
-          </button>
+          
+          <div className="user-profile">
+            <div className="avatar">{username.charAt(0).toUpperCase()}</div>
+            <div className="user-info">
+              <span className="user-name" title={username}>{username}</span>
+              <button className="sign-out-btn" onClick={onLogout}>Sign out</button>
+            </div>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      <main className="transcript">
+      <main className="workspace">
+        <header className="workspace-header">
+          <h2>
+            {viewTab === "chat" ? "Assistant" : 
+             viewTab === "projects" ? "Project Assignments" : 
+             "Timecard History"}
+          </h2>
+        </header>
+
         {viewTab === "history" ? (
-          <TimecardHistory onSessionExpired={onSessionExpired} />
+          <div className="workspace-content scroll-y">
+            <div className="workspace-inner">
+              <TimecardHistory onSessionExpired={onSessionExpired} />
+            </div>
+          </div>
         ) : viewTab === "projects" ? (
-          <ProjectAssignments onSessionExpired={onSessionExpired} />
+          <div className="workspace-content scroll-y">
+            <div className="workspace-inner">
+              <ProjectAssignments onSessionExpired={onSessionExpired} />
+            </div>
+          </div>
         ) : (
-          <>
-            {visible.map((m, i) => (
-              <MessageBubble key={i} message={m} />
-            ))}
+          <div className="workspace-content chat-layout">
+            <div className="transcript scroll-y">
+              <div className="transcript-inner">
+                {visible.map((m, i) => (
+                  <MessageBubble key={i} message={m} />
+                ))}
 
-            {entries && (
-              <ReviewPanel 
-                entries={entries} 
-                onSessionExpired={onSessionExpired}
-                autoSubmit={shouldAutoSubmit}
-              />
-            )}
+                {entries && (
+                  <ReviewPanel 
+                    entries={entries} 
+                    onSessionExpired={onSessionExpired}
+                    autoSubmit={shouldAutoSubmit}
+                  />
+                )}
 
-            <div ref={scrollAnchor} />
-          </>
+                <div ref={scrollAnchor} className="scroll-anchor" />
+              </div>
+            </div>
+
+            <div className="dock">
+              <div className="dock-inner">
+                <Composer 
+                  disabled={sending || viewTab !== "chat"} 
+                  onSend={sendUser} 
+                  supported={mic.supported}
+                  listening={mic.listening}
+                  onStartMic={mic.start}
+                  onStopMic={mic.stop}
+                  errorMsg={mic.errorMsg}
+                />
+                <p className="hint muted small">
+                  The assistant collects employee, project, work order, task and hours,
+                  then submits to OTL. Say “submit” when you’re done.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
       </main>
-
-      <footer className="dock">
-        <Composer 
-          disabled={sending || viewTab !== "chat"} 
-          onSend={sendUser} 
-          supported={mic.supported}
-          listening={mic.listening}
-          onStartMic={mic.start}
-          onStopMic={mic.stop}
-          errorMsg={mic.errorMsg}
-        />
-        <p className="hint muted small">
-          The assistant collects employee, project, work order, task and hours,
-          then submits to OTL. Say “submit” when you’re done.
-        </p>
-      </footer>
     </div>
   );
 }

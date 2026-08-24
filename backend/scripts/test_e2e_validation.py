@@ -24,6 +24,9 @@ for emp_no, expected_name in test_cases:
     login_data = r.json()
     print(f"    Name: {login_data['fullName']}")
     cookie = r.cookies.get("otl_session")
+    if not cookie:
+        print("    FAILED: No cookie returned.")
+        continue
     print(f"    Session: {cookie[:20]}...")
 
     client = httpx.Client(cookies={"otl_session": cookie}, timeout=15)

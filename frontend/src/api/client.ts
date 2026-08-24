@@ -69,6 +69,15 @@ export async function getSession(): Promise<Identity | null> {
 }
 
 /**
+ * Refreshes the active session to prevent expiration.
+ * @throws {ApiError} If the refresh request fails.
+ */
+export async function refreshSession(): Promise<void> {
+  const res = await fetch(`${API}/auth/refresh`, jsonInit("POST"));
+  if (!res.ok) throw await parseError(res);
+}
+
+/**
  * Terminates the active session and clears the session cookie.
  * 
  * @throws {ApiError} If the logout request fails.

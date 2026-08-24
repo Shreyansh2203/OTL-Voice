@@ -220,7 +220,7 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     if parts:
         attrs.append({
             "attributeName": "Comment",
-            "attributeValue": _clip(" | ".join(parts)),
+            "attributeValue": _clip(" | ".join(parts)) or "",
         })
         
     payroll_time_type = entry.get("payrollTimeType")

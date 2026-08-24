@@ -50,6 +50,7 @@ export default defineConfig({
       "/api": {
         target: BACKEND,
         changeOrigin: true,
+        ws: true,
       },
     },
   },
@@ -59,6 +60,7 @@ export default defineConfig({
       "/api": {
         target: BACKEND,
         changeOrigin: true,
+        ws: true,
       },
     },
   },

@@ -17,11 +17,13 @@
     "prepare": "node -e \"try { require('child_process').execSync('git config core.hooksPath .husky', {stdio: 'ignore', cwd: '..'}) } catch (e) {}\""
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.102.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.1",
@@ -44,7 +46,7 @@
     "prettier": "^3.9.6",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.67.0",
-    "vite": "^5.4.21",
+    "vite": "^8.2.2",
     "vite-plugin-pwa": "^0.21.1",
     "vitest": "^4.1.10"
   }

@@ -1,6 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Composer from './Composer';
+
+vi.mock('../lib/audio', () => ({
+  playMicStart: vi.fn().mockResolvedValue(undefined),
+  playMicStop: vi.fn()
+}));
 
 describe('Composer', () => {
   beforeEach(() => {
@@ -25,54 +30,82 @@ describe('Composer', () => {
     expect(textarea).toHaveValue(''); // Input should be cleared
   });
 
-  it('submits on Enter key (without shift)', () => {
+  it('does not call onSend if input is empty or whitespace', () => {
     const mockSend = vi.fn();
     render(<Composer disabled={false} onSend={mockSend} supported={true} />);
     
-    const textarea = screen.getByPlaceholderText(/Type or speak/i);
-
-    fireEvent.change(textarea, { target: { value: 'Test enter' } });
-    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-
-    expect(mockSend).toHaveBeenCalledWith('Test enter');
-  });
-
-  it('does not send if input is empty or disabled', () => {
-    const mockSend = vi.fn();
-    render(<Composer disabled={true} onSend={mockSend} supported={true} />);
-    
-    const textarea = screen.getByPlaceholderText(/Type or speak/i);
     const sendButton = screen.getByRole('button', { name: /send/i });
-
-    // Disabled test
-    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    
     fireEvent.click(sendButton);
     expect(mockSend).not.toHaveBeenCalled();
 
-    // Empty test
+    const textarea = screen.getByPlaceholderText(/Type or speak/i);
+    fireEvent.change(textarea, { target: { value: '   ' } });
+    fireEvent.click(sendButton);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('calls onSend when Enter is pressed (without Shift)', () => {
+    const mockSend = vi.fn();
     render(<Composer disabled={false} onSend={mockSend} supported={true} />);
-    const activeTextarea = screen.getAllByPlaceholderText(/Type or speak/i)[1];
+    
+    const textarea = screen.getByPlaceholderText(/Type or speak/i);
+    fireEvent.change(textarea, { target: { value: 'Keyboard message' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+
+    expect(mockSend).toHaveBeenCalledWith('Keyboard message');
+    expect(textarea).toHaveValue('');
+  });
+
+  it('does not call onSend when Shift+Enter is pressed', () => {
+    const mockSend = vi.fn();
+    render(<Composer disabled={false} onSend={mockSend} supported={true} />);
+    
+    const activeTextarea = screen.getByPlaceholderText(/Type or speak/i);
+    fireEvent.change(activeTextarea, { target: { value: 'Multiline\nmessage' } });
+    fireEvent.keyDown(activeTextarea, { key: 'Enter', shiftKey: true });
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('does not call onSend if disabled', () => {
+    const mockSend = vi.fn();
+    render(<Composer disabled={true} onSend={mockSend} supported={true} />);
+    
+    const activeTextarea = screen.getByPlaceholderText(/Type or speak/i);
     fireEvent.change(activeTextarea, { target: { value: '   ' } });
     fireEvent.keyDown(activeTextarea, { key: 'Enter', shiftKey: false });
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it('toggles microphone to start listening', () => {
-    const start = vi.fn((cb) => cb('spoken text'));
+  it('toggles microphone to start listening', async () => {
+    let interimCb: any;
+    let finalCb: any;
+    const start = vi.fn((onFinal, onInterim) => {
+      finalCb = onFinal;
+      interimCb = onInterim;
+    });
     const mockSend = vi.fn();
     render(<Composer disabled={false} onSend={mockSend} supported={true} listening={false} onStartMic={start} />);
     
     const micBtn = screen.getByTitle('Speak');
     fireEvent.click(micBtn);
     
-    expect(start).toHaveBeenCalled();
+    await waitFor(() => expect(start).toHaveBeenCalled());
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
+    
+    // Simulate interim speech
+    act(() => {
+      interimCb('spoken text');
+    });
     expect(textarea).toHaveValue('spoken text');
     
-    // Test appending text
-    start.mockImplementation((cb) => cb('more text'));
-    fireEvent.click(micBtn);
-    expect(textarea).toHaveValue('spoken text more text');
+    // Simulate final speech
+    act(() => {
+      finalCb('spoken text complete');
+    });
+    expect(mockSend).toHaveBeenCalledWith('spoken text complete');
+    expect(textarea).toHaveValue('');
   });
   
   it('toggles microphone to stop listening', () => {

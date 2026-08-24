@@ -1,6 +1,7 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ChatView, { updateLastAssistant } from './ChatView';
+import ChatView from './ChatView';
+import { updateLastAssistant } from '../lib/chat';
 import * as api from '../api/client';
 import * as voiceLib from '../lib/voice';
 
@@ -24,6 +25,7 @@ vi.mock('../lib/voice', () => ({
   useSpeechInput: vi.fn(() => ({
     supported: true,
     listening: false,
+    isListening: vi.fn(() => false),
     start: vi.fn(),
     stop: vi.fn()
   }))
@@ -69,7 +71,7 @@ describe('ChatView', () => {
     
     expect(screen.getByTestId('timecard-history')).toBeInTheDocument();
     
-    const chatBtn = screen.getByText('Chat');
+    const chatBtn = screen.getByText('Assistant');
     fireEvent.click(chatBtn);
     
     expect(screen.queryByTestId('timecard-history')).not.toBeInTheDocument();
@@ -83,10 +85,10 @@ describe('ChatView', () => {
     });
 
     const voiceBtn = screen.getByTitle('Toggle spoken replies');
-    expect(screen.getByText('Voice on')).toBeInTheDocument();
+    expect(screen.getByText(/Voice on/i)).toBeInTheDocument();
     
     fireEvent.click(voiceBtn);
-    expect(screen.getByText('Voice off')).toBeInTheDocument();
+    expect(screen.getByText(/Voice off/i)).toBeInTheDocument();
   });
   
   it('calls onLogout', async () => {

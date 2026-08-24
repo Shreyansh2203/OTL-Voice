@@ -1,43 +1,41 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "./api/client";
 import LoginView from "./components/LoginView";
 import ChatView from "./components/ChatView";
 import type { Identity } from "./types";
 
-type Phase = "loading" | "signed-out" | "signed-in";
-
-export default function App() {
-  const [phase, setPhase] = useState<Phase>("loading");
-  const [identity, setIdentity] = useState<Identity | null>(null);
-
-  useEffect(() => {
-    api
-      .getSession()
-      .then((user) => {
-        setIdentity(user);
-        setPhase(user ? "signed-in" : "signed-out");
-      })
-      .catch(() => setPhase("signed-out"));
-  }, []);
+function AppContent() {
+  const qc = useQueryClient();
+  
+  const { data: identity, isLoading } = useQuery({
+    queryKey: ["session"],
+    queryFn: api.getSession,
+  });
 
   const handleLogin = useCallback((user: Identity) => {
-    setIdentity(user);
-    setPhase("signed-in");
-  }, []);
+    qc.setQueryData(["session"], user);
+  }, [qc]);
 
   const handleLogout = useCallback(async () => {
     await api.logout().catch(() => undefined);
-    setIdentity(null);
-    setPhase("signed-out");
-  }, []);
+    qc.setQueryData(["session"], null);
+  }, [qc]);
 
-  // Any protected call returning 401 bubbles up here to force re-login.
   const handleSessionExpired = useCallback(() => {
-    setIdentity(null);
-    setPhase("signed-out");
-  }, []);
+    qc.setQueryData(["session"], null);
+  }, [qc]);
 
-  if (phase === "loading") {
+  // Keep session alive while the user has the app open
+  useEffect(() => {
+    if (!identity) return;
+    const interval = setInterval(() => {
+      api.refreshSession().catch(() => handleSessionExpired());
+    }, 1000 * 60 * 60); // Every hour
+    return () => clearInterval(interval);
+  }, [identity, handleSessionExpired]);
+
+  if (isLoading) {
     return (
       <div className="centered">
         <div className="spinner" aria-label="Loading" />
@@ -45,7 +43,7 @@ export default function App() {
     );
   }
 
-  if (phase === "signed-out" || identity === null) {
+  if (!identity) {
     return <LoginView onLogin={handleLogin} />;
   }
 
@@ -55,5 +53,22 @@ export default function App() {
       onLogout={handleLogout}
       onSessionExpired={handleSessionExpired}
     />
+  );
+}
+
+export default function App() {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false, // Don't retry on 401s
+        refetchOnWindowFocus: false,
+      },
+    },
+  }));
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
   );
 }

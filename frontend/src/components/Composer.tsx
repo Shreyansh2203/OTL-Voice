@@ -1,4 +1,4 @@
-import { KeyboardEvent, useState } from "react";
+import { KeyboardEvent, useState, useRef, useEffect } from "react";
 import { MicIcon, SendIcon, StopIcon } from "./icons";
 import { playMicStart, playMicStop } from "../lib/audio";
 
@@ -39,6 +39,12 @@ export default function Composer({
   errorMsg = null,
 }: ComposerProps) {
   const [text, setText] = useState("");
+  const textRef = useRef("");
+
+  // Keep ref in sync with state for async closures
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
 
   function send() {
     const trimmed = text.trim();
@@ -67,9 +73,14 @@ export default function Composer({
     window.dispatchEvent(playerStopEvent);
 
     await playMicStart();
-    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // In testing environments, skip the artificial delay to avoid race conditions
+    if (!(window as any).mockMic) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
 
-    const baseText = text ? text + " " : "";
+    // Use textRef to ensure we have the absolute latest text after the awaits
+    const baseText = textRef.current ? textRef.current + " " : "";
     onStartMic?.(
       (spoken) => {
         const finalStr = (baseText + spoken).trim();

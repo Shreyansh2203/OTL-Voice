@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as api from "../api/client";
 import type { SubmitResponse, TimecardEntry } from "../types";
 
@@ -33,7 +33,7 @@ export default function ReviewPanel({
 
   const totalHours = entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
 
-  const submit = async () => {
+  const submit = useCallback(async () => {
     setCountdown(null);
     setBusy(true);
     setError(null);
@@ -48,7 +48,7 @@ export default function ReviewPanel({
     } finally {
       setBusy(false);
     }
-  };
+  }, [entries, onSessionExpired]);
 
   const hasAutoSubmitted = useRef(false);
 
@@ -62,14 +62,16 @@ export default function ReviewPanel({
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
-      submit();
-      return;
+      const timer = setTimeout(() => {
+        submit();
+      }, 0);
+      return () => clearTimeout(timer);
     }
     const timer = setTimeout(() => {
       setCountdown((prev) => (prev !== null ? prev - 1 : null));
     }, 1000);
     return () => clearTimeout(timer);
-  }, [countdown]);
+  }, [countdown, submit]);
 
   return (
     <div className="approval-card" aria-busy={busy}>

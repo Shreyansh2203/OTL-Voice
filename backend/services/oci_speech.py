@@ -178,3 +178,112 @@ class SpeechClient:
             # SSML can 500 on unusual character runs — never fail the reply's
             # audio over speed; play it at the default rate instead.
             return self._call(self._details(clean, "TEXT"))
+
+
+# --------------------------------------------------------------------------- #
+# Speech-to-Text (Realtime STT)
+# --------------------------------------------------------------------------- #
+import asyncio
+
+try:
+    from oci.ai_speech.models import RealtimeParameters
+
+    from backend.core.oci_ai_speech_realtime import (
+        RealtimeSpeechClient,
+        RealtimeSpeechClientListener,
+    )
+except ImportError:
+    pass
+
+class _STTListener(RealtimeSpeechClientListener):
+    def __init__(self, result_queue: asyncio.Queue):
+        self.result_queue = result_queue
+        self.done = asyncio.Event()
+
+    def on_result(self, result):
+        try:
+            if result.get("transcriptions"):
+                tx = result["transcriptions"][0]
+                text = tx.get("transcription", "")
+                is_final = tx.get("isFinal", False)
+                if text:
+                    self.result_queue.put_nowait({"text": text, "isFinal": is_final})
+        except Exception:
+            pass
+
+    def on_ack_message(self, ackmessage):
+        pass
+
+    def on_connect(self):
+        pass
+
+    def on_connect_message(self, connectmessage):
+        pass
+
+    def on_network_event(self, ackmessage):
+        pass
+
+    def on_error(self, error_message):
+        self.done.set()
+
+    def on_close(self, error_code, error_message):
+        self.done.set()
+
+class STTClient:
+    def __init__(self) -> None:
+        self.config = build_oci_config()
+        self.region = self.config.get("region") or _env("OCI_REGION")
+        self.compartment_id = _env("OCI_COMPARTMENT_ID")
+        if not self.compartment_id:
+            raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
+
+    def _authenticator(self):
+        from oci.signer import Signer
+        if "key_content" in self.config:
+            return Signer(
+                tenancy=self.config["tenancy"],
+                user=self.config["user"],
+                fingerprint=self.config["fingerprint"],
+                private_key_content=self.config["key_content"],
+                pass_phrase=self.config.get("pass_phrase")
+            )
+        else:
+            return Signer(
+                tenancy=self.config["tenancy"],
+                user=self.config["user"],
+                fingerprint=self.config["fingerprint"],
+                private_key_file_name=self.config.get("key_file"),
+                pass_phrase=self.config.get("pass_phrase")
+            )
+
+    async def stream_session(self):
+        """
+        Creates a bidirectional streaming session to OCI AI Speech.
+        Returns (client, result_queue, done_event, loop_task).
+        """
+        params = RealtimeParameters()
+        params.language_code = "en-US"
+        params.model_domain = RealtimeParameters.MODEL_DOMAIN_GENERIC
+        params.encoding = "audio/raw;rate=16000"
+        params.partial_silence_threshold_in_ms = 0
+        params.final_silence_threshold_in_ms = 2000
+        params.punctuation = RealtimeParameters.PUNCTUATION_ENABLED
+        
+        result_queue = asyncio.Queue()
+        listener = _STTListener(result_queue)
+        url = f"wss://realtime.aiservice.{self.region}.oci.oraclecloud.com"
+        
+        client = RealtimeSpeechClient(
+            config=self.config,
+            realtime_speech_parameters=params,
+            listener=listener,
+            service_endpoint=url,
+            signer=self._authenticator(),
+            compartment_id=self.compartment_id,
+        )
+
+        loop_task = asyncio.create_task(client.connect())
+        # Give it a moment to connect
+        await asyncio.sleep(0.5)
+        
+        return client, result_queue, listener.done, loop_task

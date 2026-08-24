@@ -1,12 +1,12 @@
-import time
 from unittest.mock import patch
 
+import jwt
 import pytest
 from fastapi import HTTPException
 
 from backend.core.auth import (
-    _STORE,
-    _prune,
+    JWT_ALGORITHM,
+    _jwt_secret,
     create_session,
     current_session,
     destroy,
@@ -15,33 +15,21 @@ from backend.core.auth import (
 from backend.models import Employee
 
 
-@pytest.fixture(autouse=True)
-def clear_store():
-    _STORE.clear()
-    import backend.core.auth
-    backend.core.auth._LAST_PRUNE = 0.0
-    yield
-    _STORE.clear()
-
 def test_create_session():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    sid = create_session(employee)
-    assert sid in _STORE
-    assert _STORE[sid].employee_id == "123"
-
-def test_create_session_max_sessions():
-    employee = Employee(employee_id="123", username="testuser", full_name="Test User")
+    token = create_session(employee)
     
-    with patch("backend.core.auth.MAX_SESSIONS", 0):
-        with pytest.raises(HTTPException) as exc:
-            create_session(employee)
-        assert exc.value.status_code == 503
+    payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+    assert payload["sub"] == "123"
+    assert payload["username"] == "testuser"
+    assert payload["full_name"] == "Test User"
+
 
 def test_resolve():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    sid = create_session(employee)
+    token = create_session(employee)
     
-    ctx = resolve(sid)
+    ctx = resolve(token)
     assert ctx is not None
     assert ctx.employee_id == "123"
     
@@ -53,61 +41,41 @@ def test_resolve():
 
 def test_resolve_expired():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    sid = create_session(employee)
     
-    with patch("time.time", return_value=time.time() + 999999):
-        assert resolve(sid) is None
-        assert sid not in _STORE
+    with patch("backend.core.auth._ttl_seconds", return_value=-10):
+        token = create_session(employee)
+    
+    assert resolve(token) is None
+
 
 def test_destroy():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    sid = create_session(employee)
+    token = create_session(employee)
     
-    destroy(sid)
-    assert sid not in _STORE
+    # JWT destroy is a no-op server side
+    destroy(token)
     
     # None sid
     destroy(None)
 
-def test_prune():
-    employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    
-    # Create an expired session
-    with patch("backend.core.auth._ttl_seconds", return_value=-10):
-        sid1 = create_session(employee)
-    
-    # Prune should be called inside create_session and last prune is updated.
-    # We will reset _LAST_PRUNE to trigger again
-    import backend.core.auth
-    backend.core.auth._LAST_PRUNE = 0.0
-    
-    _prune()
-    assert sid1 not in _STORE
-    
-    # Test skipping prune
-    backend.core.auth._LAST_PRUNE = time.time()
-    sid2 = create_session(employee) # ttl is positive now since patch is gone
-    _STORE[sid2].expires_at = time.time() - 10
-    
-    _prune() # Should not prune because < 60s
-    assert sid2 in _STORE
-    
 
 def test_current_session():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
-    sid = create_session(employee)
+    token = create_session(employee)
     
-    ctx = current_session(otl_session=sid)
+    ctx = current_session(otl_session=token)
     assert ctx.employee_id == "123"
     
     with pytest.raises(HTTPException) as exc:
         current_session(otl_session=None)
     assert exc.value.status_code == 401
 
+
 def test_cookie_secure():
     import os
 
     from backend.core.auth import cookie_secure
+    
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "false"}):
         assert cookie_secure() is False
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "true"}):

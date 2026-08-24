@@ -208,7 +208,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
 
       <style>{`
         .pa-wrapper {
-          padding: 1.25rem 1.5rem 3rem;
+          padding: var(--space-5) var(--space-6) var(--space-8);
           max-width: 780px;
           margin: 0 auto;
         }
@@ -219,189 +219,208 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           align-items: flex-start;
           justify-content: space-between;
           gap: 1rem;
-          margin-bottom: 1.25rem;
+          margin-bottom: var(--space-5);
         }
         .pa-title {
           margin: 0 0 0.2rem;
-          font-size: 1.25rem;
-          font-weight: 700;
-          letter-spacing: -0.02em;
+          font-size: 1.5rem;
+          font-variation-settings: 'wght' var(--font-weight-display);
+          letter-spacing: -0.03em;
         }
         .pa-subtitle {
           margin: 0;
-          font-size: 0.85rem;
-          color: var(--muted);
+          font-size: 14px;
+          color: var(--color-text-tertiary);
         }
         .pa-summary-chips {
           display: flex;
-          gap: 0.5rem;
+          gap: var(--space-2);
           flex-shrink: 0;
         }
         .pa-stat {
-          background: var(--surface-2);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 0.3rem 0.65rem;
-          font-size: 0.8rem;
+          background: var(--color-bg-primary);
+          border: 1px solid var(--color-border-subtle);
+          border-radius: var(--radius-button);
+          padding: 6px 12px;
+          font-size: 13px;
+          font-variation-settings: 'wght' var(--font-weight-ui);
           white-space: nowrap;
+          color: var(--color-text-secondary);
+          box-shadow: rgba(0, 0, 0, 0.02) 0 1px 2px 0;
         }
-        .pa-stat strong { color: var(--brand); }
+        .pa-stat strong { color: var(--color-accent-primary); }
 
         /* ── Search ── */
         .pa-search-wrap {
           position: relative;
-          margin-bottom: 1.25rem;
+          margin-bottom: var(--space-5);
         }
         .pa-search-icon {
           position: absolute;
-          left: 0.75rem;
+          left: 14px;
           top: 50%;
           transform: translateY(-50%);
-          color: var(--muted);
+          color: var(--color-text-tertiary);
           display: flex;
           align-items: center;
         }
         .pa-search {
           width: 100%;
-          padding: 0.6rem 2.5rem 0.6rem 2.35rem;
-          border: 1px solid var(--border);
-          border-radius: 10px;
-          background: var(--surface);
-          color: var(--text);
-          font-size: 0.9rem;
+          padding: 12px 2.5rem 12px 2.5rem;
+          border: 1px solid var(--color-border-strong);
+          border-radius: var(--radius-input);
+          background: var(--color-bg-primary);
+          color: var(--color-text-primary);
+          font-size: 14px;
           outline: none;
-          transition: border-color 0.15s;
+          box-shadow: rgba(0, 0, 0, 0.02) 0 1px 2px 0 inset;
+          transition: border-color var(--duration-fast) var(--ease-default),
+                      box-shadow var(--duration-fast) var(--ease-default);
         }
-        .pa-search:focus { border-color: var(--brand); }
+        .pa-search::placeholder { color: var(--color-text-tertiary); }
+        .pa-search:focus {
+          border-color: var(--color-accent-primary);
+          box-shadow: var(--shadow-focus);
+        }
         .pa-search-clear {
           position: absolute;
-          right: 0.65rem;
+          right: 12px;
           top: 50%;
           transform: translateY(-50%);
           background: none;
           border: none;
           cursor: pointer;
           font-size: 1.1rem;
-          color: var(--muted);
-          padding: 0.1rem 0.35rem;
-          border-radius: 50%;
+          color: var(--color-text-tertiary);
+          padding: 2px 6px;
+          border-radius: var(--radius-circle);
           line-height: 1;
+          transition: color var(--duration-fast) var(--ease-default);
         }
-        .pa-search-clear:hover { color: var(--text); }
+        .pa-search-clear:hover { color: var(--color-text-primary); }
 
         /* ── Cards ── */
-        .pa-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .pa-list { display: flex; flex-direction: column; gap: var(--space-4); }
         .pa-card {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
+          background: var(--color-bg-primary);
+          border: 1px solid var(--color-border-subtle);
+          border-radius: var(--radius-card);
           overflow: hidden;
-          box-shadow: var(--shadow);
+          box-shadow: var(--shadow-card);
         }
         .pa-card-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
           width: 100%;
-          padding: 0.85rem 1rem;
-          background: none;
+          padding: 16px var(--space-5);
+          background: var(--color-bg-primary);
           border: none;
           cursor: pointer;
-          color: var(--text);
+          color: var(--color-text-primary);
           text-align: left;
-          gap: 0.75rem;
+          gap: var(--space-3);
+          transition: background-color var(--duration-fast) var(--ease-default);
         }
-        .pa-card-header:hover { background: var(--surface-2); }
+        .pa-card-header:hover { background: var(--color-bg-secondary); }
         .pa-card-header-left {
           display: flex;
           align-items: center;
-          gap: 0.55rem;
-          font-weight: 600;
-          font-size: 0.95rem;
+          gap: 12px;
+          font-variation-settings: 'wght' var(--font-weight-ui);
+          font-size: 15px;
         }
-        .pa-folder-icon { color: var(--brand); display: flex; align-items: center; }
-        .pa-wo-label { font-family: "SF Mono", "Fira Code", monospace; }
+        .pa-folder-icon { color: var(--color-accent-primary); display: flex; align-items: center; }
+        .pa-wo-label { font-family: var(--font-mono); font-variation-settings: 'wght' var(--font-weight-ui); }
         .pa-card-header-right {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
+          gap: 8px;
           flex-shrink: 0;
         }
         .pa-badge {
-          background: rgba(11, 95, 255, 0.12);
-          color: var(--brand);
-          border-radius: 999px;
-          padding: 0.15rem 0.55rem;
-          font-size: 0.75rem;
-          font-weight: 600;
+          background: var(--color-accent-light);
+          color: var(--color-accent-active);
+          border-radius: var(--radius-button);
+          padding: 4px 10px;
+          font-size: 12px;
+          font-variation-settings: 'wght' var(--font-weight-ui);
         }
         .pa-badge-subtle {
-          background: var(--surface-2);
-          color: var(--muted);
+          background: var(--color-bg-secondary);
+          color: var(--color-text-secondary);
+          border: 1px solid var(--color-border-subtle);
         }
-        .pa-chevron { color: var(--muted); display: flex; align-items: center; }
+        .pa-chevron { color: var(--color-text-tertiary); display: flex; align-items: center; }
 
         /* ── Card body ── */
         .pa-card-body {
-          border-top: 1px solid var(--border);
-          padding: 0.5rem 0;
+          border-top: 1px solid var(--color-border-subtle);
+          padding: var(--space-2) 0;
+          background: var(--color-bg-secondary);
         }
         .pa-project {
-          padding: 0.75rem 1rem;
+          padding: var(--space-4) var(--space-5);
         }
         .pa-project + .pa-project {
-          border-top: 1px dashed var(--border);
+          border-top: 1px solid var(--color-border-subtle);
         }
         .pa-project-header {
           display: flex;
           align-items: baseline;
           justify-content: space-between;
-          gap: 0.5rem;
-          margin-bottom: 0.6rem;
+          gap: var(--space-2);
+          margin-bottom: 12px;
         }
         .pa-project-title {
-          font-weight: 600;
-          font-size: 0.9rem;
+          font-variation-settings: 'wght' var(--font-weight-ui);
+          font-size: 14px;
+          color: var(--color-text-primary);
         }
         .pa-project-num {
-          font-size: 0.75rem;
-          color: var(--muted);
-          background: var(--surface-2);
-          border-radius: 6px;
-          padding: 0.1rem 0.4rem;
+          font-size: 12px;
+          color: var(--color-text-tertiary);
+          background: var(--color-bg-primary);
+          border: 1px solid var(--color-border-subtle);
+          border-radius: var(--radius-button);
+          padding: 2px 8px;
           white-space: nowrap;
           flex-shrink: 0;
+          font-family: var(--font-mono);
         }
 
         /* ── Task chips ── */
         .pa-tasks {
           display: flex;
           flex-wrap: wrap;
-          gap: 0.4rem;
+          gap: 8px;
         }
         .pa-task-chip {
           display: inline-flex;
           align-items: center;
-          gap: 0.3rem;
-          background: var(--surface-2);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 0.25rem 0.6rem;
-          font-size: 0.78rem;
-          color: var(--text);
+          gap: 6px;
+          background: var(--color-bg-primary);
+          border: 1px solid var(--color-border-subtle);
+          border-radius: var(--radius-button);
+          padding: 6px 12px;
+          font-size: 13px;
+          color: var(--color-text-secondary);
           white-space: nowrap;
+          box-shadow: rgba(0, 0, 0, 0.02) 0 1px 2px 0;
+          transition: border-color var(--duration-fast) var(--ease-default);
         }
-        .pa-task-icon { color: var(--ok); display: flex; align-items: center; }
+        .pa-task-chip:hover { border-color: var(--color-border-strong); }
+        .pa-task-icon { color: var(--color-status-success); display: flex; align-items: center; }
         .pa-task-id {
-          font-family: "SF Mono", "Fira Code", monospace;
-          font-size: 0.7rem;
-          color: var(--muted);
-          background: var(--bg);
-          border-radius: 4px;
-          padding: 0 0.3rem;
+          font-family: var(--font-mono);
+          font-size: 12px;
+          color: var(--color-text-tertiary);
+          background: var(--color-bg-secondary);
+          border-radius: 2px;
+          padding: 2px 6px;
         }
-        .pa-task-sep { color: var(--border); }
-        .pa-no-tasks { margin: 0; font-size: 0.8rem; color: var(--muted); font-style: italic; }
+        .pa-task-sep { color: var(--color-border-subtle); }
+        .pa-no-tasks { margin: 0; font-size: 13px; color: var(--color-text-tertiary); font-style: italic; }
 
         /* ── Loading ── */
         .pa-loading {
@@ -409,37 +428,39 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 0.75rem;
-          padding: 3rem;
-          color: var(--muted);
-          font-size: 0.9rem;
+          gap: var(--space-3);
+          padding: var(--space-8);
+          color: var(--color-text-tertiary);
+          font-size: 14px;
+          font-variation-settings: 'wght' var(--font-weight-ui);
         }
         .pa-spinner {
-          width: 28px; height: 28px;
-          border: 3px solid var(--border);
-          border-top-color: var(--brand);
-          border-radius: 50%;
-          animation: pa-spin 0.8s linear infinite;
+          width: 32px; height: 32px;
+          border: 3px solid var(--color-border-subtle);
+          border-top-color: var(--color-accent-primary);
+          border-radius: var(--radius-circle);
+          animation: pa-spin 700ms linear infinite;
         }
         @keyframes pa-spin { to { transform: rotate(360deg); } }
 
         /* ── Error / empty ── */
         .pa-error-box {
-          background: rgba(220, 38, 38, 0.1);
-          color: var(--danger);
-          border: 1px solid rgba(220, 38, 38, 0.3);
-          border-radius: var(--radius);
-          padding: 0.85rem 1rem;
-          font-size: 0.9rem;
+          background: var(--color-status-error-bg);
+          color: var(--color-status-error);
+          border: 1px solid rgba(224, 30, 90, 0.2);
+          border-radius: var(--radius-card);
+          padding: 16px var(--space-5);
+          font-size: 14px;
+          box-shadow: rgba(0, 0, 0, 0.02) 0 1px 2px 0;
         }
         .pa-empty {
           text-align: center;
-          padding: 3rem 1rem;
-          color: var(--muted);
+          padding: var(--space-8) var(--space-4);
+          color: var(--color-text-tertiary);
         }
-        .pa-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
-        .pa-empty-title { font-size: 1rem; font-weight: 600; color: var(--text); margin: 0 0 0.35rem; }
-        .pa-empty-sub { font-size: 0.85rem; margin: 0; }
+        .pa-empty-icon { font-size: 2.5rem; margin-bottom: var(--space-3); }
+        .pa-empty-title { font-size: 1.2rem; font-variation-settings: 'wght' var(--font-weight-ui); color: var(--color-text-primary); margin: 0 0 6px; }
+        .pa-empty-sub { font-size: 14px; margin: 0; }
       `}</style>
     </div>
   );

@@ -262,8 +262,32 @@ def logout(
     return {"status": "signed out"}
 
 
+@app.post("/api/auth/refresh")
+async def refresh_session(
+    response: Response,
+    ctx: SessionContext = Depends(auth.current_session),
+) -> dict[str, str]:
+    """
+    Refreshes the current session by issuing a new JWT and resetting the cookie TTL.
+    """
+    from .models import Employee
+    employee = Employee(
+        username=ctx.username,
+        full_name=ctx.full_name,
+        employee_id=ctx.employee_id,
+    )
+    new_token = auth.create_session(employee)
+    response.set_cookie(
+        key=auth.SESSION_COOKIE_NAME,
+        value=new_token,
+        httponly=True,
+        secure=auth.cookie_secure(),
+        samesite="lax",
+    )
+    return {"status": "refreshed"}
+
 # --------------------------------------------------------------------------- #
-# Chat (SSE)
+# Chat / LLM
 # --------------------------------------------------------------------------- #
 @app.post("/api/chat")
 def chat_stream(
@@ -347,6 +371,93 @@ def tts(
         )
     return Response(content=audio, media_type=client.mime)
 
+
+# --------------------------------------------------------------------------- #
+# Speech-to-Text (Streaming)
+# --------------------------------------------------------------------------- #
+import asyncio
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+@app.websocket("/api/stt/stream")
+async def stt_stream(websocket: WebSocket):
+    """
+    Bidirectional WebSocket for streaming raw PCM audio to OCI Realtime Speech.
+    """
+    await websocket.accept()
+    
+    # Authenticate manually since Depends() for websockets can be tricky with cookies
+    otl_session = websocket.cookies.get(auth.SESSION_COOKIE_NAME)
+    ctx = auth.resolve(otl_session)
+    if not ctx:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+        return
+
+    oci_client = None
+    try:
+        from .services.oci_speech import STTClient
+        client = STTClient()
+        oci_client, result_queue, done_event, loop_task = await client.stream_session()
+        
+        async def receive_from_frontend():
+            try:
+                while True:
+                    data = await websocket.receive_bytes()
+                    if not data: # EOF signal from frontend (empty bytes)
+                        await oci_client.request_final_result()
+                        break
+                    await oci_client.send_data(data)
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("STT RX Error")
+
+        async def send_to_frontend():
+            try:
+                while not done_event.is_set() or not result_queue.empty():
+                    # Wait for results or the connection to close
+                    fetch_task = asyncio.create_task(result_queue.get())
+                    done_task = asyncio.create_task(done_event.wait())
+                    
+                    done, pending = await asyncio.wait(
+                        [fetch_task, done_task],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    
+                    if fetch_task in done:
+                        result = fetch_task.result()
+                        await websocket.send_json(result)
+                        if result.get("isFinal"):
+                            pass
+                    
+                    for t in pending:
+                        t.cancel()
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("STT TX Error")
+        
+        rx_task = asyncio.create_task(receive_from_frontend())
+        tx_task = asyncio.create_task(send_to_frontend())
+        
+        await asyncio.gather(rx_task, tx_task, loop_task)
+        
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("STT Session Error")
+    finally:
+        try:
+            if oci_client:
+                oci_client.close()
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 # --------------------------------------------------------------------------- #
 # OTL timecard submission

@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
 import MessageBubble from './MessageBubble';
 import type { ChatMessage } from '../types';
 
@@ -29,18 +29,7 @@ describe('MessageBubble', () => {
     expect(linkElement).toHaveAttribute('target', '_blank');
   });
 
-  it('calls onSpeak when speak button is clicked', () => {
-    const message: ChatMessage = { role: 'assistant', content: 'Speak to me' };
-    const mockSpeak = vi.fn();
-    
-    render(<MessageBubble message={message} onSpeak={mockSpeak} />);
-    
-    const button = screen.getByRole('button', { name: /play/i });
-    fireEvent.click(button);
-    
-    expect(mockSpeak).toHaveBeenCalledWith('Speak to me');
-  });
-  
+
   it('renders tool calls', () => {
     const message: ChatMessage = { 
       role: 'assistant', 

@@ -43,6 +43,12 @@ COPY --from=frontend /fe/dist ./frontend/dist
 # The reference database is created and seeded on first startup. Mount a volume
 # here to keep employees and assignments across container replacements.
 RUN mkdir -p /app/data
+
+# Switch to a non-root user for security best practices
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser \
+    && chown -R appuser:appgroup /app
+USER appuser
+
 VOLUME ["/app/data"]
 
 EXPOSE 8000

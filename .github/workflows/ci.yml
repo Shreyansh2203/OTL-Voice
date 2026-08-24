@@ -22,6 +22,9 @@ jobs:
     - name: Run Ruff (Python Linting)
       run: uv run ruff check backend
 
+    - name: Run Mypy (Python Type Checking)
+      run: uv run mypy backend
+
     - name: Verify Python Compilation
       run: |
         python -m py_compile backend/main.py backend/services/otl_client.py
