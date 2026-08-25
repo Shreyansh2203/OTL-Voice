@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Composer from './Composer';
 vi.mock('../lib/audio', () => ({
@@ -57,6 +57,7 @@ describe('Composer', () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
   it('toggles microphone to start listening', async () => {
+    vi.useFakeTimers();
     let interimCb: any;
     let finalCb: any;
     const start = vi.fn((onFinal, onInterim) => {
@@ -67,7 +68,7 @@ describe('Composer', () => {
     render(<Composer disabled={false} onSend={mockSend} supported={true} listening={false} onStartMic={start} />);
     const micBtn = screen.getByTitle('Speak');
     fireEvent.click(micBtn);
-    await waitFor(() => expect(start).toHaveBeenCalled());
+    expect(start).toHaveBeenCalled();
     const textarea = screen.getByPlaceholderText(/Type or speak/i);
     act(() => {
       interimCb('spoken text');
@@ -76,8 +77,13 @@ describe('Composer', () => {
     act(() => {
       finalCb('spoken text complete');
     });
+    expect(textarea).toHaveValue('spoken text complete');
+    act(() => {
+      vi.advanceTimersByTime(2600);
+    });
     expect(mockSend).toHaveBeenCalledWith('spoken text complete');
     expect(textarea).toHaveValue('');
+    vi.useRealTimers();
   });
   it('toggles microphone to stop listening', () => {
     const stop = vi.fn();

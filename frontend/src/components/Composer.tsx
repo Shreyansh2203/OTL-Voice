@@ -28,16 +28,34 @@ export default function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const textRef = useRef("");
+  const accumulatedRef = useRef("");
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     textRef.current = text;
   }, [text]);
 
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSilenceTimer();
+  }, []);
+
   function send() {
+    clearSilenceTimer();
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
+    if (listening) {
+      onStopMic?.();
+    }
     onSend(trimmed);
     setText("");
+    accumulatedRef.current = "";
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -49,23 +67,51 @@ export default function Composer({
 
   async function toggleMic() {
     if (listening) {
+      clearSilenceTimer();
       void playMicStop();
       onStopMic?.();
+      const current = textRef.current.trim();
+      if (current && !disabled) {
+        onSend(current);
+        setText("");
+        accumulatedRef.current = "";
+      }
       return;
     }
+
     const playerStopEvent = new CustomEvent("otl:barge-in");
     window.dispatchEvent(playerStopEvent);
     void playMicStart();
-    const baseText = textRef.current ? textRef.current + " " : "";
-    onStartMic?.(
-      (spoken) => {
-        const finalStr = (baseText + spoken).trim();
-        setText("");
-        if (finalStr) {
-          onSend(finalStr);
+
+    accumulatedRef.current = textRef.current ? textRef.current.trim() + " " : "";
+
+    const resetSilenceTimer = () => {
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(() => {
+        const toSend = textRef.current.trim();
+        if (toSend && !disabled) {
+          void playMicStop();
+          onStopMic?.();
+          onSend(toSend);
+          setText("");
+          accumulatedRef.current = "";
         }
+      }, 2500);
+    };
+
+    onStartMic?.(
+      (finalChunk) => {
+        if (!finalChunk) return;
+        const currentAcc = (accumulatedRef.current + " " + finalChunk).trim();
+        accumulatedRef.current = currentAcc + " ";
+        setText(currentAcc);
+        resetSilenceTimer();
       },
-      (spoken) => setText(baseText + spoken),
+      (interimChunk) => {
+        const fullPreview = (accumulatedRef.current + (interimChunk || "")).trim();
+        setText(fullPreview);
+        clearSilenceTimer();
+      },
       () => {
         const evt = new CustomEvent("otl:barge-in");
         window.dispatchEvent(evt);
