@@ -56,27 +56,13 @@ export function useSpeechInput() {
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const recognitionRef = useRef<any>(null);
   const audioDisconnectRef = useRef<(() => void) | null>(null);
   const isCleaningUpRef = useRef(false);
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isListeningRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (isCleaningUpRef.current) return;
     isCleaningUpRef.current = true;
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {
-        void e;
-      }
-      recognitionRef.current = null;
-    }
     if (audioDisconnectRef.current) {
       try {
         audioDisconnectRef.current();
@@ -99,13 +85,6 @@ export function useSpeechInput() {
   const stop = useCallback(
     (cancel = false) => {
       isListeningRef.current = false;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          void e;
-        }
-      }
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(new Uint8Array(0));
         if (cancel) {
@@ -142,62 +121,7 @@ export function useSpeechInput() {
         let hasStarted = false;
         let lastFinal = "";
 
-        // 1. Native Web Speech API fallback for instant realtime transcription
-        const SpeechRec =
-          (window as any).SpeechRecognition ||
-          (window as any).webkitSpeechRecognition;
-        if (SpeechRec) {
-          try {
-            const rec = new SpeechRec();
-            rec.continuous = continuous;
-            rec.interimResults = true;
-            rec.lang = "en-US";
-            rec.onresult = (event: any) => {
-              let interim = "";
-              let finalChunk = "";
-              for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                  finalChunk += event.results[i][0].transcript;
-                } else {
-                  interim += event.results[i][0].transcript;
-                }
-              }
-              if (interim) {
-                if (!hasStarted) {
-                  hasStarted = true;
-                  onSpeechStart?.();
-                }
-                onInterim?.(interim);
-              }
-              if (finalChunk) {
-                const trimmed = finalChunk.trim();
-                if (trimmed && trimmed !== lastFinal) {
-                  lastFinal = trimmed;
-                  hasStarted = false;
-                  onFinal(trimmed);
-                }
-              }
-            };
-            rec.onerror = (e: any) => {
-              console.warn("Native speech recognition event:", e.error);
-            };
-            rec.onend = () => {
-              if (isListeningRef.current && continuous) {
-                try {
-                  rec.start();
-                } catch (e) {
-                  void e;
-                }
-              }
-            };
-            rec.start();
-            recognitionRef.current = rec;
-          } catch (e) {
-            console.warn("SpeechRecognition init error:", e);
-          }
-        }
-
-        // 2. OCI Speech STT WebSocket streaming
+        // OCI Speech STT 16kHz PCM WebSocket streaming
         const AudioCtx =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext })
@@ -327,22 +251,7 @@ export function useSpeechInput() {
           }
         };
 
-        connectTimeoutRef.current = setTimeout(() => {
-          if (ws.readyState === WebSocket.CONNECTING) {
-            console.warn("WebSocket connecting timeout — continuing with native STT");
-          }
-        }, 10000);
-
-        ws.onopen = () => {
-          if (connectTimeoutRef.current) {
-            clearTimeout(connectTimeoutRef.current);
-            connectTimeoutRef.current = null;
-          }
-        };
-
         ws.onmessage = (e) => {
-          // Only use WebSocket results if native SpeechRecognition is not active
-          if (recognitionRef.current) return;
           try {
             const data = JSON.parse(e.data);
             if (data.text) {
@@ -375,18 +284,7 @@ export function useSpeechInput() {
         ws.onerror = (e) => {
           console.warn("WebSocket error on STT stream:", e);
         };
-
-        ws.onclose = () => {
-          if (connectTimeoutRef.current) {
-            clearTimeout(connectTimeoutRef.current);
-            connectTimeoutRef.current = null;
-          }
-        };
       } catch (err: any) {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
         setListening(false);
         isListeningRef.current = false;
         let msg = "Microphone error: " + err.message;
