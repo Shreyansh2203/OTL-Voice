@@ -253,7 +253,7 @@ def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None
         names = names.get("items", [])
     full_name = "Unknown Name"
     if names and len(names) > 0:
-        full_name = names[0].get("DisplayName", full_name)
+        full_name = str(names[0].get("DisplayName") or full_name).strip()
     return {
         "personId": worker.get("PersonId"),
         "personNumber": worker.get("PersonNumber"),

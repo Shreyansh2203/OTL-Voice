@@ -6,8 +6,7 @@ export default function LoginView({
 }: {
   onLogin: (identity: Identity) => void;
 }) {
-  const [username, _setUsername] = useState("");
-  void _setUsername;
+  const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -15,7 +14,7 @@ export default function LoginView({
     setError(null);
     setBusy(true);
     try {
-      onLogin(await api.login(username.trim() || "208", ""));
+      onLogin(await api.login(username.trim(), ""));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
@@ -32,7 +31,6 @@ export default function LoginView({
             <p className="muted">Sign in with your employee credentials.</p>
           </div>
         </div>
-        {/* Person Number input - commented out for now until instance starts working
         <label>
           <span>Person Number</span>
           <input
@@ -40,11 +38,11 @@ export default function LoginView({
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. 12345"
+            placeholder="e.g. 7"
+            required
             autoFocus
           />
         </label>
-        */}
         {error && <div className="error" role="alert">{error}</div>}
         <button className="primary" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}

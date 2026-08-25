@@ -324,7 +324,12 @@ async def health_otl(ctx: SessionContext = Depends(auth.current_session)) -> dic
     return await otl_client.avalidate(otl_client.service_credential())
 @app.post("/api/auth/login")
 async def login(body: LoginBody, response: Response) -> dict[str, Any]:
-    person_number = (body.username or body.personNumber).strip() or "208"
+    person_number = (body.username or body.personNumber).strip()
+    if not person_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Person Number is required.",
+        )
     worker_data: dict[str, Any] | None = None
     cred = None
     try:

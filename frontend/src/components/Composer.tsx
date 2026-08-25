@@ -49,16 +49,13 @@ export default function Composer({
 
   async function toggleMic() {
     if (listening) {
-      playMicStop();
+      void playMicStop();
       onStopMic?.();
       return;
     }
     const playerStopEvent = new CustomEvent("otl:barge-in");
     window.dispatchEvent(playerStopEvent);
-    await playMicStart();
-    if (!(window as any).mockMic) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
+    void playMicStart();
     const baseText = textRef.current ? textRef.current + " " : "";
     onStartMic?.(
       (spoken) => {

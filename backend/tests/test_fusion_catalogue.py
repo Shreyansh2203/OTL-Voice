@@ -25,7 +25,7 @@ from backend.services.fusion_catalogue import (
 
 
 @pytest.fixture(autouse=True)
-def mock_db():
+def mock_db(tmp_path):
     conn = sqlite3.connect("file:memdb1?mode=memory&cache=shared", uri=True, check_same_thread=False)
     conn.execute('''CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)''')
@@ -33,7 +33,8 @@ def mock_db():
     conn.commit()
     def _mock_get_db():
         return sqlite3.connect("file:memdb1?mode=memory&cache=shared", uri=True, check_same_thread=False)
-    with patch('backend.services.fusion_catalogue._get_db', side_effect=_mock_get_db):
+    with patch('backend.services.fusion_catalogue._get_db', side_effect=_mock_get_db), \
+         patch('backend.services.fusion_catalogue._DB_PATH', tmp_path / "catalogue.db"):
         yield conn
     conn.close()
 @pytest.fixture(autouse=True)
