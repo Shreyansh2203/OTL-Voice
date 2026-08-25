@@ -1,6 +1,8 @@
 import os
+
 import httpx
 from dotenv import load_dotenv
+
 load_dotenv()
 USERNAME = os.getenv("OTL_SERVICE_USERNAME", "").strip()
 PASSWORD = os.getenv("OTL_SERVICE_PASSWORD", "")

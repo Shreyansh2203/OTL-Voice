@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -6,9 +7,12 @@ import secrets
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import ClassVar
+from typing import ClassVar, Self
+
 from fastapi import Cookie, HTTPException, status
+
 from ..models import Employee
+
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "otl_session"
 def _session_cookie_name() -> str:
@@ -18,6 +22,7 @@ def _ttl_seconds() -> int:
 def cookie_secure() -> bool:
     return os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() != "false"
 import jwt
+
 JWT_ALGORITHM = "HS256"
 def _jwt_secret() -> str:
     secret = os.getenv("SESSION_SECRET_KEY")
@@ -44,7 +49,7 @@ class _TokenBlocklist:
     _init_lock: ClassVar[Lock] = Lock()
     _local_revoked: dict[str, float]
     _local_lock: asyncio.Lock
-    def __new__(cls) -> _TokenBlocklist:
+    def __new__(cls) -> Self:
         if cls._instance is None:
             with cls._init_lock:
                 if cls._instance is None:
@@ -53,7 +58,8 @@ class _TokenBlocklist:
                     cls._instance._use_redis = False
                     cls._instance._local_revoked = {}
                     cls._instance._local_lock = asyncio.Lock()
-        return cls._instance
+        from typing import cast
+        return cast(Self, cls._instance)
     def _get_redis(self):
         if not self._use_redis:
             return None

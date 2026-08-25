@@ -8,8 +8,8 @@ test.describe('Chat View UI', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          employeeNumber: 'E100',
-          employeeName: 'Playwright Tester',
+          username: 'E100', employeeId: 'E100',
+          fullName: 'Playwright Tester',
           authenticated: true
         })
       });
@@ -111,18 +111,18 @@ test.describe('Chat View UI', () => {
   test('should toggle voice button between on and off', async ({ page }) => {
     await page.goto('/');
 
-    const voiceBtn = page.getByRole('button', { name: /Voice on/i });
+    const voiceBtn = page.getByRole('button', { name: /Disable voice responses/i });
     await expect(voiceBtn).toBeVisible();
     await expect(voiceBtn).toHaveAttribute('aria-pressed', 'true');
 
     // Click to turn off voice
     await voiceBtn.click();
-    const voiceOffBtn = page.getByRole('button', { name: /Voice off/i });
+    const voiceOffBtn = page.getByRole('button', { name: /Enable voice responses/i });
     await expect(voiceOffBtn).toBeVisible();
     await expect(voiceOffBtn).toHaveAttribute('aria-pressed', 'false');
 
     // Click to turn voice back on
     await voiceOffBtn.click();
-    await expect(page.getByRole('button', { name: /Voice on/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Disable voice responses/i })).toBeVisible();
   });
 });

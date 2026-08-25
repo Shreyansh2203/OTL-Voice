@@ -6,7 +6,7 @@ import ChatView from "./components/ChatView";
 import type { Identity } from "./types";
 function AppContent() {
   const qc = useQueryClient();
-  const { data: identity, isLoading, error: _error } = useQuery({
+  const { data: identity, isLoading } = useQuery({
     queryKey: ["session"],
     queryFn: async () => {
       try {

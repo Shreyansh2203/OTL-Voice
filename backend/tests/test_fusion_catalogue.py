@@ -2,7 +2,9 @@ import json
 import sqlite3
 import time
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 from backend.services.fusion_catalogue import (
     _build_index,
     _client,
@@ -20,6 +22,8 @@ from backend.services.fusion_catalogue import (
     refresh_catalogue,
     status,
 )
+
+
 @pytest.fixture(autouse=True)
 def mock_db():
     conn = sqlite3.connect("file:memdb1?mode=memory&cache=shared", uri=True, check_same_thread=False)

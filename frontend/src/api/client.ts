@@ -28,7 +28,8 @@ async function parseError(res: Response): Promise<ApiError> {
   try {
     const data = await res.json();
     if (data && typeof data.detail === "string") detail = data.detail;
-  } catch {
+  } catch (e) {
+    void e;
   }
   return new ApiError(res.status, detail);
 }

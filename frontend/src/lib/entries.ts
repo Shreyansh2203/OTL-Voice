@@ -8,7 +8,8 @@ export function extractEntries(text: string): TimecardEntry[] | null {
     if (data && Array.isArray(data.entries) && data.entries.length > 0) {
       return data.entries as TimecardEntry[];
     }
-  } catch {
+  } catch (e) {
+    void e;
   }
   return null;
 }

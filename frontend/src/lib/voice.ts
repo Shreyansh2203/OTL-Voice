@@ -180,7 +180,7 @@ const start = useCallback(async (
           console.error("WS error", err);
         }
       };
-      ws.onerror = (_event) => {
+      ws.onerror = () => {
         if (ws.readyState === WebSocket.CONNECTING) {
           setErrorMsg("Connection to speech server failed.");
         }

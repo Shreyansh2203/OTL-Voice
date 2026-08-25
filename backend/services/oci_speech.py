@@ -181,7 +181,7 @@ try:
 except ImportError:
     class _DummySTTListener:
         pass
-    _STTListener = _DummySTTListener  
+    _STTListener = _DummySTTListener  # type: ignore
 class STTClient:
     def __init__(self) -> None:
         self.config = build_oci_config()

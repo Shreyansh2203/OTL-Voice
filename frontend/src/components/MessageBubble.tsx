@@ -32,7 +32,7 @@ export default function MessageBubble({
               <div className={`md ${message.streaming ? "streaming" : ""}`}>
                 <ReactMarkdown
                   components={{
-                    a: ({ node: _node, ...props }) => (
+                    a: ({ ...props }) => (
                       <a {...props} target="_blank" rel="noopener noreferrer" />
                     ),
                   }}

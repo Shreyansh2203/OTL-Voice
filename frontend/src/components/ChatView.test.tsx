@@ -65,7 +65,7 @@ describe('ChatView', () => {
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
-    const voiceBtn = screen.getByTitle('Toggle spoken replies');
+    const voiceBtn = screen.getByText('Voice On');
     expect(screen.getByText(/Voice on/i)).toBeInTheDocument();
     fireEvent.click(voiceBtn);
     expect(screen.getByText(/Voice off/i)).toBeInTheDocument();
@@ -144,8 +144,8 @@ describe('ChatView', () => {
     const play = vi.fn();
     vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({ play, stop: vi.fn() } as any);
     render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
-    const voiceBtn = screen.getByTitle('Toggle spoken replies');
-    fireEvent.click(voiceBtn); 
+    const voiceBtn = screen.getByText('Voice On');
+    fireEvent.click(voiceBtn);
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });

@@ -1,12 +1,16 @@
 from unittest.mock import MagicMock, patch
+
 import oci
 import pytest
+
 from backend.services.oci_speech import (
     SpeechClient,
     _rate_to_percent,
     _speech_endpoint,
     clean_for_speech,
 )
+
+
 def test_speech_endpoint(monkeypatch):
     monkeypatch.delenv("OCI_SPEECH_ENDPOINT", raising=False)
     assert _speech_endpoint("us-ashburn-1") == "https://speech.aiservice.us-ashburn-1.oci.oraclecloud.com"

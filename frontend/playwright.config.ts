@@ -17,6 +17,7 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
+    contextOptions: { permissions: ['microphone'] },
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: 'http://localhost:5173',
 
@@ -28,7 +29,8 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+    contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Chrome'] },
     },
   ],
 
@@ -40,3 +42,4 @@ export default defineConfig({
     timeout: 120 * 1000,
   },
 });
+

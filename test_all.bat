@@ -10,14 +10,14 @@ cd ..
 
 echo Running Frontend Unit Tests (vitest)...
 cd frontend
-npm run test:unit
+call npm run test:unit
 if %ERRORLEVEL% NEQ 0 (
     echo Frontend unit tests failed!
     exit /b %ERRORLEVEL%
 )
 
 echo Running Frontend E2E Tests (Playwright)...
-npm run test:e2e
+call npm run test:e2e
 if %ERRORLEVEL% NEQ 0 (
     echo Frontend E2E tests failed!
     exit /b %ERRORLEVEL%

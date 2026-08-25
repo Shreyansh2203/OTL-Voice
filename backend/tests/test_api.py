@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+
 from backend.main import (
     _extract_entries,
     _options_hint,
@@ -7,6 +9,8 @@ from backend.main import (
     _otl_error_handler,
 )
 from backend.services.otl_client import OtlConfigError, OtlError
+
+
 @pytest.fixture(autouse=True)
 def disable_secure_cookies():
     with patch("backend.main.auth.cookie_secure", return_value=False):
@@ -167,6 +171,7 @@ def test_serve_spa(client):
 def test_stt_stream_origin_validation_allowed():
     with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()),         patch("backend.main.ws_tracker.acquire", return_value=True),         patch("backend.main.ws_tracker.release"),         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]),         patch("backend.services.oci_speech.STTClient"):
         from fastapi.testclient import TestClient
+
         from backend.main import app
         with TestClient(app) as client:
             with client.websocket_connect("/api/stt/stream", headers={"Origin": "http://localhost:5173"}) as _:
@@ -174,6 +179,7 @@ def test_stt_stream_origin_validation_allowed():
 def test_stt_stream_origin_validation_blocked():
     with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()),         patch("backend.main.ws_tracker.acquire", return_value=True),         patch("backend.main.ws_tracker.release"),         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]):
         from fastapi.testclient import TestClient
+
         from backend.main import app
         with TestClient(app) as client:
             try:
@@ -185,6 +191,7 @@ def test_stt_stream_origin_validation_blocked():
 def test_stt_stream_origin_validation_sec_websocket_origin():
     with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()),         patch("backend.main.ws_tracker.acquire", return_value=True),         patch("backend.main.ws_tracker.release"),         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]),         patch("backend.services.oci_speech.STTClient"):
         from fastapi.testclient import TestClient
+
         from backend.main import app
         with TestClient(app) as client:
             with client.websocket_connect("/api/stt/stream", headers={"Sec-WebSocket-Origin": "http://localhost:5173"}) as _:

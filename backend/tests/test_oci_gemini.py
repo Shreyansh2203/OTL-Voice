@@ -1,7 +1,9 @@
 import json
 import os
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 from backend.services.oci_gemini import (
     GeminiChatClient,
     _env,
@@ -9,6 +11,8 @@ from backend.services.oci_gemini import (
     _service_endpoint,
     build_oci_config,
 )
+
+
 def test_env():
     os.environ["TEST_ENV"] = " value "
     assert _env("TEST_ENV") == "value"

@@ -53,6 +53,7 @@ export async function readSse(
           }
         }
         if (_retryMs !== undefined) {
+          // handled elsewhere
         }
       }
     }

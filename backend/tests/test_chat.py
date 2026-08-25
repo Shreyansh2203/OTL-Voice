@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+
 from backend.services.chat import (
     _client,
     _sse,
@@ -7,6 +8,8 @@ from backend.services.chat import (
     render_assignments,
     stream_sse,
 )
+
+
 def test_render_assignments():
     work_orders = [
         {

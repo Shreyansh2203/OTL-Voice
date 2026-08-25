@@ -8,8 +8,8 @@ test.describe('Accessibility (a11y) Tests', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          employeeNumber: 'E100',
-          employeeName: 'Playwright Tester',
+          username: 'E100', employeeId: 'E100',
+          fullName: 'Playwright Tester',
           authenticated: true
         })
       });

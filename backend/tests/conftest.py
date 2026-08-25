@@ -1,8 +1,10 @@
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
+
 os.environ["OTL_SERVICE_USERNAME"] = "mock_user"
 os.environ["OTL_SERVICE_PASSWORD"] = "mock_pass"
 os.environ["OTL_BASE_URL"] = "https://mock.example.com"
@@ -13,6 +15,8 @@ os.environ["TEST_MODE"] = "true"
 os.environ["SESSION_COOKIE_SECURE"] = "false"  
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from backend.main import app
+
+
 @pytest.fixture
 def client():
     with TestClient(app) as client:

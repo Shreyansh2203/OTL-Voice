@@ -1,6 +1,8 @@
 import os
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 from backend.services.otl_client import (
     OtlConfigError,
     OtlCredential,
@@ -26,6 +28,8 @@ from backend.services.otl_client import (
     service_credential,
     validate,
 )
+
+
 def test_base_url_missing():
     with patch.dict(os.environ, clear=True):
         with pytest.raises(ValueError, match="OTL_BASE_URL environment variable is not set"):
