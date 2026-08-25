@@ -14,6 +14,7 @@ export interface ComposerProps {
   onStopMic?: () => void;
   errorMsg?: string | null;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
+  onRegisterTrigger?: (trigger: () => void) => void;
 }
 
 export default function Composer({
@@ -25,6 +26,7 @@ export default function Composer({
   onStopMic,
   errorMsg = null,
   voiceState = "idle",
+  onRegisterTrigger,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const textRef = useRef("");
@@ -118,6 +120,21 @@ export default function Composer({
       }
     );
   }
+
+  const toggleMicRef = useRef(toggleMic);
+  useEffect(() => {
+    toggleMicRef.current = toggleMic;
+  });
+
+  useEffect(() => {
+    if (onRegisterTrigger) {
+      onRegisterTrigger(() => {
+        if (!listening && !disabled) {
+          void toggleMicRef.current();
+        }
+      });
+    }
+  }, [onRegisterTrigger, listening, disabled]);
 
   const getPlaceholder = () => {
     if (voiceState === "speaking") {

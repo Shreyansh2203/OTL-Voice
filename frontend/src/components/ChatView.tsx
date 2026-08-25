@@ -94,6 +94,7 @@ export default function ChatView({
 
   const sendUserRef = useRef<((content: string) => void) | null>(null);
   const runAssistantRef = useRef<((history: ChatMessage[]) => Promise<void>) | null>(null);
+  const composerMicTriggerRef = useRef<(() => void) | null>(null);
 
   const sendUser = useCallback(
     (content: string) => {
@@ -234,15 +235,20 @@ export default function ChatView({
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
-      if (interruptTokenRef.current !== thisToken) return;
-
       const isFarewell =
         finalText.toLowerCase().includes("goodbye") ||
-        finalText.toLowerCase().includes("have a great day");
+        finalText.toLowerCase().includes("have a great day") ||
+        finalText.toLowerCase().includes("all done");
 
       if (isFarewell) {
         mic.stop();
         setVoiceState("idle");
+      } else if (voiceOnRef.current && mic.supported) {
+        // Alexa / Google Assistant Hands-Free Dialogue Loop
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        if (interruptTokenRef.current === thisToken && voiceOnRef.current) {
+          composerMicTriggerRef.current?.();
+        }
       } else if (mic.listening) {
         setVoiceState("listening");
       } else {
@@ -414,6 +420,9 @@ export default function ChatView({
                   onStopMic={stopMicSession}
                   errorMsg={mic.errorMsg}
                   voiceState={voiceState}
+                  onRegisterTrigger={(trigger) => {
+                    composerMicTriggerRef.current = trigger;
+                  }}
                 />
                 <p className="hint muted small">
                   The assistant collects employee, project, work order, task and hours,

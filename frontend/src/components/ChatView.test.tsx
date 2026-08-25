@@ -89,7 +89,7 @@ describe('ChatView', () => {
       expect(api.chatStream).toHaveBeenCalled();
     });
     vi.mocked(api.chatStream).mockClear();
-    const input = screen.getByPlaceholderText(/Type or speak/i);
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'My message' } });
     const sendBtn = screen.getByRole('button', { name: /send/i });
     fireEvent.click(sendBtn);
@@ -168,7 +168,7 @@ describe('ChatView', () => {
     render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
     await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
     vi.mocked(api.chatStream).mockClear();
-    const input = screen.getByPlaceholderText(/Type or speak/i);
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'Msg' } });
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
