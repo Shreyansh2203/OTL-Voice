@@ -341,6 +341,8 @@ export function useSpeechInput() {
         };
 
         ws.onmessage = (e) => {
+          // Only use WebSocket results if native SpeechRecognition is not active
+          if (recognitionRef.current) return;
           try {
             const data = JSON.parse(e.data);
             if (data.text) {

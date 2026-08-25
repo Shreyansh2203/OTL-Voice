@@ -245,25 +245,11 @@ export default function ChatView({
         setVoiceState("idle");
       } else if (mic.listening) {
         setVoiceState("listening");
-      } else if (voiceOnRef.current && mic.supported) {
-        setVoiceState("listening");
-        mic.start(
-          (spoken) => {
-            if (spoken.trim()) {
-              sendUserRef.current?.(spoken.trim());
-            }
-          },
-          undefined,
-          () => {
-            handleBargeIn();
-          },
-          true
-        );
       } else {
         setVoiceState("idle");
       }
     },
-    [onSessionExpired, player, speak, mic, handleBargeIn]
+    [onSessionExpired, player, speak, mic]
   );
 
   useEffect(() => {
