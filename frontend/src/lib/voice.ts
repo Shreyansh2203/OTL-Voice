@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 const WORKLET_CODE = `
 class STTProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -39,28 +40,33 @@ class STTProcessor extends AudioWorkletProcessor {
 }
 registerProcessor("stt-processor", STTProcessor);
 `;
+
 export function useSpeechInput() {
-  const [supported] = useState(() => !!navigator.mediaDevices?.getUserMedia && !!(window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext));
+  const [supported] = useState(
+    () =>
+      !!navigator.mediaDevices?.getUserMedia &&
+      !!(
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext
+      )
+  );
   const [listening, setListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const nodeRef = useRef<AudioWorkletNode | null>(null);
-  const manualStopRef = useRef(false);
   const isCleaningUpRef = useRef(false);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noSpeechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isListeningRef = useRef(false);
+
   const cleanup = useCallback(() => {
     if (isCleaningUpRef.current) return;
     isCleaningUpRef.current = true;
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
-    }
-    if (noSpeechTimeoutRef.current) {
-      clearTimeout(noSpeechTimeoutRef.current);
-      noSpeechTimeoutRef.current = null;
     }
     if (nodeRef.current) {
       nodeRef.current.disconnect();
@@ -71,191 +77,255 @@ export function useSpeechInput() {
       ctxRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
     isCleaningUpRef.current = false;
   }, []);
-  const stop = useCallback((cancel = false) => {
-    manualStopRef.current = cancel;
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(new Uint8Array(0));
-      if (cancel) {
-        wsRef.current.close();
+
+  const stop = useCallback(
+    (cancel = false) => {
+      isListeningRef.current = false;
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(new Uint8Array(0));
+        if (cancel) {
+          wsRef.current.close();
+        }
       }
-    }
-    cleanup();
-    setListening(false);
-  }, [cleanup]);
-const start = useCallback(async (
-    onFinal: (text: string) => void,
-    onInterim?: (text: string) => void,
-    onSpeechStart?: () => void
-  ) => {
-    setErrorMsg(null);
-    if (!supported) return;
-    cleanup();
-    if (wsRef.current) wsRef.current.close();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/api/stt/stream`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      let finalText = "";
-      let hasStarted = false;
-      let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-      const resetSilenceTimeout = () => {
-        if (silenceTimer) clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => {
-          stop(false);
-        }, 10000);
-      };
-      connectTimeoutRef.current = setTimeout(() => {
-        if (ws.readyState === WebSocket.CONNECTING) {
-          setErrorMsg("Connection to speech server timed out.");
-          ws.close();
-        }
-      }, 10000);
-      ws.onopen = async () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const actx = new AudioCtx();
-        ctxRef.current = actx;
-        const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
-        const url = URL.createObjectURL(blob);
+      cleanup();
+      setListening(false);
+    },
+    [cleanup]
+  );
+
+  const start = useCallback(
+    async (
+      onFinal: (text: string) => void,
+      onInterim?: (text: string) => void,
+      onSpeechStart?: () => void,
+      continuous = true
+    ) => {
+      setErrorMsg(null);
+      if (!supported) return;
+      cleanup();
+      if (wsRef.current) {
         try {
-          await actx.audioWorklet.addModule(url);
-        } finally {
-          URL.revokeObjectURL(url);
+          wsRef.current.close();
+        } catch {
+          // ignore closed socket
         }
-        const source = actx.createMediaStreamSource(stream);
-        const node = new AudioWorkletNode(actx, "stt-processor", {
-          processorOptions: { sampleRate: actx.sampleRate }
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
         });
-        nodeRef.current = node;
-        node.port.onmessage = (e) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(e.data);
-            if (!hasStarted) {
-              hasStarted = true;
-              onSpeechStart?.();
-              resetSilenceTimeout();
-              if (noSpeechTimeoutRef.current) {
-                clearTimeout(noSpeechTimeoutRef.current);
-                noSpeechTimeoutRef.current = null;
+        streamRef.current = stream;
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/api/stt/stream`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        let finalText = "";
+        let hasStarted = false;
+
+        connectTimeoutRef.current = setTimeout(() => {
+          if (ws.readyState === WebSocket.CONNECTING) {
+            setErrorMsg("Connection to speech server timed out.");
+            ws.close();
+          }
+        }, 10000);
+
+        ws.onopen = async () => {
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current);
+            connectTimeoutRef.current = null;
+          }
+          const AudioCtx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext })
+              .webkitAudioContext;
+          const actx = new AudioCtx();
+          ctxRef.current = actx;
+          const blob = new Blob([WORKLET_CODE], {
+            type: "application/javascript",
+          });
+          const url = URL.createObjectURL(blob);
+          try {
+            await actx.audioWorklet.addModule(url);
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+          const source = actx.createMediaStreamSource(stream);
+          const node = new AudioWorkletNode(actx, "stt-processor", {
+            processorOptions: { sampleRate: actx.sampleRate },
+          });
+          nodeRef.current = node;
+          node.port.onmessage = (e) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
+            }
+          };
+          source.connect(node);
+          setListening(true);
+          isListeningRef.current = true;
+        };
+
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.text) {
+              finalText = data.text;
+              if (!hasStarted) {
+                hasStarted = true;
+                onSpeechStart?.();
+              }
+              if (data.isFinal) {
+                const dispatched = finalText;
+                finalText = "";
+                hasStarted = false;
+                onFinal(dispatched);
+                if (!continuous) {
+                  ws.close();
+                  setListening(false);
+                  isListeningRef.current = false;
+                }
+              } else {
+                onInterim?.(finalText);
               }
             }
+          } catch (err) {
+            console.error("WS error", err);
           }
         };
-        source.connect(node);
-        setListening(true);
-        noSpeechTimeoutRef.current = setTimeout(() => {
-          if (!hasStarted) {
-            setErrorMsg("No speech detected. Please try again.");
-            stop(false);
+
+        ws.onerror = () => {
+          if (ws.readyState === WebSocket.CONNECTING) {
+            setErrorMsg("Connection to speech server failed.");
           }
-        }, 30000);
-      };
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.text) {
-            finalText = data.text;
-            if (data.isFinal) {
-              onFinal(finalText);
-              ws.close();
-              setListening(false);
-              if (silenceTimer) clearTimeout(silenceTimer);
-            } else {
-              onInterim?.(finalText);
-              resetSilenceTimeout(); 
-            }
+        };
+
+        ws.onclose = () => {
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current);
+            connectTimeoutRef.current = null;
           }
-        } catch(err) {
-          console.error("WS error", err);
-        }
-      };
-      ws.onerror = () => {
-        if (ws.readyState === WebSocket.CONNECTING) {
-          setErrorMsg("Connection to speech server failed.");
-        }
-      };
-      ws.onclose = () => {
+          setListening(false);
+          isListeningRef.current = false;
+          cleanup();
+        };
+      } catch (err: any) {
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
-        if (silenceTimer) clearTimeout(silenceTimer);
         setListening(false);
-        cleanup();
-      };
-    } catch (err: any) {
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-        connectTimeoutRef.current = null;
+        isListeningRef.current = false;
+        let msg = "Microphone error: " + err.message;
+        if (err.name === "NotAllowedError") msg = "Microphone access blocked.";
+        setErrorMsg(msg);
       }
-      setListening(false);
-      let msg = "Microphone error: " + err.message;
-      if (err.name === "NotAllowedError") msg = "Microphone access blocked.";
-      setErrorMsg(msg);
-    }
-  }, [supported, cleanup, stop]);
-  const isListening = useCallback(() => listening, [listening]);
+    },
+    [supported, cleanup]
+  );
+
+  const isListening = useCallback(() => isListeningRef.current || listening, [listening]);
   useEffect(() => () => stop(true), [stop]);
   return { supported, listening, isListening, errorMsg, start, stop };
 }
+
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  const resolveRef = useRef<
+    ((val: { success: boolean; autoplayBlocked?: boolean; interrupted?: boolean }) => void) | null
+  >(null);
   const [playing, setPlaying] = useState(false);
+
   const stop = useCallback(() => {
-    audioRef.current?.pause();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
     setPlaying(false);
+    if (resolveRef.current) {
+      resolveRef.current({ success: false, interrupted: true });
+      resolveRef.current = null;
+    }
   }, []);
+
   const play = useCallback(
-    (blob: Blob): Promise<{ success: boolean; autoplayBlocked?: boolean }> => {
+    (blob: Blob): Promise<{ success: boolean; autoplayBlocked?: boolean; interrupted?: boolean }> => {
       return new Promise((resolve) => {
-        audioRef.current?.pause();
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        stop();
         const url = URL.createObjectURL(blob);
         urlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
+        resolveRef.current = resolve;
+
         audio.onended = () => {
           setPlaying(false);
-          resolve({ success: true }); 
+          if (urlRef.current) {
+            URL.revokeObjectURL(urlRef.current);
+            urlRef.current = null;
+          }
+          if (resolveRef.current === resolve) {
+            resolveRef.current = null;
+            resolve({ success: true });
+          }
         };
+
         audio.onpause = () => {
           setPlaying(false);
-          resolve({ success: false }); 
+          if (resolveRef.current === resolve) {
+            resolveRef.current = null;
+            resolve({ success: false });
+          }
         };
+
         audio.onerror = (e) => {
           setPlaying(false);
-          const isAutoplayBlocked = audio.error?.code === 4 || 
-                                    (e as any).name === 'NotAllowedError';
-          resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
+          const isAutoplayBlocked =
+            audio.error?.code === 4 || (e as any).name === "NotAllowedError";
+          if (resolveRef.current === resolve) {
+            resolveRef.current = null;
+            resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
+          }
         };
-        audio.play().then(() => {
-          setPlaying(true);
-        }).catch((err) => {
-          setPlaying(false);
-          const isAutoplayBlocked = err.name === 'NotAllowedError' || err.name === 'AbortError';
-          resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
-        });
+
+        audio
+          .play()
+          .then(() => {
+            setPlaying(true);
+          })
+          .catch((err) => {
+            setPlaying(false);
+            const isAutoplayBlocked =
+              err.name === "NotAllowedError" || err.name === "AbortError";
+            if (resolveRef.current === resolve) {
+              resolveRef.current = null;
+              resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
+            }
+          });
       });
     },
-    []
+    [stop]
   );
+
   useEffect(
     () => () => {
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      stop();
     },
-    []
+    [stop]
   );
+
   return { play, stop, playing };
-}
+}

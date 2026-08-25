@@ -51,6 +51,18 @@ def test_login_not_found(client):
     with patch("backend.main.otl_client.aget_worker", return_value=None):
         response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
         assert response.status_code == 401
+def test_login_passwordless_success(client, mock_otl_client):
+    mock_otl_client.aget_worker.return_value = {"personNumber": "208", "fullName": "Jessy Brown"}
+    mock_otl_client.aget_worker.side_effect = None
+    response = client.post("/api/auth/login", json={"username": "208", "password": ""})
+    assert response.status_code == 200
+    assert response.json()["fullName"] == "Jessy Brown"
+    assert response.json()["username"] == "208"
+def test_login_passwordless_not_found(client, mock_otl_client):
+    mock_otl_client.aget_worker.return_value = None
+    mock_otl_client.aget_worker.side_effect = None
+    response = client.post("/api/auth/login", json={"username": "9999", "password": ""})
+    assert response.status_code == 401
 @pytest.fixture
 def auth_client(client, mock_otl_client):
     mock_otl_client.aget_worker.return_value = {"personNumber": "testuser", "fullName": "Pytest User"}

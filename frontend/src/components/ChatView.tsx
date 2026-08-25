@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../api/client";
 import { extractEntries, stripEntriesBlock } from "../lib/entries";
-import { playMicStart, playMicStop } from "../lib/audio";
 import { useAudioPlayer, useSpeechInput } from "../lib/voice";
 import type { ChatMessage } from "../types";
 import Composer from "./Composer";
@@ -44,105 +43,161 @@ export default function ChatView({
   }, [messages]);
   const didInit = useRef(false);
   const scrollAnchor = useRef<HTMLDivElement | null>(null);
+
+  // Conversational state refs
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const interruptTokenRef = useRef<number>(0);
+  const isPlayingRef = useRef<boolean>(false);
+  const currentSentenceQueueRef = useRef<string[]>([]);
+  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+
   const speak = useCallback(
     async (text: string): Promise<boolean> => {
       const clean = stripEntriesBlock(text);
       if (!clean) return false;
       try {
         const blob = await api.tts(clean);
+        setVoiceState("speaking");
         const result = await player.play(blob);
-        return typeof result === 'boolean' ? result : result.success;
+        return typeof result === "boolean" ? result : result.success;
       } catch {
         return false;
       }
     },
     [player]
   );
+
+  const handleBargeIn = useCallback(() => {
+    // 1. Abort active assistant stream if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    // 2. Invalidate current turn token
+    interruptTokenRef.current += 1;
+    // 3. Clear pending sentence queue
+    currentSentenceQueueRef.current = [];
+    isPlayingRef.current = false;
+    // 4. Stop audio playback immediately
+    player.stop();
+    setSending(false);
+    // 5. Finalize any streaming assistant bubble
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.streaming) {
+        return updateLastAssistant(prev, last.content, false);
+      }
+      return prev;
+    });
+    setVoiceState(mic.listening ? "listening" : "idle");
+  }, [player, mic.listening]);
+
   const sendUserRef = useRef<((content: string) => void) | null>(null);
   const runAssistantRef = useRef<((history: ChatMessage[]) => Promise<void>) | null>(null);
+
   const sendUser = useCallback(
     (content: string) => {
-      if (mic.isListening()) {
-        mic.stop(true);
-      }
-      player.stop(); 
+      handleBargeIn();
       const historyForApi = [...messagesRef.current, { role: "user", content } as ChatMessage];
       setMessages(historyForApi);
       setTimeout(() => runAssistantRef.current?.(historyForApi), 0);
     },
-    [mic, player]
+    [handleBargeIn]
   );
+
   useEffect(() => {
     sendUserRef.current = sendUser;
   }, [sendUser]);
+
   useEffect(() => {
-    const onBargeIn = () => player.stop();
+    const onBargeIn = () => handleBargeIn();
     window.addEventListener("otl:barge-in", onBargeIn);
     return () => window.removeEventListener("otl:barge-in", onBargeIn);
-  }, [player]);
+  }, [handleBargeIn]);
+
   const runAssistant = useCallback(
     async (history: ChatMessage[]) => {
+      const thisToken = ++interruptTokenRef.current;
       setSending(true);
+      setVoiceState("thinking");
       player.stop();
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "", streaming: true },
       ]);
+
       let acc = "";
       let finalText = "";
       let unvoicedAcc = "";
-      let isPlaying = false;
       const sentenceQueue: string[] = [];
-      const MAX_QUEUE_SIZE = 50; 
-      let queuePaused = false;
+      currentSentenceQueueRef.current = sentenceQueue;
+      const MAX_QUEUE_SIZE = 50;
+
       const processQueue = async () => {
-        if (isPlaying || sentenceQueue.length === 0) return;
-        isPlaying = true;
-        while (sentenceQueue.length > 0) {
+        if (isPlayingRef.current || sentenceQueue.length === 0) return;
+        isPlayingRef.current = true;
+        while (sentenceQueue.length > 0 && interruptTokenRef.current === thisToken) {
           const sentence = sentenceQueue.shift()!;
           const finished = await speak(sentence);
-          if (!finished) {
+          if (!finished || interruptTokenRef.current !== thisToken) {
             sentenceQueue.length = 0;
             break;
           }
         }
-        isPlaying = false;
-        if (queuePaused && sentenceQueue.length < MAX_QUEUE_SIZE / 2) {
-          queuePaused = false;
-        }
+        isPlayingRef.current = false;
       };
+
       try {
-        await api.chatStream(history, (ev) => {
-          if (ev.delta) {
-            acc += ev.delta;
-            setMessages((prev) => updateLastAssistant(prev, acc, true));
-            unvoicedAcc += ev.delta;
-            const match = unvoicedAcc.match(/^(.*?(?<!\b\d)(?<!\b(?:Mr|Mrs|Dr|WO|Proj|No|vs))[.?!])\s+(.*)$/is);
-            if (match && voiceOnRef.current) {
-               const pushToQueue = async () => {
-                 while (sentenceQueue.length >= MAX_QUEUE_SIZE) {
-                   queuePaused = true;
-                   await new Promise((resolve) => setTimeout(resolve, 50));
-                 }
-                 sentenceQueue.push(match[1]);
-                 processQueue();
-               };
-               pushToQueue();
-               unvoicedAcc = match[2];
+        await api.chatStream(
+          history,
+          (ev) => {
+            if (interruptTokenRef.current !== thisToken) return;
+            if (ev.delta) {
+              acc += ev.delta;
+              setMessages((prev) => updateLastAssistant(prev, acc, true));
+              unvoicedAcc += ev.delta;
+              const match = unvoicedAcc.match(
+                /^(.*?(?<!\b\d)(?<!\b(?:Mr|Mrs|Dr|WO|Proj|No|vs))[.?!])\s+(.*)$/is
+              );
+              if (match && voiceOnRef.current) {
+                const pushToQueue = async () => {
+                  while (
+                    sentenceQueue.length >= MAX_QUEUE_SIZE &&
+                    interruptTokenRef.current === thisToken
+                  ) {
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                  }
+                  if (interruptTokenRef.current === thisToken) {
+                    sentenceQueue.push(match[1]);
+                    processQueue();
+                  }
+                };
+                pushToQueue();
+                unvoicedAcc = match[2];
+              }
+            } else if (ev.error) {
+              finalText = acc || `Sorry — ${ev.error}`;
+              setMessages((prev) => updateLastAssistant(prev, finalText, false));
+            } else if (ev.done) {
+              finalText = acc;
+              setMessages((prev) => updateLastAssistant(prev, acc, false));
             }
-          } else if (ev.error) {
-            finalText = acc || `Sorry — ${ev.error}`;
-            setMessages((prev) => updateLastAssistant(prev, finalText, false));
-          } else if (ev.done) {
-            finalText = acc;
-            setMessages((prev) => updateLastAssistant(prev, acc, false));
-          }
-        });
+          },
+          controller.signal
+        );
+
+        if (interruptTokenRef.current !== thisToken) return;
+
         if (!finalText) {
           finalText = acc;
           setMessages((prev) => updateLastAssistant(prev, acc, false));
         }
       } catch (err) {
+        if (interruptTokenRef.current !== thisToken) return;
         if (err instanceof api.ApiError && err.status === 401) {
           onSessionExpired();
           return;
@@ -152,49 +207,104 @@ export default function ChatView({
           updateLastAssistant(prev, acc || `Sorry — ${msg}`, false)
         );
       } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
         setSending(false);
       }
+
+      if (interruptTokenRef.current !== thisToken) return;
+
       if (unvoicedAcc.trim() && voiceOnRef.current) {
-         sentenceQueue.push(unvoicedAcc.trim());
-         processQueue();
+        sentenceQueue.push(unvoicedAcc.trim());
+        processQueue();
       }
-      while (isPlaying || sentenceQueue.length > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+
+      while (
+        (isPlayingRef.current || sentenceQueue.length > 0) &&
+        interruptTokenRef.current === thisToken
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      const isFarewell = finalText.toLowerCase().includes("goodbye");
-      if (finalText && voiceOnRef.current) {
-        if (!isFarewell && mic.supported) {
-          if (!mic.isListening()) {
-             await playMicStart();
-             await new Promise(resolve => setTimeout(resolve, 300));
-             mic.start((spoken) => {
-               playMicStop();
-               sendUserRef.current?.(spoken);
-             }, undefined, () => {
-               const evt = new CustomEvent("otl:barge-in");
-               window.dispatchEvent(evt);
-             });
-          }
-        } else if (isFarewell) {
-          mic.stop();
-        }
+
+      if (interruptTokenRef.current !== thisToken) return;
+
+      const isFarewell =
+        finalText.toLowerCase().includes("goodbye") ||
+        finalText.toLowerCase().includes("have a great day");
+
+      if (isFarewell) {
+        mic.stop();
+        setVoiceState("idle");
+      } else if (mic.listening) {
+        setVoiceState("listening");
+      } else if (voiceOnRef.current && mic.supported) {
+        setVoiceState("listening");
+        mic.start(
+          (spoken) => {
+            if (spoken.trim()) {
+              sendUserRef.current?.(spoken.trim());
+            }
+          },
+          undefined,
+          () => {
+            handleBargeIn();
+          },
+          true
+        );
+      } else {
+        setVoiceState("idle");
       }
     },
-    [onSessionExpired, player, speak, mic]
+    [onSessionExpired, player, speak, mic, handleBargeIn]
   );
+
   useEffect(() => {
     runAssistantRef.current = runAssistant;
   }, [runAssistant]);
+
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
     const kickoff: ChatMessage = { role: "user", content: KICKOFF, hidden: true };
     setMessages([kickoff]);
     void runAssistantRef.current?.([kickoff]);
-  }, []); 
+  }, []);
+
   useEffect(() => {
     scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
+
+  const startMicSession = useCallback(
+    async (
+      onFinal: (spoken: string) => void,
+      onInterim?: (spoken: string) => void,
+      onSpeechStart?: () => void
+    ) => {
+      handleBargeIn();
+      setVoiceState("listening");
+      await mic.start(
+        (spoken) => {
+          if (spoken.trim()) {
+            onFinal(spoken.trim());
+          }
+        },
+        onInterim,
+        () => {
+          handleBargeIn();
+          onSpeechStart?.();
+        },
+        true
+      );
+    },
+    [handleBargeIn, mic]
+  );
+
+  const stopMicSession = useCallback(() => {
+    mic.stop();
+    setVoiceState("idle");
+  }, [mic]);
+
   const lastAssistant = [...messages]
     .reverse()
     .find((m) => m.role === "assistant");
@@ -206,6 +316,7 @@ export default function ChatView({
        (lastAssistant.content.includes("```json") || lastAssistant.content.includes("Submitting to OTL now.")))
     : false;
   const visible = messages.filter((m) => !m.hidden);
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -302,17 +413,18 @@ export default function ChatView({
             <div className="dock">
               <div className="dock-inner">
                 <Composer 
-                  disabled={sending || viewTab !== "chat"} 
+                  disabled={sending && !mic.listening || viewTab !== "chat"} 
                   onSend={sendUser} 
                   supported={mic.supported}
                   listening={mic.listening}
-                  onStartMic={mic.start}
-                  onStopMic={mic.stop}
+                  onStartMic={startMicSession}
+                  onStopMic={stopMicSession}
                   errorMsg={mic.errorMsg}
+                  voiceState={voiceState}
                 />
                 <p className="hint muted small">
                   The assistant collects employee, project, work order, task and hours,
-                  then submits to OTL. Say “submit” when you’re done.
+                  then submits to OTL. Speak naturally — tap the mic to start or stop continuous voice.
                 </p>
               </div>
             </div>

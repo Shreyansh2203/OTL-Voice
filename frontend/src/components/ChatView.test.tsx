@@ -183,6 +183,51 @@ describe('ChatView', () => {
     render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('Sorry — Connection error.')).toBeInTheDocument());
   });
+  it('handles barge-in interruption by stopping audio and active generation', async () => {
+    let mockOnEvent: any;
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent, signal) => {
+      mockOnEvent = onEvent;
+      signal?.addEventListener('abort', () => {
+        // aborted
+      });
+    });
+    const stopAudio = vi.fn();
+    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({ play: vi.fn(), stop: stopAudio } as any);
+    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
+
+    act(() => {
+      mockOnEvent({ delta: 'Assistant speaking text...' });
+    });
+    expect(screen.getByText('Assistant speaking text...')).toBeInTheDocument();
+
+    // Trigger barge-in event
+    act(() => {
+      window.dispatchEvent(new CustomEvent('otl:barge-in'));
+    });
+
+    expect(stopAudio).toHaveBeenCalled();
+  });
+
+  it('stops mic when farewell is detected in assistant response', async () => {
+    const stopMic = vi.fn();
+    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
+      supported: true,
+      listening: true,
+      isListening: vi.fn(() => true),
+      start: vi.fn(),
+      stop: stopMic
+    });
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      onEvent({ delta: 'Goodbye! Have a great day.' });
+      onEvent({ done: true });
+    });
+    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    await waitFor(() => {
+      expect(stopMic).toHaveBeenCalled();
+    });
+  });
+
   it('updateLastAssistant returns correctly when missing assistant message', () => {
     const messages = [{ role: 'user', content: 'hello' } as any];
     const next = updateLastAssistant(messages, 'test', false);

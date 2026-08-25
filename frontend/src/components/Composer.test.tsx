@@ -87,6 +87,26 @@ describe('Composer', () => {
     fireEvent.click(micBtn);
     expect(stop).toHaveBeenCalled();
   });
+  it('renders dynamic placeholders based on voiceState', () => {
+    const { rerender } = render(
+      <Composer disabled={false} onSend={vi.fn()} supported={true} voiceState="speaking" />
+    );
+    expect(
+      screen.getByPlaceholderText(/Assistant speaking… \(speak anytime to interrupt\)/i)
+    ).toBeInTheDocument();
+
+    rerender(
+      <Composer disabled={false} onSend={vi.fn()} supported={true} voiceState="thinking" />
+    );
+    expect(screen.getByPlaceholderText(/Thinking… \(speak anytime\)/i)).toBeInTheDocument();
+
+    rerender(
+      <Composer disabled={false} onSend={vi.fn()} supported={true} listening={true} voiceState="listening" />
+    );
+    expect(
+      screen.getByPlaceholderText(/Listening… Speak naturally or type…/i)
+    ).toBeInTheDocument();
+  });
   it('ignores other keys or shift+enter', () => {
     const mockSend = vi.fn();
     render(<Composer disabled={false} onSend={mockSend} supported={true} />);

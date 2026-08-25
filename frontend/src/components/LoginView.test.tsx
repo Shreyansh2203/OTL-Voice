@@ -15,14 +15,12 @@ describe("LoginView", () => {
   });
   it("submits the form successfully", async () => {
     const onLogin = vi.fn();
-    const mockIdentity = { username: "12345", fullName: "Test User", employeeId: "12345" };
+    const mockIdentity = { username: "208", fullName: "Jessy Brown", employeeId: "208" };
     vi.mocked(api.login).mockResolvedValue(mockIdentity);
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText("e.g. 12345");
-    fireEvent.change(input, { target: { value: "12345" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
     fireEvent.click(submitBtn);
-    expect(api.login).toHaveBeenCalledWith("12345", "");
+    expect(api.login).toHaveBeenCalledWith("208", "");
     await waitFor(() => {
       expect(onLogin).toHaveBeenCalledWith(mockIdentity);
     });
@@ -31,20 +29,16 @@ describe("LoginView", () => {
     const onLogin = vi.fn();
     vi.mocked(api.login).mockRejectedValue(new Error("Invalid credentials"));
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText("e.g. 12345");
-    fireEvent.change(input, { target: { value: "wrong" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
     fireEvent.click(submitBtn);
     const errorElement = await screen.findByRole("alert");
     expect(errorElement).toHaveTextContent("Invalid credentials");
     expect(onLogin).not.toHaveBeenCalled();
   });
-it("displays generic error for unknown errors", async () => {
+  it("displays generic error for unknown errors", async () => {
     const onLogin = vi.fn();
     vi.mocked(api.login).mockRejectedValue("some weird error");
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText("e.g. 12345");
-    fireEvent.change(input, { target: { value: "wrong" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
     fireEvent.click(submitBtn);
     const errorElement = await screen.findByRole("alert");

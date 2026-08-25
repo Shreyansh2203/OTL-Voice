@@ -68,7 +68,7 @@ function jsonInit(method: string, body?: unknown): RequestInit {
 }
 export async function login(
   username: string,
-  password: string
+  password = ""
 ): Promise<Identity> {
   const res = await fetch(`${API}/auth/login`, jsonInit("POST", { username, password }));
   if (!res.ok) throw await parseError(res);

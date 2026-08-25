@@ -768,10 +768,20 @@ tr:hover td { background: var(--color-bg-tertiary); }
   box-shadow: 0 0 0 3px var(--color-accent-soft);
   animation: pulse-brand 2s infinite;
 }
+.prompt-bar-container.speaking .prompt-bar {
+  border-color: #008766;
+  box-shadow: 0 0 0 3px rgba(0, 135, 102, 0.2);
+  animation: pulse-speaking 1.8s infinite;
+}
 @keyframes pulse-brand {
   0% { box-shadow: 0 0 0 0 rgba(83, 58, 253, 0.4); }
   70% { box-shadow: 0 0 0 8px rgba(83, 58, 253, 0); }
   100% { box-shadow: 0 0 0 0 rgba(83, 58, 253, 0); }
+}
+@keyframes pulse-speaking {
+  0% { box-shadow: 0 0 0 0 rgba(0, 135, 102, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(0, 135, 102, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 135, 102, 0); }
 }
 .prompt-bar {
   display: flex;

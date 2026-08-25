@@ -13,7 +13,9 @@ export interface ComposerProps {
   ) => void;
   onStopMic?: () => void;
   errorMsg?: string | null;
+  voiceState?: "idle" | "listening" | "thinking" | "speaking";
 }
+
 export default function Composer({
   disabled,
   onSend,
@@ -22,24 +24,29 @@ export default function Composer({
   onStartMic,
   onStopMic,
   errorMsg = null,
+  voiceState = "idle",
 }: ComposerProps) {
   const [text, setText] = useState("");
   const textRef = useRef("");
+
   useEffect(() => {
     textRef.current = text;
   }, [text]);
+
   function send() {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
     onSend(trimmed);
     setText("");
   }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
     }
   }
+
   async function toggleMic() {
     if (listening) {
       playMicStop();
@@ -50,7 +57,7 @@ export default function Composer({
     window.dispatchEvent(playerStopEvent);
     await playMicStart();
     if (!(window as any).mockMic) {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
     const baseText = textRef.current ? textRef.current + " " : "";
     onStartMic?.(
@@ -68,14 +75,32 @@ export default function Composer({
       }
     );
   }
+
+  const getPlaceholder = () => {
+    if (voiceState === "speaking") {
+      return "Assistant speaking… (speak anytime to interrupt)";
+    }
+    if (voiceState === "thinking") {
+      return "Thinking… (speak anytime)";
+    }
+    if (listening) {
+      return "Listening… Speak naturally or type…";
+    }
+    return "Type or speak your reply…";
+  };
+
   return (
     <div className="composer-wrapper">
       {errorMsg && (
-        <div className="error small" style={{ marginBottom: 8, padding: '6px 12px' }}>
+        <div className="error small" style={{ marginBottom: 8, padding: "6px 12px" }}>
           {errorMsg}
         </div>
       )}
-      <div className={`prompt-bar-container ${listening ? "listening" : ""}`}>
+      <div
+        className={`prompt-bar-container ${listening ? "listening" : ""} ${
+          voiceState === "speaking" ? "speaking" : ""
+        }`}
+      >
         <div className="prompt-bar">
           {supported && (
             <button
@@ -92,7 +117,7 @@ export default function Composer({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={listening ? "Listening…" : "Type or speak your reply…"}
+            placeholder={getPlaceholder()}
             rows={1}
             disabled={disabled}
           />
