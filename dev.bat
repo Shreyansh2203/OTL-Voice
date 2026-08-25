@@ -17,9 +17,7 @@ if not exist ".env" (
 echo Syncing Python dependencies...
 uv sync
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to sync python dependencies. Do you have 'uv' installed?
-    pause
-    exit /b 1
+    echo [WARNING] Failed to sync python dependencies. A background process like your IDE might be locking the virtual environment. Continuing anyway...
 )
 
 echo.
@@ -28,6 +26,6 @@ echo (Press CTRL+C in this terminal to stop both servers)
 echo.
 
 REM Use npx concurrently to run both in the same terminal
-call npx --yes concurrently -c "blue,magenta" -n "BACKEND,FRONTEND" "uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload" "cd frontend && npm run dev"
+call npx --yes concurrently -c "blue,magenta" -n "BACKEND,FRONTEND" "uv run --no-sync uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload" "cd frontend && npm run dev"
 
 endlocal

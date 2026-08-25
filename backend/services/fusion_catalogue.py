@@ -9,6 +9,7 @@ memory usage or fragmenting state.
 The catalogue auto-refreshes on a configurable interval (default: 6 hours).
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -19,7 +20,9 @@ import time
 import urllib.parse
 from pathlib import Path
 from typing import Any
+
 import httpx
+
 logger = logging.getLogger(__name__)
 _REFRESH_INTERVAL = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))  
 _DB_PATH = Path(__file__).parent.parent.parent / "data" / "catalogue.db"
@@ -31,7 +34,7 @@ def _get_db() -> sqlite3.Connection:
         _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA journal_mode = DELETE")
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA busy_timeout = 5000")
         conn.execute('''CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)''')
