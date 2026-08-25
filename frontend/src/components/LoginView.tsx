@@ -7,7 +7,6 @@ export default function LoginView({
   onLogin: (identity: Identity) => void;
 }) {
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -15,7 +14,7 @@ export default function LoginView({
     setError(null);
     setBusy(true);
     try {
-      onLogin(await api.login(username.trim(), password));
+      onLogin(await api.login(username.trim(), ""));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
@@ -44,23 +43,12 @@ export default function LoginView({
             autoFocus
           />
         </label>
-        <label>
-          <span>Password</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your Oracle Fusion password"
-            required
-          />
-        </label>
         {error && <div className="error" role="alert">{error}</div>}
         <button className="primary" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
         <p className="muted small">
-          Your Person Number and password are checked securely against Oracle Fusion Cloud.
+          Your Person Number is checked securely against Oracle Fusion Cloud.
           The browser only keeps a session cookie.
         </p>
       </form>
