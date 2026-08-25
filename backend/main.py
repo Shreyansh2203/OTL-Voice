@@ -518,9 +518,14 @@ async def stt_stream(websocket: WebSocket):
     if origin and allowed_origins and origin not in allowed_origins:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed")
         return
-    otl_session = websocket.cookies.get(auth._session_cookie_name())
+    otl_session = (
+        websocket.cookies.get(auth._session_cookie_name())
+        or websocket.cookies.get("otl_session")
+        or websocket.cookies.get("__Host-otl_session")
+    )
     ctx = await auth.resolve(otl_session)
     if not ctx:
+        logger.warning("STT WebSocket rejected: Unauthorized (no valid session cookie found)")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
         return
     if not await ws_tracker.acquire(client_ip):
