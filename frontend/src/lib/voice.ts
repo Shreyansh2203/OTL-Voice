@@ -56,6 +56,7 @@ export function useSpeechInput() {
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const recognitionRef = useRef<any>(null);
   const audioDisconnectRef = useRef<(() => void) | null>(null);
   const isCleaningUpRef = useRef(false);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,11 +69,19 @@ export function useSpeechInput() {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
     }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {
+        void e;
+      }
+      recognitionRef.current = null;
+    }
     if (audioDisconnectRef.current) {
       try {
         audioDisconnectRef.current();
-      } catch {
-        // ignore
+      } catch (e) {
+        void e;
       }
       audioDisconnectRef.current = null;
     }
@@ -90,6 +99,13 @@ export function useSpeechInput() {
   const stop = useCallback(
     (cancel = false) => {
       isListeningRef.current = false;
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          void e;
+        }
+      }
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(new Uint8Array(0));
         if (cancel) {
@@ -112,6 +128,9 @@ export function useSpeechInput() {
       setErrorMsg(null);
       if (!supported) return;
       cleanup();
+      setListening(true);
+      isListeningRef.current = true;
+
       if (wsRef.current) {
         try {
           wsRef.current.close();
@@ -120,6 +139,65 @@ export function useSpeechInput() {
         }
       }
       try {
+        let hasStarted = false;
+        let lastFinal = "";
+
+        // 1. Native Web Speech API fallback for instant realtime transcription
+        const SpeechRec =
+          (window as any).SpeechRecognition ||
+          (window as any).webkitSpeechRecognition;
+        if (SpeechRec) {
+          try {
+            const rec = new SpeechRec();
+            rec.continuous = continuous;
+            rec.interimResults = true;
+            rec.lang = "en-US";
+            rec.onresult = (event: any) => {
+              let interim = "";
+              let finalChunk = "";
+              for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                  finalChunk += event.results[i][0].transcript;
+                } else {
+                  interim += event.results[i][0].transcript;
+                }
+              }
+              if (interim) {
+                if (!hasStarted) {
+                  hasStarted = true;
+                  onSpeechStart?.();
+                }
+                onInterim?.(interim);
+              }
+              if (finalChunk) {
+                const trimmed = finalChunk.trim();
+                if (trimmed && trimmed !== lastFinal) {
+                  lastFinal = trimmed;
+                  hasStarted = false;
+                  onFinal(trimmed);
+                }
+              }
+            };
+            rec.onerror = (e: any) => {
+              console.warn("Native speech recognition event:", e.error);
+            };
+            rec.onend = () => {
+              if (isListeningRef.current && continuous) {
+                try {
+                  rec.start();
+                } catch (e) {
+                  void e;
+                }
+              }
+            };
+            rec.start();
+            recognitionRef.current = rec;
+          } catch (e) {
+            console.warn("SpeechRecognition init error:", e);
+          }
+        }
+
+        // 2. OCI Speech STT WebSocket streaming
         const AudioCtx =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext })
@@ -144,8 +222,6 @@ export function useSpeechInput() {
         const wsUrl = `${protocol}//${window.location.host}/api/stt/stream`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
-        let finalText = "";
-        let hasStarted = false;
 
         const onAudioChunk = (data: ArrayBuffer) => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -253,8 +329,7 @@ export function useSpeechInput() {
 
         connectTimeoutRef.current = setTimeout(() => {
           if (ws.readyState === WebSocket.CONNECTING) {
-            setErrorMsg("Connection to speech server timed out.");
-            ws.close();
+            console.warn("WebSocket connecting timeout — continuing with native STT");
           }
         }, 10000);
 
@@ -263,31 +338,31 @@ export function useSpeechInput() {
             clearTimeout(connectTimeoutRef.current);
             connectTimeoutRef.current = null;
           }
-          setListening(true);
-          isListeningRef.current = true;
         };
 
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data);
             if (data.text) {
-              finalText = data.text;
+              const text = data.text;
               if (!hasStarted) {
                 hasStarted = true;
                 onSpeechStart?.();
               }
               if (data.isFinal) {
-                const dispatched = finalText;
-                finalText = "";
-                hasStarted = false;
-                onFinal(dispatched);
+                const dispatched = text.trim();
+                if (dispatched && dispatched !== lastFinal) {
+                  lastFinal = dispatched;
+                  hasStarted = false;
+                  onFinal(dispatched);
+                }
                 if (!continuous) {
                   ws.close();
                   setListening(false);
                   isListeningRef.current = false;
                 }
               } else {
-                onInterim?.(finalText);
+                onInterim?.(text);
               }
             }
           } catch (err) {
@@ -295,10 +370,8 @@ export function useSpeechInput() {
           }
         };
 
-        ws.onerror = () => {
-          if (ws.readyState === WebSocket.CONNECTING) {
-            setErrorMsg("Connection to speech server failed.");
-          }
+        ws.onerror = (e) => {
+          console.warn("WebSocket error on STT stream:", e);
         };
 
         ws.onclose = () => {
@@ -306,9 +379,6 @@ export function useSpeechInput() {
             clearTimeout(connectTimeoutRef.current);
             connectTimeoutRef.current = null;
           }
-          setListening(false);
-          isListeningRef.current = false;
-          cleanup();
         };
       } catch (err: any) {
         if (connectTimeoutRef.current) {
@@ -318,7 +388,7 @@ export function useSpeechInput() {
         setListening(false);
         isListeningRef.current = false;
         let msg = "Microphone error: " + err.message;
-        if (err.name === "NotAllowedError") msg = "Microphone access blocked.";
+        if (err.name === "NotAllowedError") msg = "Microphone access blocked. Please allow mic in browser settings.";
         setErrorMsg(msg);
       }
     },
