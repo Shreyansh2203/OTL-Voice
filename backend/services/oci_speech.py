@@ -157,13 +157,12 @@ try:
             transcriptions = result.get("transcriptions", [])
             if transcriptions:
                 tx = transcriptions[0]
-                text = tx.get("transcription", "")
+                text = tx.get("transcription", "").strip()
                 is_final = tx.get("isFinal", False)
-                if text:
+                if text and text not in [".", ",", "?", "!", "...", "-", "–"]:
                     try:
                         self.result_queue.put_nowait({"text": text, "isFinal": is_final})
                     except asyncio.QueueFull:
-                        
                         print("OCI STT result_queue is full, dropping transcription.")
         def on_ack_message(self, ackmessage):
             pass
@@ -218,6 +217,7 @@ class STTClient:
         params.partial_silence_threshold_in_ms = 0
         params.final_silence_threshold_in_ms = 2000
         params.punctuation = RealtimeParameters.PUNCTUATION_AUTO
+        params.stabilize_partial_results = RealtimeParameters.STABILIZE_PARTIAL_RESULTS_MEDIUM
         result_queue = asyncio.Queue(maxsize=100)
         listener = _STTListener(result_queue)
         url = f"wss://realtime.aiservice.{self.region}.oci.oraclecloud.com"

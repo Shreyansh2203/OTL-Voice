@@ -30,7 +30,6 @@ export default function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const textRef = useRef("");
-  const accumulatedRef = useRef("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,7 +56,6 @@ export default function Composer({
     }
     onSend(trimmed);
     setText("");
-    accumulatedRef.current = "";
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -76,7 +74,6 @@ export default function Composer({
       if (current && !disabled) {
         onSend(current);
         setText("");
-        accumulatedRef.current = "";
       }
       return;
     }
@@ -85,7 +82,7 @@ export default function Composer({
     window.dispatchEvent(playerStopEvent);
     void playMicStart();
 
-    accumulatedRef.current = textRef.current ? textRef.current.trim() + " " : "";
+    const baseDraft = textRef.current.trim();
 
     const resetSilenceTimer = () => {
       clearSilenceTimer();
@@ -96,22 +93,22 @@ export default function Composer({
           onStopMic?.();
           onSend(toSend);
           setText("");
-          accumulatedRef.current = "";
         }
-      }, 2500);
+      }, 2000);
     };
 
     onStartMic?.(
-      (finalChunk) => {
-        if (!finalChunk) return;
-        const currentAcc = (accumulatedRef.current + " " + finalChunk).trim();
-        accumulatedRef.current = currentAcc + " ";
-        setText(currentAcc);
+      (finalTranscript) => {
+        if (!finalTranscript) return;
+        const fullSpoken = (baseDraft ? baseDraft + " " + finalTranscript : finalTranscript).trim();
+        setText(fullSpoken);
         resetSilenceTimer();
       },
-      (interimChunk) => {
-        const fullPreview = (accumulatedRef.current + (interimChunk || "")).trim();
-        setText(fullPreview);
+      (interimTranscript) => {
+        const preview = (baseDraft ? baseDraft + " " + (interimTranscript || "") : (interimTranscript || "")).trim();
+        if (preview) {
+          setText(preview);
+        }
         clearSilenceTimer();
       },
       () => {
