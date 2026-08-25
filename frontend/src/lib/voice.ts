@@ -5,34 +5,41 @@ class STTProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.buffer = [];
-    this.lastVal = 0;
-    this.inputSampleRate = options?.processorOptions?.sampleRate || 48000;
+    this.inputSampleRate = options?.processorOptions?.sampleRate || 16000;
     this.targetSampleRate = 16000;
     this.ratio = this.inputSampleRate / this.targetSampleRate;
     this.sampleAcc = 0;
-    // Pre-calculate low-pass filter coefficient for anti-aliasing
-    // alpha = 1 / (1 + 2*pi*fc/fs) where fc is cutoff frequency (targetSampleRate/2)
+    this.lastVal = 0;
     const fc = this.targetSampleRate / 2;
-    this.alpha = 1 / (1 + 2 * Math.PI * fc / this.inputSampleRate);
+    this.alpha = 1 / (1 + (2 * Math.PI * fc) / this.inputSampleRate);
   }
   process(inputs) {
     const input = inputs[0];
-    if (input.length > 0) {
+    if (input && input.length > 0) {
       const channelData = input[0];
-      // 1st-order IIR low-pass filter to prevent aliasing
-      for (let i = 0; i < channelData.length; i++) {
-         this.lastVal = this.lastVal + this.alpha * (channelData[i] - this.lastVal);
-         this.sampleAcc += 1;
-         if (this.sampleAcc >= this.ratio) {
-             this.sampleAcc -= this.ratio;
-             const val = Math.max(-1, Math.min(1, this.lastVal));
-             this.buffer.push(val * 0x7FFF);
-         }
-      }
-      if (this.buffer.length >= 4096) {
-         const out = new Int16Array(this.buffer);
-         this.port.postMessage(out.buffer, [out.buffer]);
-         this.buffer = [];
+      if (!channelData) return true;
+      if (this.inputSampleRate === 16000) {
+        const out = new Int16Array(channelData.length);
+        for (let i = 0; i < channelData.length; i++) {
+          const s = Math.max(-1, Math.min(1, channelData[i]));
+          out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        this.port.postMessage(out.buffer, [out.buffer]);
+      } else {
+        for (let i = 0; i < channelData.length; i++) {
+          this.lastVal = this.lastVal + this.alpha * (channelData[i] - this.lastVal);
+          this.sampleAcc += 1;
+          if (this.sampleAcc >= this.ratio) {
+            this.sampleAcc -= this.ratio;
+            const s = Math.max(-1, Math.min(1, this.lastVal));
+            this.buffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
+          }
+        }
+        if (this.buffer.length >= 1024) {
+          const out = new Int16Array(this.buffer);
+          this.port.postMessage(out.buffer, [out.buffer]);
+          this.buffer = [];
+        }
       }
     }
     return true;
@@ -126,7 +133,12 @@ export function useSpeechInput() {
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext })
             .webkitAudioContext;
-        const actx = new AudioCtx();
+        let actx: AudioContext;
+        try {
+          actx = new AudioCtx({ sampleRate: 16000 });
+        } catch {
+          actx = new AudioCtx();
+        }
         ctxRef.current = actx;
         if (actx.state === "suspended") {
           await actx.resume();
@@ -196,32 +208,44 @@ export function useSpeechInput() {
         if (!workletLoaded) {
           const bufferSize = 4096;
           activeScriptNode = actx.createScriptProcessor(bufferSize, 1, 1);
-          const inputSampleRate = actx.sampleRate;
-          const targetSampleRate = 16000;
-          const ratio = inputSampleRate / targetSampleRate;
-          let sampleAcc = 0;
-          let lastVal = 0;
-          const fc = targetSampleRate / 2;
-          const alpha = 1 / (1 + (2 * Math.PI * fc) / inputSampleRate);
-          let pcmBuffer: number[] = [];
-
-          activeScriptNode.onaudioprocess = (e) => {
-            const channelData = e.inputBuffer.getChannelData(0);
-            for (let i = 0; i < channelData.length; i++) {
-              lastVal = lastVal + alpha * (channelData[i] - lastVal);
-              sampleAcc += 1;
-              if (sampleAcc >= ratio) {
-                sampleAcc -= ratio;
-                const val = Math.max(-1, Math.min(1, lastVal));
-                pcmBuffer.push(val * 0x7fff);
+          if (actx.sampleRate === 16000) {
+            activeScriptNode.onaudioprocess = (e) => {
+              const channelData = e.inputBuffer.getChannelData(0);
+              const pcm = new Int16Array(channelData.length);
+              for (let i = 0; i < channelData.length; i++) {
+                const s = Math.max(-1, Math.min(1, channelData[i]));
+                pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
               }
-            }
-            if (pcmBuffer.length >= 2048) {
-              const out = new Int16Array(pcmBuffer);
-              onAudioChunk(out.buffer);
-              pcmBuffer = [];
-            }
-          };
+              onAudioChunk(pcm.buffer);
+            };
+          } else {
+            const inputSampleRate = actx.sampleRate;
+            const targetSampleRate = 16000;
+            const ratio = inputSampleRate / targetSampleRate;
+            let sampleAcc = 0;
+            let lastVal = 0;
+            const fc = targetSampleRate / 2;
+            const alpha = 1 / (1 + (2 * Math.PI * fc) / inputSampleRate);
+            let pcmBuffer: number[] = [];
+
+            activeScriptNode.onaudioprocess = (e) => {
+              const channelData = e.inputBuffer.getChannelData(0);
+              for (let i = 0; i < channelData.length; i++) {
+                lastVal = lastVal + alpha * (channelData[i] - lastVal);
+                sampleAcc += 1;
+                if (sampleAcc >= ratio) {
+                  sampleAcc -= ratio;
+                  const s = Math.max(-1, Math.min(1, lastVal));
+                  pcmBuffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
+                }
+              }
+              if (pcmBuffer.length >= 1024) {
+                const out = new Int16Array(pcmBuffer);
+                onAudioChunk(out.buffer);
+                pcmBuffer = [];
+              }
+            };
+          }
 
           source.connect(activeScriptNode);
           activeScriptNode.connect(muteGain);
