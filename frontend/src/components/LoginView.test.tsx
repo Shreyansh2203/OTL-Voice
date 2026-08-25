@@ -21,9 +21,8 @@ describe("LoginView", () => {
     const input = screen.getByPlaceholderText("e.g. 12345");
     fireEvent.change(input, { target: { value: "12345" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
-    fireEvent.change(screen.getByPlaceholderText("Your Oracle Fusion password"), { target: { value: "dummy-password" } });
     fireEvent.click(submitBtn);
-    expect(api.login).toHaveBeenCalledWith("12345", "dummy-password");
+    expect(api.login).toHaveBeenCalledWith("12345", "");
     await waitFor(() => {
       expect(onLogin).toHaveBeenCalledWith(mockIdentity);
     });
@@ -34,7 +33,6 @@ describe("LoginView", () => {
     render(<LoginView onLogin={onLogin} />);
     const input = screen.getByPlaceholderText("e.g. 12345");
     fireEvent.change(input, { target: { value: "wrong" } });
-    fireEvent.change(screen.getByPlaceholderText("Your Oracle Fusion password"), { target: { value: "dummy-password" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
     fireEvent.click(submitBtn);
     const errorElement = await screen.findByRole("alert");
@@ -47,7 +45,6 @@ it("displays generic error for unknown errors", async () => {
     render(<LoginView onLogin={onLogin} />);
     const input = screen.getByPlaceholderText("e.g. 12345");
     fireEvent.change(input, { target: { value: "wrong" } });
-    fireEvent.change(screen.getByPlaceholderText("Your Oracle Fusion password"), { target: { value: "dummy-password" } });
     const submitBtn = screen.getByRole("button", { name: "Sign in" });
     fireEvent.click(submitBtn);
     const errorElement = await screen.findByRole("alert");

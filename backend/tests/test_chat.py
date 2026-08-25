@@ -34,10 +34,10 @@ def test_render_assignments_empty():
     assert "no project assignments" in output
 @patch("backend.services.chat.GeminiChatClient")
 def test_client(mock_client):
-    _client.cache_clear()
-    client = _client()
-    assert client is not None
-    mock_client.assert_called_once()
+    client1 = _client()
+    _client()
+    assert client1 is not None
+    assert mock_client.call_count == 2
 @patch("backend.services.chat.PROMPT_PATH")
 def test_load_prompt_template(mock_prompt_path):
     mock_prompt_path.read_text.return_value = "Prompt {{USERNAME}}"

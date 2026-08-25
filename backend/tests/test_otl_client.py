@@ -92,9 +92,9 @@ def test_safe_body():
 def test_coerce_number():
     assert _coerce_number(None) is None
     assert _coerce_number("") is None
-    assert _coerce_number("4.6") == 5
-    assert _coerce_number("7.5") == 8
-    assert _coerce_number(8.0) == 8
+    assert _coerce_number("4.6") == 4.6
+    assert _coerce_number("7.5") == 7.5
+    assert _coerce_number(8.0) == 8.0
     assert _coerce_number(8) == 8
     assert _coerce_number("abc") is None
 def test_clip():
@@ -103,7 +103,17 @@ def test_clip():
     assert len(_clip(long_str)) == 80
 def test_map_entry_to_otl():
     with pytest.raises(OtlError, match="must be greater than zero"):
-        map_entry_to_otl({"hours": 0})
+        map_entry_to_otl({"employeeNumber": "123", "hours": 0})
+    with pytest.raises(OtlError, match="must be greater than zero"):
+        map_entry_to_otl({"employeeNumber": "123", "hours": -5})
+    with pytest.raises(OtlError, match="employeeNumber is required"):
+        map_entry_to_otl({"hours": 5})
+    with pytest.raises(OtlError, match="Invalid date format"):
+        map_entry_to_otl({"employeeNumber": "123", "hours": 8, "date": "bad"})
+    with pytest.raises(OtlError, match="Invalid startTime format"):
+        map_entry_to_otl({"employeeNumber": "123", "hours": 8, "startTime": "bad"})
+    with pytest.raises(OtlError, match="Invalid stopTime format"):
+        map_entry_to_otl({"employeeNumber": "123", "hours": 8, "stopTime": "bad"})
     entry = {
         "employeeNumber": "123",
         "hours": 8,
@@ -119,9 +129,7 @@ def test_map_entry_to_otl():
         "taskId": "TASK-123",
         "expenditureType": "Dev"
     }
-    with patch("backend.services.otl_client.datetime") as mock_dt:
-        mock_dt.now.return_value.replace.return_value = None 
-        out = map_entry_to_otl(entry)
+    out = map_entry_to_otl(entry)
     assert out["processInline"] == "Y"
     ev = out["timeRecordEvent"][0]
     assert ev["measure"] == 8
@@ -132,15 +140,15 @@ def test_map_entry_to_otl():
     assert attrs["PJC_TASK_ID"] == "TASK-123"
     assert attrs["PJC_EXPENDITURE_TYPE_NAME"] == "Dev"
     assert "Proj1 (P1) | Task: Task1 | WO: WO1 | Total Hours: 8" in attrs["Comment"]
-    with pytest.raises(OtlError, match="Invalid date format"):
-        map_entry_to_otl({"hours": 8, "date": "bad-date"})
-    out_empty = map_entry_to_otl({"hours": 8})
+    out_empty = map_entry_to_otl({"employeeNumber": "123", "hours": 8})
     ev2 = out_empty["timeRecordEvent"][0]
-    assert ev2["reporterId"] == "UNKNOWN_EMP"
-    entry3 = {"hours": 8, "date": "2024-05-10", "startTime": "bad-time", "stopTime": "bad-time"}
-    out3 = map_entry_to_otl(entry3)
-    ev3 = out3["timeRecordEvent"][0]
-    assert "T09:00" in ev3["startTime"] 
+    assert ev2["reporterId"] == "123"
+    entry3 = {"employeeNumber": "123", "hours": 8, "date": "2024-05-10", "startTime": "10:00", "stopTime": "11:00"}
+    with patch.dict(os.environ, {"DEFAULT_START_HOUR": "10"}):
+        out3 = map_entry_to_otl(entry3)
+        assert out3["processInline"] == "Y"
+        ev3 = out3["timeRecordEvent"][0]
+        assert "T10:00" in ev3["startTime"] 
 def test_default_record_name():
     assert "EMP-WO-" in _default_record_name({})
     assert "123-WO1-" in _default_record_name({"employeeNumber": " 123 ", "workOrder": " WO1 "})
@@ -167,11 +175,11 @@ def test_list_timecard_entries(mock_get):
     mock_get.return_value = mock_resp
     cred = OtlCredential("u", "p")
     with patch.dict(os.environ, {"OTL_BASE_URL": "http://x"}):
-        res = list_timecard_entries(cred, query="test")
+        res = list_timecard_entries(cred, person_number="test")
         assert res == {"items": []}
         mock_get.assert_called_once()
         _args, kwargs = mock_get.call_args
-        assert kwargs["params"]["q"] == "test"
+        assert kwargs["params"]["q"] == "personNumber='test'"
 def test_hcm_base_url():
     with patch.dict(os.environ, {"OTL_BASE_URL": "http://x/timeRecordEventRequests"}):
         assert hcm_base_url() == "http://x"
@@ -231,7 +239,7 @@ def test_create_timecard_entry(mock_post):
     mock_post.return_value = mock_resp
     cred = OtlCredential("u", "p")
     with patch.dict(os.environ, {"OTL_BASE_URL": "http://x"}):
-        res = create_timecard_entry(cred, {"hours": 5})
+        res = create_timecard_entry(cred, {"employeeNumber": "123", "hours": 5})
         assert res["timeRecordEventRequestId"] == "req1"
 @patch("httpx.Client.delete")
 def test_delete_timecard_entry(mock_delete):

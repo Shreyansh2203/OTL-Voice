@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from dataclasses import dataclass
@@ -71,8 +72,7 @@ def _coerce_number(value: Any) -> float | int | None:
     if value is None or value == "":
         return None
     try:
-        f = float(value)
-        return round(f)
+        return float(value)
     except (TypeError, ValueError):
         return None
 def _clip(value: Any) -> str | None:
@@ -80,7 +80,10 @@ def _clip(value: Any) -> str | None:
         return None
     return str(value)[:_STR_MAX]
 def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
-    emp_num = str(entry.get("employeeNumber") or "UNKNOWN_EMP").strip()
+    emp_num = entry.get("employeeNumber")
+    if not emp_num:
+        raise OtlError(400, "employeeNumber is required.")
+    emp_num = str(emp_num).strip()
     hours = _coerce_number(entry.get("hours")) or 0
     if hours <= 0:
         raise OtlError(400, f"Timecard entry hours must be greater than zero, got {hours}.")
@@ -97,22 +100,25 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         raise OtlError(400, f"Invalid date format '{date_str}'. Expected YYYY-MM-DD.")
     default_start_hour = int(os.getenv("DEFAULT_START_HOUR", "9"))
-    try:
-        if start_time_str:
+    if start_time_str:
+        try:
             h1, m1 = map(int, start_time_str.split(":"))
             start_dt = base_dt.replace(hour=h1, minute=m1)
-        else:
-            start_dt = base_dt.replace(hour=default_start_hour, minute=0) 
-    except Exception:
-        start_dt = base_dt.replace(hour=default_start_hour, minute=0)
-    try:
-        if stop_time_str:
+        except Exception:
+            raise OtlError(400, f"Invalid startTime format '{start_time_str}'. Expected HH:MM.")
+    else:
+        start_dt = base_dt.replace(hour=default_start_hour, minute=0) 
+    if stop_time_str:
+        try:
             h2, m2 = map(int, stop_time_str.split(":"))
             stop_dt = base_dt.replace(hour=h2, minute=m2)
-        else:
-            stop_dt = start_dt + timedelta(hours=hours)
-    except Exception:
+        except Exception:
+            raise OtlError(400, f"Invalid stopTime format '{stop_time_str}'. Expected HH:MM.")
+    else:
         stop_dt = start_dt + timedelta(hours=hours)
+
+    if stop_dt < start_dt:
+        stop_dt += timedelta(days=1)
     start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     stop_time = stop_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     parts: list[str] = []
@@ -138,9 +144,18 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
         event["stopTime"] = stop_time
     attrs: list[dict[str, str]] = []
     if parts:
+        comment_str = " | ".join(parts)
+        if len(comment_str) > _STR_MAX:
+            total_hours_part = parts[-1]
+            allowed_len = _STR_MAX - len(total_hours_part) - 3
+            if allowed_len > 0:
+                rest = " | ".join(parts[:-1])
+                comment_str = rest[:allowed_len] + " | " + total_hours_part
+            else:
+                comment_str = total_hours_part[:_STR_MAX]
         attrs.append({
             "attributeName": "Comment",
-            "attributeValue": _clip(" | ".join(parts)) or "",
+            "attributeValue": comment_str,
         })
     payroll_time_type = entry.get("payrollTimeType")
     if payroll_time_type:
@@ -195,7 +210,6 @@ def list_timecard_entries(
     cred: OtlCredential,
     limit: int = 25,
     offset: int = 0,
-    query: str | None = None,
     person_number: str | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {
@@ -204,8 +218,6 @@ def list_timecard_entries(
         "expand": "timeAttributes",
     }
     q_parts = []
-    if query:
-        q_parts.append(query)
     if person_number:
         q_parts.append(f"personNumber='{escape_q_literal(person_number)}'")
     if q_parts:
@@ -246,7 +258,7 @@ def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None
         "personId": worker.get("PersonId"),
         "personNumber": worker.get("PersonNumber"),
         "fullName": full_name,
-        "isActive": True 
+        "isActive": worker.get("ActiveFlag", True)  # Documented: actual status might require expanding workRelationships
     }
 def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: str = "") -> list[dict[str, Any]]:
     from . import fusion_catalogue
@@ -285,7 +297,7 @@ def create_many(
                     "ok": True,
                     "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
                     "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                    "recordName": "timeRecordEventRequest",
+                    "recordName": _default_record_name(entry),
                 }
             )
         except OtlError as exc:
@@ -316,26 +328,50 @@ async def avalidate(cred: OtlCredential) -> dict[str, Any]:
     _raise_for_status(resp)
     return {"ok": True, "username": cred.username}
 async def aget_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
-    return get_worker(cred, person_number)
+    return await asyncio.to_thread(get_worker, cred, person_number)
 async def alist_timecard_entries(
     cred: OtlCredential, limit: int = 10, offset: int = 0, person_number: str | None = None
 ) -> dict[str, Any]:
-    return list_timecard_entries(cred, limit, offset, person_number)
+    return await asyncio.to_thread(list_timecard_entries, cred, limit, offset, person_number)
 async def acreate_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    results = []
-    for entry in entries:
+    results: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries):
         try:
-            res = await acreate_timecard_entry(cred, entry)
-            results.append({'ok': True, 'id': res.get('timeRecordEventRequestId')})
-        except Exception as e:
-            results.append({'ok': False, 'error': str(e), 'entry': entry})
+            created = await acreate_timecard_entry(cred, entry)
+            results.append(
+                {
+                    "index": index,
+                    "ok": True,
+                    "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordName": _default_record_name(entry),
+                }
+            )
+        except OtlError as exc:
+            results.append(
+                {
+                    "index": index,
+                    "ok": False,
+                    "status": exc.status_code,
+                    "error": exc.message,
+                }
+            )
+        except Exception as exc:
+            results.append(
+                {
+                    "index": index,
+                    "ok": False,
+                    "status": 500,
+                    "error": str(exc),
+                }
+            )
     return results
 async def alist_worker_assignments(
     cred: OtlCredential, person_number: str, full_name: str = ""
 ) -> list[dict[str, Any]]:
-    return list_worker_assignments(cred, person_number, full_name)
+    return await asyncio.to_thread(list_worker_assignments, cred, person_number, full_name)
 async def acreate_timecard_entry(cred: OtlCredential, entry: dict[str, Any]) -> dict[str, Any]:
     async with _async_client(cred) as client:
         resp = await client.post(base_url(), json=map_entry_to_otl(entry))

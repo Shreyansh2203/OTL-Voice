@@ -49,12 +49,12 @@ def test_build_index():
             "project_number": "1001",
             "project_name": "Alpha",
             "status": "Active",
-            "manager": "Alice",
+            "manager_id": "1",
             "tasks": [{"taskId": "T1", "taskName": "Design"}],
             "team_members": [
-                {"PersonName": "Bob Smith", "ProjectRole": "Developer"},
-                {"PersonName": "Alice", "ProjectRole": "Manager"},
-                {"PersonName": "", "ProjectRole": "Ghost"}
+                {"PersonId": "2", "ProjectRole": "Developer"},
+                {"HCMPersonId": "1", "ProjectRole": "Manager"},
+                {"PersonId": "", "ProjectRole": "Ghost"}
             ]
         },
         {
@@ -62,15 +62,16 @@ def test_build_index():
             "project_number": "1002",
             "project_name": "Beta",
             "status": "Active",
-            "manager": "Alice",
+            "manager_id": "1",
             "tasks": [],
             "team_members": []
         }
     ]
     index = _build_index(projects_data)
-    assert "bob smith" in index
-    assert "alice" in index
-    bob_projects = index["bob smith"]
+    assert "2" in index
+    assert "1" in index
+    assert len(index["1"]) == 2
+    bob_projects = index["2"]
     assert len(bob_projects) == 1
     assert bob_projects[0]["project_id"] == "P1"
     assert bob_projects[0]["project_name"] == "Alpha"
@@ -125,9 +126,9 @@ def test_do_load_catalogue(mock_service_credential, mock_assignments, mock_membe
     mock_cred = MagicMock()
     mock_cred.auth = ("user", "pass")
     mock_service_credential.return_value = mock_cred
-    mock_projects.return_value = [{"ProjectId": f"P{i}", "ProjectNumber": f"{i}", "ProjectName": f"A{i}", "ProjectManagerName": "Alice", "ProjectStatus": "Active"} for i in range(10)]
+    mock_projects.return_value = [{"ProjectId": f"P{i}", "ProjectNumber": f"{i}", "ProjectName": f"A{i}", "ProjectManagerId": "1", "ProjectStatus": "Active"} for i in range(10)]
     mock_tasks.return_value = [{"TaskId": "T1", "TaskNumber": "1", "TaskName": "Task 1"}]
-    mock_members.return_value = [{"PersonName": "Bob", "ProjectRole": "Dev"}]
+    mock_members.return_value = [{"PersonId": "2", "ProjectRole": "Dev"}]
     mock_assignments.return_value = []
     client_instance = MagicMock()
     mock_client.return_value = client_instance
@@ -136,8 +137,8 @@ def test_do_load_catalogue(mock_service_credential, mock_assignments, mock_membe
     assert cur.fetchone()[0] == 'true'
     cur = mock_db.execute("SELECT name FROM person_index")
     names = [row[0] for row in cur.fetchall()]
-    assert "bob" in names
-    assert "alice" in names
+    assert "2" in names
+    assert "1" in names
 def test_load_catalogue():
     with patch.dict("os.environ", {"TEST_MODE": "false"}):
         with patch('threading.Thread') as mock_thread:
@@ -150,17 +151,15 @@ def test_get_project_by_id(mock_db):
     assert get_project_by_id("P1") == {"project_id": "P1"}
     assert get_project_by_id("P2") is None
 def test_find_person_projects(mock_db):
-    mock_db.execute("INSERT INTO person_index (name, projects) VALUES (?, ?)", ("bob smith", json.dumps([{"project_id": "P1"}])))
+    mock_db.execute("INSERT INTO person_index (name, projects) VALUES (?, ?)", ("1", json.dumps([{"project_id": "P1"}])))
     mock_db.commit()
-    assert _find_person_projects("Bob Smith") == [{"project_id": "P1"}]
-    assert _find_person_projects("Bob") == [{"project_id": "P1"}]
-    assert _find_person_projects("smith") == [{"project_id": "P1"}]
+    assert _find_person_projects("1") == [{"project_id": "P1"}]
     assert _find_person_projects("alice") == []
 @patch('backend.services.fusion_catalogue.time.sleep')
 def test_list_assignments_for_worker(mock_sleep, mock_db):
     assert list_assignments_for_worker("1", "Bob") == []
     mock_db.execute("INSERT INTO meta (key, value) VALUES ('is_loaded', 'true')")
-    mock_db.execute("INSERT INTO person_index (name, projects) VALUES (?, ?)", ("bob", json.dumps([
+    mock_db.execute("INSERT INTO person_index (name, projects) VALUES (?, ?)", ("1", json.dumps([
         {
             "project_number": "1001",
             "project_id": "P1",

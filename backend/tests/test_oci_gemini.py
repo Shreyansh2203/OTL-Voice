@@ -145,7 +145,10 @@ def test_stream_partial_error(mock_client):
     mock_resp.data.events.return_value = raise_err()
     client.client.chat.return_value = mock_resp
     res = list(client.stream("sys", []))
-    assert res == ["part1"]
+    assert len(res) == 2
+    assert res[0] == "part1"
+    err = json.loads(res[1])
+    assert "error after some data" in err["error"]
 @patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
 @patch.dict(os.environ, {"OCI_COMPARTMENT_ID": "c1", "OCI_REGION": "r1", "OCI_USER_OCID": "ocid1.user.oc1..aaaaaa", "OCI_TENANCY_OCID": "ocid1.tenancy.oc1..bbbbb", "OCI_FINGERPRINT": "00:11:22:33:44", "OCI_PRIVATE_KEY": "k1"}, clear=True)
 def test_stream_empty_events(mock_client):

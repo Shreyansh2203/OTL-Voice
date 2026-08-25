@@ -71,7 +71,7 @@ def _fetch_all_projects(client: httpx.Client) -> list[dict]:
         resp = client.get(
             f"{_ppm_base()}/projects",
             params={
-                "fields": "ProjectId,ProjectNumber,ProjectName,ProjectManagerName,ProjectStatus",
+                "fields": "ProjectId,ProjectNumber,ProjectName,ProjectManagerName,ProjectManagerId,ProjectManagerEmail,ProjectStatus",
                 "limit": limit,
                 "offset": offset,
             },
@@ -130,6 +130,7 @@ def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
     return assignments
 def _build_index(projects_data: list[dict], assignments_data: list[dict] | None = None) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = {}
+    seen_projects: dict[str, set[str]] = {}
     if assignments_data is None:
         assignments_data = []
     for proj in projects_data:
@@ -142,37 +143,40 @@ def _build_index(projects_data: list[dict], assignments_data: list[dict] | None 
             "tasks": proj.get("tasks", []),
         }
         for member in proj.get("team_members", []):
-            person_name = (member.get("PersonName") or "").strip().lower()
-            if not person_name:
+            person_id = str(member.get("HCMPersonId") or member.get("PersonId") or "").strip()
+            if not person_id:
                 continue
-            if person_name not in index:
-                index[person_name] = []
-            already = any(p["project_number"] == proj_entry["project_number"] for p in index[person_name])
-            if not already:
-                index[person_name].append({
+            if person_id not in index:
+                index[person_id] = []
+                seen_projects[person_id] = set()
+            if proj_entry["project_number"] not in seen_projects[person_id]:
+                seen_projects[person_id].add(proj_entry["project_number"])
+                index[person_id].append({
                     **proj_entry,
                     "role": member.get("ProjectRole", "Team Member"),
                 })
         for assign in assignments_data:
             if str(assign.get("ProjectId")) == proj_entry["project_id"]:
-                person_name = (assign.get("ResourceName") or "").strip().lower()
-                if not person_name:
+                person_id = str(assign.get("ResourceHCMPersonId") or "").strip()
+                if not person_id:
                     continue
-                if person_name not in index:
-                    index[person_name] = []
-                already = any(p["project_number"] == proj_entry["project_number"] for p in index[person_name])
-                if not already:
-                    index[person_name].append({
+                if person_id not in index:
+                    index[person_id] = []
+                    seen_projects[person_id] = set()
+                if proj_entry["project_number"] not in seen_projects[person_id]:
+                    seen_projects[person_id].add(proj_entry["project_number"])
+                    index[person_id].append({
                         **proj_entry,
                         "role": "Resource Assignment",
                     })
-        mgr_name = (proj.get("manager") or "").strip().lower()
-        if mgr_name:
-            if mgr_name not in index:
-                index[mgr_name] = []
-            already = any(p["project_number"] == proj_entry["project_number"] for p in index[mgr_name])
-            if not already:
-                index[mgr_name].append({
+        mgr_id = str(proj.get("manager_id") or "").strip()
+        if mgr_id:
+            if mgr_id not in index:
+                index[mgr_id] = []
+                seen_projects[mgr_id] = set()
+            if proj_entry["project_number"] not in seen_projects[mgr_id]:
+                seen_projects[mgr_id].add(proj_entry["project_number"])
+                index[mgr_id].append({
                     **proj_entry,
                     "role": "Project Manager",
                 })
@@ -180,7 +184,17 @@ def _build_index(projects_data: list[dict], assignments_data: list[dict] | None 
 def _do_load_catalogue() -> None:
     lock_path = _DB_PATH.with_suffix(".lock")
     try:
+        if lock_path.exists():
+            try:
+                content = lock_path.read_text()
+                _pid, ts = content.split(":")
+                if time.time() - float(ts) > 3600:
+                    logger.warning("Found stale lock file, reclaiming...")
+                    lock_path.unlink()
+            except Exception:
+                pass
         lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(lock_fd, f"{os.getpid()}:{time.time()}".encode())
         os.close(lock_fd)
     except FileExistsError:
         logger.warning("Catalogue load already in progress by another worker")
@@ -240,6 +254,7 @@ def _do_load_catalogue() -> None:
                     "project_name": p_name,
                     "status": p.get("ProjectStatus", ""),
                     "manager": p.get("ProjectManagerName", ""),
+                    "manager_id": str(p.get("ProjectManagerId") or p.get("ProjectManagerEmail") or "").strip(),
                     "tasks": [
                         {"task_id": str(t.get("TaskId", "")), "task_number": str(t.get("TaskNumber", "")), "task_name": t.get("TaskName", "")}
                         for t in tasks
@@ -277,6 +292,7 @@ def _do_load_catalogue() -> None:
         client.close()
         _set_loading_false(conn, lock_path)
 def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
+    global _is_loading
     try:
         conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')")
         conn.commit()
@@ -325,19 +341,13 @@ def get_project_by_id(project_id: str) -> dict | None:
     if row:
         return json.loads(row[0])
     return None
-def _find_person_projects(person_name: str) -> list[dict]:
-    key = person_name.strip().lower()
+def _find_person_projects(person_id: str) -> list[dict]:
+    key = person_id.strip()
     conn = _get_db()
     cur = conn.execute("SELECT projects FROM person_index WHERE name = ?", (key,))
     row = cur.fetchone()
     if row:
         return json.loads(row[0])
-    cur = conn.execute("SELECT name, projects FROM person_index")
-    for row in cur.fetchall():
-        indexed_name = row[0]
-        if key in indexed_name or indexed_name in key:
-            projects = json.loads(row[1])
-            return projects
     return []
 def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
@@ -397,7 +407,7 @@ def list_assignments_for_worker(employee_number: str, full_name: str = "") -> li
         if not is_loaded:
             logger.warning("Catalogue not loaded � returning empty assignments")
             return []
-    assigned = _find_person_projects(full_name)
+    assigned = _find_person_projects(employee_number)
     if not assigned:
         return []
     return _transform_assignments(assigned)
@@ -425,7 +435,7 @@ async def alist_assignments_for_worker(employee_number: str, full_name: str = ""
         if not is_loaded:
             logger.warning("Catalogue not loaded � returning empty assignments")
             return []
-    assigned = _find_person_projects(full_name)
+    assigned = _find_person_projects(employee_number)
     if not assigned:
         return []
     return _transform_assignments(assigned)

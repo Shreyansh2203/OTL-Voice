@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -119,7 +118,7 @@ class SpeechClient:
         clean = clean_for_speech(text)
         if not clean:
             return b""
-        is_ssml = "<break" in clean or "<emphasis" in clean or "<prosody" in clean
+        is_ssml = bool(re.search(r"<(?:break|emphasis|prosody)[^>]*>.*?</(?:break|emphasis|prosody)>|<(?:break|emphasis|prosody)[^>]*/>", clean, re.IGNORECASE))
         if is_ssml:
             ssml_payload = f"<speak>{clean}</speak>"
             if abs(rate - 1.0) > 1e-3:
@@ -128,8 +127,7 @@ class SpeechClient:
                 import xml.etree.ElementTree as ET
                 ET.fromstring(ssml_payload)
                 return self._call(self._details(ssml_payload, "SSML"))
-            except (oci.exceptions.ServiceError, Exception):
-                import re
+            except oci.exceptions.ServiceError:
                 clean = re.sub(r'<[^>]+>', '', clean) 
         if abs(rate - 1.0) < 1e-3:
             return self._call(self._details(clean, "TEXT"))
@@ -165,7 +163,8 @@ try:
                     try:
                         self.result_queue.put_nowait({"text": text, "isFinal": is_final})
                     except asyncio.QueueFull:
-                        pass
+                        
+                        print("OCI STT result_queue is full, dropping transcription.")
         def on_ack_message(self, ackmessage):
             pass
         def on_connect(self):
@@ -209,14 +208,17 @@ class STTClient:
                 pass_phrase=self.config.get("pass_phrase")
             )
     async def stream_session(self):
-        params = RealtimeParameters()
+        try:
+            params = RealtimeParameters()
+        except NameError:
+            raise RuntimeError("OCI STT Realtime SDK is not available.")
         params.language_code = "en-US"
         params.model_domain = RealtimeParameters.MODEL_DOMAIN_GENERIC
         params.encoding = "audio/raw;rate=16000"
         params.partial_silence_threshold_in_ms = 0
         params.final_silence_threshold_in_ms = 2000
         params.punctuation = RealtimeParameters.PUNCTUATION_AUTO
-        result_queue = asyncio.Queue()
+        result_queue = asyncio.Queue(maxsize=100)
         listener = _STTListener(result_queue)
         url = f"wss://realtime.aiservice.{self.region}.oci.oraclecloud.com"
         client = RealtimeSpeechClient(
@@ -240,4 +242,11 @@ class STTClient:
                 t.cancel()
         except Exception:
             pass
+            
+        if loop_task.done() and loop_task.exception():
+            raise loop_task.exception()
+            
+        if not listener.connected.is_set():
+            raise RuntimeError("Failed to connect STT listener.")
+            
         return client, result_queue, listener.done, loop_task

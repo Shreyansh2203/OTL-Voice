@@ -32,7 +32,6 @@ def _retry_with_backoff[T](
         oci.exceptions.ServiceError,
         ConnectionError,
         TimeoutError,
-        IOError,
     ),
 ) -> T:
     last_exception: Exception | None = None
@@ -133,9 +132,21 @@ class GeminiChatClient:
                 Message(role="SYSTEM", content=[TextContent(text=system_prompt)])
             )
         for turn in history:
-            role = "USER" if turn.get("role") == "user" else "ASSISTANT"
+            r = turn.get("role")
+            if r == "user":
+                role = "USER"
+            elif r in ("assistant", "model"):
+                role = "ASSISTANT"
+            else:
+                logger.warning("Dropping message with unexpected role: %s", r)
+                continue
+            
             content = turn.get("content", "")
-            messages.append(Message(role=role, content=[TextContent(text=content)]))
+            if messages and messages[-1].role == role:
+                prev_text = getattr(messages[-1].content[0], "text", "")
+                messages[-1].content[0] = TextContent(text=prev_text + "\n\n" + content)
+            else:
+                messages.append(Message(role=role, content=[TextContent(text=content)]))
         return messages
     def _chat_detail(self, messages: list[Message], stream: bool) -> ChatDetails:
         chat_request = GenericChatRequest(
@@ -178,15 +189,18 @@ class GeminiChatClient:
                 except Exception:
                     blob = {}
             found: list[str] = []
-            def _walk(node):
+            def _walk(node, depth=0):
+                if depth > 100:
+                    logger.warning("Max depth exceeded in _extract_full_text")
+                    return
                 if isinstance(node, dict):
                     if isinstance(node.get("text"), str):
                         found.append(node["text"])
                     for value in node.values():
-                        _walk(value)
+                        _walk(value, depth + 1)
                 elif isinstance(node, list):
                     for item in node:
-                        _walk(item)
+                        _walk(item, depth + 1)
             _walk(blob)
             if found:
                 return "".join(found)
@@ -215,6 +229,7 @@ class GeminiChatClient:
                 yield self.complete(system_prompt, history)
                 return
             logger.error("Streaming failed after producing partial output: %s", exc)
+            yield json.dumps({"error": str(exc)})
             return
         if not produced_any:
             yield self.complete(system_prompt, history)
@@ -223,6 +238,8 @@ class GeminiChatClient:
         try:
             obj = json.loads(raw)
         except Exception:
+            return ""
+        if not isinstance(obj, dict):
             return ""
         message = obj.get("message")
         if isinstance(message, dict):
