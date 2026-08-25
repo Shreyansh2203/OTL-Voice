@@ -65,14 +65,28 @@ export default function Composer({
     }
   }
 
-  async function toggleMic() {
-    if (listening) {
+  const listeningRef = useRef(listening);
+  const disabledRef = useRef(disabled);
+  const onStartMicRef = useRef(onStartMic);
+  const onStopMicRef = useRef(onStopMic);
+  const onSendRef = useRef(onSend);
+
+  useEffect(() => {
+    listeningRef.current = listening;
+    disabledRef.current = disabled;
+    onStartMicRef.current = onStartMic;
+    onStopMicRef.current = onStopMic;
+    onSendRef.current = onSend;
+  });
+
+  const toggleMic = () => {
+    if (listeningRef.current) {
       clearSilenceTimer();
       void playMicStop();
-      onStopMic?.();
+      onStopMicRef.current?.();
       const current = textRef.current.trim();
-      if (current && !disabled) {
-        onSend(current);
+      if (current && !disabledRef.current) {
+        onSendRef.current(current);
         setText("");
       }
       return;
@@ -88,16 +102,16 @@ export default function Composer({
       clearSilenceTimer();
       silenceTimerRef.current = setTimeout(() => {
         const toSend = textRef.current.trim();
-        if (toSend && !disabled) {
+        if (toSend && !disabledRef.current) {
           void playMicStop();
-          onStopMic?.();
-          onSend(toSend);
+          onStopMicRef.current?.();
+          onSendRef.current(toSend);
           setText("");
         }
       }, 2000);
     };
 
-    onStartMic?.(
+    onStartMicRef.current?.(
       (finalTranscript) => {
         if (!finalTranscript) return;
         const fullSpoken = (baseDraft ? baseDraft + " " + finalTranscript : finalTranscript).trim();
@@ -116,7 +130,7 @@ export default function Composer({
         window.dispatchEvent(evt);
       }
     );
-  }
+  };
 
   const toggleMicRef = useRef(toggleMic);
   useEffect(() => {
@@ -126,12 +140,12 @@ export default function Composer({
   useEffect(() => {
     if (onRegisterTrigger) {
       onRegisterTrigger(() => {
-        if (!listening && !disabled) {
-          void toggleMicRef.current();
+        if (!listeningRef.current && !disabledRef.current) {
+          toggleMicRef.current();
         }
       });
     }
-  }, [onRegisterTrigger, listening, disabled]);
+  }, [onRegisterTrigger]);
 
   const getPlaceholder = () => {
     if (voiceState === "speaking") {
