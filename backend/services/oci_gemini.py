@@ -22,10 +22,7 @@ from oci.generative_ai_inference.models import (
 )
 
 logger = logging.getLogger(__name__)
-
 T = TypeVar("T")
-
-
 def _retry_with_backoff[T](
     func: Callable[[], T],
     max_retries: int = 3,
@@ -38,7 +35,6 @@ def _retry_with_backoff[T](
         IOError,
     ),
 ) -> T:
-    """Execute a function with exponential backoff retry logic."""
     last_exception: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
@@ -47,7 +43,6 @@ def _retry_with_backoff[T](
             last_exception = e
             if attempt < max_retries:
                 delay = min(base_delay * (2 ** attempt), max_delay)
-                # Add jitter
                 delay *= (0.5 + random.random() * 0.5)
                 time.sleep(delay)
             else:
@@ -55,59 +50,35 @@ def _retry_with_backoff[T](
     if last_exception is not None:
         raise last_exception
     raise RuntimeError("Retry loop failed without an exception")
-
-
-# --------------------------------------------------------------------------- #
-# Configuration helpers
-# --------------------------------------------------------------------------- #
 def _env(name: str, default: str = "") -> str:
     value = os.getenv(name)
     return value.strip() if value else default
-
-
 def _normalize_pem(raw: str) -> str:
     text = raw.strip()
     if "\\n" in text:
         text = text.replace("\\n", "\n")
-
-    # Find the PEM block - handle various formats
-    # Pattern matches: -----BEGIN LABEL-----\nBASE64_CONTENT\n-----END LABEL-----
     match = re.search(
         r"(-----BEGIN ([A-Z0-9 ]+?)-----\s*.*?\s*-----END \2-----)",
         text,
         re.DOTALL,
     )
     if not match:
-        # Could not recognise the structure; return as-is and let the signer
-        # raise a clear error.
         return text
-
     pem_block = match.group(1).strip()
-    
-    # Normalize the PEM block - ensure proper line wrapping
     lines = pem_block.split("\n")
     if len(lines) < 3:
         return pem_block
-    
     header = lines[0].strip()
     footer = lines[-1].strip()
-    
-    # Extract base64 content (everything between header and footer)
     body_lines = [line.strip() for line in lines[1:-1] if line.strip()]
     body = "".join(body_lines)
-    
-    # Re-wrap at 64 chars per line
     wrapped = "\n".join(body[i:i + 64] for i in range(0, len(body), 64))
-    
     return f"{header}\n{wrapped}\n{footer}\n"
-
-
 def build_oci_config() -> dict[str, str]:
     region = _env("OCI_REGION")
     user = _env("OCI_USER_OCID")
     tenancy = _env("OCI_TENANCY_OCID")
     fingerprint = _env("OCI_FINGERPRINT")
-
     if user and tenancy and fingerprint:
         config = {
             "user": user,
@@ -126,50 +97,35 @@ def build_oci_config() -> dict[str, str]:
                 "No private key found. Set OCI_PRIVATE_KEY (inline PEM) or "
                 "OCI_PRIVATE_KEY_PATH in your .env."
             )
-
         passphrase = os.getenv("OCI_PRIVATE_KEY_PASSPHRASE")
         if passphrase and passphrase.strip():
             config["pass_phrase"] = passphrase.strip()
         return config
-
-    # Fallback: use ~/.oci/config profile (local development).
     profile = _env("OCI_CONFIG_PROFILE", "DEFAULT")
     return oci.config.from_file(profile_name=profile)
-
-
 def _service_endpoint(region: str) -> str:
     explicit = _env("OCI_SERVICE_ENDPOINT")
     if explicit:
         return explicit
     return f"https://inference.generativeai.{region}.oci.oraclecloud.com"
-
-
-# --------------------------------------------------------------------------- #
-# Chat client
-# --------------------------------------------------------------------------- #
 class GeminiChatClient:
-
     def __init__(self) -> None:
         self.config = build_oci_config()
         self.region = self.config.get("region") or _env("OCI_REGION")
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
-
         self.model_id = _env("CHAT_MODEL_ID", "google.gemini-2.5-flash")
         self.temperature = float(_env("CHAT_TEMPERATURE", "0.3"))
         self.top_p = float(_env("CHAT_TOP_P", "0.95"))
         self.max_tokens = int(_env("CHAT_MAX_TOKENS", "2048"))
         read_timeout = int(_env("REQUEST_TIMEOUT_SECONDS", "300"))
-
         self.client = GenerativeAiInferenceClient(
             config=self.config,
             service_endpoint=_service_endpoint(self.region),
             retry_strategy=oci.retry.NoneRetryStrategy(),
             timeout=(10, read_timeout),
         )
-
-    # -- request building ---------------------------------------------------- #
     def _to_messages(self, system_prompt: str, history: list[dict]) -> list[Message]:
         messages: list[Message] = []
         if system_prompt:
@@ -181,7 +137,6 @@ class GeminiChatClient:
             content = turn.get("content", "")
             messages.append(Message(role=role, content=[TextContent(text=content)]))
         return messages
-
     def _chat_detail(self, messages: list[Message], stream: bool) -> ChatDetails:
         chat_request = GenericChatRequest(
             api_format=BaseChatRequest.API_FORMAT_GENERIC,
@@ -196,18 +151,13 @@ class GeminiChatClient:
             serving_mode=OnDemandServingMode(model_id=self.model_id),
             chat_request=chat_request,
         )
-
-    # -- non-streaming ------------------------------------------------------- #
     def complete(self, system_prompt: str, history: list[dict]) -> str:
         messages = self._to_messages(system_prompt, history)
         detail = self._chat_detail(messages, stream=False)
-        
         def _call():
             response = self.client.chat(detail)
             return self._extract_full_text(response.data)
-        
         return _retry_with_backoff(_call, max_retries=3, base_delay=1.0)
-
     @staticmethod
     def _extract_full_text(data) -> str:
         try:
@@ -218,8 +168,6 @@ class GeminiChatClient:
                 return text
         except Exception:
             pass
-
-        # Fallback: walk the serialized dict form for any "text" fields.
         try:
             blob = oci.util.to_dict(data) if hasattr(oci, "util") and hasattr(oci.util, "to_dict") else None
             if not blob and isinstance(data, dict):
@@ -230,7 +178,6 @@ class GeminiChatClient:
                 except Exception:
                     blob = {}
             found: list[str] = []
-
             def _walk(node):
                 if isinstance(node, dict):
                     if isinstance(node.get("text"), str):
@@ -240,15 +187,12 @@ class GeminiChatClient:
                 elif isinstance(node, list):
                     for item in node:
                         _walk(item)
-
             _walk(blob)
             if found:
                 return "".join(found)
         except Exception:
             pass
         return ""
-
-    # -- streaming ----------------------------------------------------------- #
     def stream(self, system_prompt: str, history: list[dict]) -> Iterator[str]:
         messages = self._to_messages(system_prompt, history)
         detail = self._chat_detail(messages, stream=True)
@@ -267,24 +211,19 @@ class GeminiChatClient:
                     yield delta
         except Exception as exc:
             if not produced_any:
-                # No output produced yet - fall back to non-streaming
                 logger.warning("Streaming failed before producing output, falling back to non-streaming: %s", exc)
                 yield self.complete(system_prompt, history)
                 return
-            # Streaming already produced partial text; log error and stop gracefully
             logger.error("Streaming failed after producing partial output: %s", exc)
             return
-
         if not produced_any:
             yield self.complete(system_prompt, history)
-
     @staticmethod
     def _extract_delta(raw: str) -> str:
         try:
             obj = json.loads(raw)
         except Exception:
             return ""
-
         message = obj.get("message")
         if isinstance(message, dict):
             content = message.get("content") or []
@@ -295,12 +234,9 @@ class GeminiChatClient:
             )
             if text:
                 return text
-
         if isinstance(obj.get("text"), str):
             return obj["text"]
         return ""
-
-    # -- diagnostics --------------------------------------------------------- #
     def ping(self) -> str:
         return self.complete(
             "You are a health check. Reply with the single word: OK.",

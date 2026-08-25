@@ -1,8 +1,5 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.  All rights reserved.
-# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 
 import abc
-import asyncio
 import json
 import logging
 from email.utils import formatdate
@@ -26,8 +23,6 @@ from oci.util import (
 )
 
 logger = logging.getLogger(__name__)
-
-
 class RealtimeSpeechClientListener(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -45,36 +40,26 @@ class RealtimeSpeechClientListener(metaclass=abc.ABCMeta):
             and hasattr(subclass, "on_network_event")
             and callable(subclass.on_network_event)
         )
-
     @abc.abstractmethod
     def on_network_event(self, message):
         pass
-
     @abc.abstractmethod
     def on_ack_message(self, ackmessage: RealtimeMessageAckAudio):
         pass
-
     @abc.abstractmethod
     def on_connect_message(self, connectmessage: RealtimeMessageConnect):
         pass
-
     @abc.abstractmethod
     def on_connect(self):
         pass
-
     @abc.abstractmethod
     def on_error(self, error: RealtimeMessageError):
         pass
-
     @abc.abstractmethod
     def on_result(self, result: RealtimeMessageResult):
         pass
-
     def on_close(self, error_code: int, error_message: str):
-        # This is intended as a callback for you to do custom logging/resource cleanups, etc
         pass
-
-
 class RealtimeSpeechClient:
     def __init__(
         self,
@@ -88,7 +73,6 @@ class RealtimeSpeechClient:
         self._validate_signer_and_endpoints(
             config=config, signer=signer, service_endpoint=service_endpoint
         )
-
         if realtime_speech_parameters is None:
             realtime_speech_parameters = RealtimeParameters()
             realtime_speech_parameters.customizations = []
@@ -106,27 +90,15 @@ class RealtimeSpeechClient:
             realtime_speech_parameters.model_type = "ORACLE"
             realtime_speech_parameters.punctuation = RealtimeParameters.PUNCTUATION_NONE
             realtime_speech_parameters.should_ignore_invalid_customizations = False
-
         self.realtime_speech_parameters = realtime_speech_parameters
-
-        # Function to handle incoming messages, implemented by the user the way they want
         self.listener = listener
-
-        # This object will be used by the user in the send_data method
         self.connection = None
-
-        # full uri with path/query params
         self.uri = (
             self.service_endpoint
             + f"{ self._parse_parameters(realtime_speech_parameters)}"
         )
-
-        # compartmentId used for authentication
         self.compartment_id = compartment_id
-
-        # Set this flag to close the websocket connection
         self.close_flag = False
-
     async def connect(self):
         logger.info(f"Connecting to: {self.uri}")
         async with websockets.connect(self.uri, ping_interval=None) as ws:
@@ -135,11 +107,9 @@ class RealtimeSpeechClient:
             self.listener.on_connect()
             await self._send_credentials(ws)
             await self._handle_messages(ws)
-
     async def _send_credentials(self, ws):
         parsed_url = urlparse(self.uri)
         headers = {"date": formatdate(usegmt=True), "host": parsed_url.hostname}
-
         headers = self.signer._basic_signer.sign(
             headers=headers,
             host=parsed_url.hostname,
@@ -152,32 +122,26 @@ class RealtimeSpeechClient:
             "headers": headers,
             "compartmentId": self.compartment_id,
         }
-
         await ws.send(json.dumps(authentication_message_dict))
-
     async def send_data(self, data):
-        if not self.connection is None:
+        if self.connection is not None:
             await self.connection.send(data)
-
     async def request_final_result(self):
-        if not self.connection is None:
+        if self.connection is not None:
             request_message = RealtimeMessageSendFinalResult()
             logger.info("Requesting final result.")
             await self.connection.send(str(request_message))
-
     def on_close(self, error_code, error_message):
         logger.error(
             f"Connection with server closed, error code: {error_code} and reason: {error_message}"
         )
-        # Allow the clients to implement their own closing logic (logging, resource cleanup, etc)
         self.listener.on_close(error_code, error_message)
         self.close_flag = True
         self.connection = None
-
     async def _handle_messages(self, ws):
         while not self.close_flag:
             try:
-                message = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.1))
+                message = json.loads(await ws.recv())
                 if self.listener:
                     if message["event"] == RealtimeMessage.EVENT_RESULT:
                         self.listener.on_result(message)
@@ -187,18 +151,15 @@ class RealtimeSpeechClient:
                         self.listener.on_connect_message(message)
                     if message["event"] == RealtimeMessage.EVENT_ERROR:
                         self.listener.on_error(message)
-
-            except TimeoutError:
-                pass
             except websockets.exceptions.ConnectionClosed as e:
                 self.on_close(e.code, e.reason)
-
+            except Exception as e:
+                logger.error(f"Error handling message: {e}")
     def close(self):
         logger.info("Client has initiated closure")
         self.listener.on_close(1000, "Closure Initiated by Client")
         self.close_flag = True
         self.connection = None
-
     def _parse_parameters(self, params: RealtimeParameters):
         parameterString = "/ws/transcribe/stream?"
         if params.is_ack_enabled is not None:
@@ -207,10 +168,8 @@ class RealtimeSpeechClient:
                 + ("true" if params.is_ack_enabled is True else "false")
                 + "&"
             )
-
         if params.encoding is not None:
             parameterString += "encoding=" + params.encoding + "&"
-
         if params.should_ignore_invalid_customizations is not None:
             parameterString += (
                 "shouldIgnoreInvalidCustomizations="
@@ -221,24 +180,20 @@ class RealtimeSpeechClient:
                 )
                 + "&"
             )
-
         if params.partial_silence_threshold_in_ms is not None:
             parameterString += (
                 "partialSilenceThresholdInMs="
                 + str(params.partial_silence_threshold_in_ms)
                 + "&"
             )
-
         if params.final_silence_threshold_in_ms is not None:
             parameterString += (
                 "finalSilenceThresholdInMs="
                 + str(params.final_silence_threshold_in_ms)
                 + "&"
             )
-
         if params.language_code is not None:
             parameterString += "languageCode=" + params.language_code + "&"
-
         if params.model_domain is not None:
             parameterString += "modelDomain=" + params.model_domain + "&"
         if (
@@ -250,35 +205,29 @@ class RealtimeSpeechClient:
             parameterString += (
                 "stabilizePartialResults=" + params.stabilize_partial_results + "&"
             )
-
         if (
             params.punctuation is not None
             and params.punctuation != RealtimeParameters.PUNCTUATION_NONE
         ):
             parameterString += "punctuation=" + params.punctuation + "&"
-
         if params.customizations is not None and len(params.customizations) > 0:
             parameterString += "customizations=" + quote(
                 json.dumps(params.customizations)
             )
-
         if parameterString[-1] == "&":
             parameterString = parameterString[:-1]
-
         return parameterString
-
     def _get_service_endpoint(self, config):
-        # TBD
-        pass
-
+        region = config.get("region")
+        if not region:
+            raise ValueError("Region not found in config")
+        return f"wss://realtime.aiservice.{region}.oci.oraclecloud.com"
     def _validate_signer_and_endpoints(self, config, signer, service_endpoint):
         validate_config(config, signer=signer)
-        if not signer is None:
+        if signer is not None:
             self.signer = signer
-
         elif AUTHENTICATION_TYPE_FIELD_NAME in config:
             self.signer = get_signer_from_authentication_type(config)
-
         else:
             self.signer = Signer(
                 tenancy=config["tenancy"],
@@ -288,8 +237,7 @@ class RealtimeSpeechClient:
                 pass_phrase=get_config_value_or_default(config, "pass_phrase"),
                 private_key_content=config.get("key_content"),
             )
-
-        if not service_endpoint is None:
+        if service_endpoint is not None:
             self.service_endpoint = service_endpoint
         else:
             self.service_endpoint = self._get_service_endpoint(config)

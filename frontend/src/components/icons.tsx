@@ -1,7 +1,4 @@
-// Small inline SVG icons (no external icon dependency).
-
 type IconProps = { size?: number };
-
 export function MicIcon({ size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -16,7 +13,6 @@ export function MicIcon({ size = 20 }: IconProps) {
     </svg>
   );
 }
-
 export function SendIcon({ size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -30,7 +26,6 @@ export function SendIcon({ size = 20 }: IconProps) {
     </svg>
   );
 }
-
 export function SpeakerIcon({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -51,11 +46,10 @@ export function SpeakerIcon({ size = 18 }: IconProps) {
     </svg>
   );
 }
-
 export function StopIcon({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
     </svg>
   );
-}
+}

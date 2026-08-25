@@ -1,8 +1,6 @@
 import { useState } from "react";
-
 export default function ThinkingState({ reasoning }: { reasoning?: string }) {
   const [expanded, setExpanded] = useState(false);
-
   return (
     <div className="thinking-state-container">
       <div className="thinking-loader" onClick={() => reasoning && setExpanded(!expanded)} style={{ cursor: reasoning ? "pointer" : "default" }}>
@@ -18,7 +16,6 @@ export default function ThinkingState({ reasoning }: { reasoning?: string }) {
           </svg>
         )}
       </div>
-      
       {reasoning && expanded && (
         <div className="reasoning-trace">
           {reasoning}

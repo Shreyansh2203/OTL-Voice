@@ -3,7 +3,6 @@ import { stripEntriesBlock } from "../lib/entries";
 import type { ChatMessage } from "../types";
 import ThinkingState from "./ThinkingState";
 import ToolChip from "./ToolChip";
-
 export default function MessageBubble({
   message,
 }: {
@@ -11,12 +10,9 @@ export default function MessageBubble({
 }) {
   const isUser = message.role === "user";
   let text = isUser ? message.content : stripEntriesBlock(message.content);
-  
   if (!isUser) {
-    // Strip SSML tags for visual rendering (e.g. <break time="300ms"/>)
-    text = text.replace(/<[^>]+>/g, "");
+    text = text.replace(/<\/?(break|emphasis|prosody|speak|say-as|phoneme|sub|w)[^>]*>/gi, "");
   }
-
   return (
     <div className={`bubble-row ${isUser ? "user" : "assistant"}`}>
       <div className="bubble-wrapper">
@@ -27,9 +23,7 @@ export default function MessageBubble({
             ))}
           </div>
         )}
-        
         {message.thinking && <ThinkingState reasoning={message.reasoning} />}
-        
         {(text || message.streaming || (isUser && message.content)) && (
           <div className="bubble">
             {isUser ? (
@@ -38,7 +32,6 @@ export default function MessageBubble({
               <div className={`md ${message.streaming ? "streaming" : ""}`}>
                 <ReactMarkdown
                   components={{
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
                     a: ({ node: _node, ...props }) => (
                       <a {...props} target="_blank" rel="noopener noreferrer" />
                     ),
@@ -49,10 +42,9 @@ export default function MessageBubble({
                 {message.streaming && <span className="caret" aria-hidden />}
               </div>
             )}
-
           </div>
         )}
       </div>
     </div>
   );
-}
+}

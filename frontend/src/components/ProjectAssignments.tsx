@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import * as api from "../api/client";
 import type { AssignmentsResponse, AssignedWorkOrder } from "../types";
-
 function FolderIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -9,7 +8,6 @@ function FolderIcon() {
     </svg>
   );
 }
-
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -21,7 +19,6 @@ function ChevronIcon({ open }: { open: boolean }) {
     </svg>
   );
 }
-
 function TaskIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -30,7 +27,6 @@ function TaskIcon() {
     </svg>
   );
 }
-
 function SearchIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -38,11 +34,9 @@ function SearchIcon() {
     </svg>
   );
 }
-
 function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
   const [open, setOpen] = useState(true);
   const totalTasks = wo.projects.reduce((sum, p) => sum + (p.tasks?.length ?? 0), 0);
-
   return (
     <div className="pa-card">
       <button className="pa-card-header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
@@ -56,7 +50,6 @@ function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
           <span className="pa-chevron"><ChevronIcon open={open} /></span>
         </span>
       </button>
-
       {open && (
         <div className="pa-card-body">
           {wo.projects.map((p, j) => (
@@ -86,13 +79,11 @@ function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
     </div>
   );
 }
-
 export default function ProjectAssignments({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [data, setData] = useState<AssignmentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-
   useEffect(() => {
     api.getAssignments()
       .then((res) => { setData(res); setLoading(false); })
@@ -105,7 +96,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
         setLoading(false);
       });
   }, [onSessionExpired]);
-
   if (loading) {
     return (
       <div className="pa-wrapper">
@@ -116,7 +106,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="pa-wrapper">
@@ -124,9 +113,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
       </div>
     );
   }
-
   const workOrders = data?.workOrders ?? [];
-
   const filtered = search.trim()
     ? workOrders.filter((wo) => {
         const q = search.toLowerCase();
@@ -141,9 +128,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
         );
       })
     : workOrders;
-
   const totalProjects = workOrders.reduce((s, wo) => s + wo.projects.length, 0);
-
   return (
     <div className="pa-wrapper">
       {/* Header */}
@@ -163,8 +148,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           </div>
         )}
       </div>
-
-      {/* Search */}
+      {}
       {workOrders.length > 0 && (
         <div className="pa-search-wrap">
           <span className="pa-search-icon"><SearchIcon /></span>
@@ -180,8 +164,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           )}
         </div>
       )}
-
-      {/* Empty state */}
+      {}
       {workOrders.length === 0 && (
         <div className="pa-empty">
           <div className="pa-empty-icon">🗂️</div>
@@ -189,8 +172,7 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           <p className="pa-empty-sub">Please contact your manager to get project access.</p>
         </div>
       )}
-
-      {/* No search results */}
+      {}
       {workOrders.length > 0 && filtered.length === 0 && (
         <div className="pa-empty">
           <div className="pa-empty-icon">🔍</div>
@@ -198,21 +180,18 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           <p className="pa-empty-sub">Try a different search term.</p>
         </div>
       )}
-
-      {/* Project cards */}
+      {}
       <div className="pa-list">
         {filtered.map((wo, i) => (
           <ProjectCard key={i} wo={wo} />
         ))}
       </div>
-
       <style>{`
         .pa-wrapper {
           padding: var(--space-5) var(--space-6) var(--space-8);
           max-width: 780px;
           margin: 0 auto;
         }
-
         /* ── Header ── */
         .pa-header {
           display: flex;
@@ -249,7 +228,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           box-shadow: rgba(0, 0, 0, 0.02) 0 1px 2px 0;
         }
         .pa-stat strong { color: var(--color-accent-primary); }
-
         /* ── Search ── */
         .pa-search-wrap {
           position: relative;
@@ -298,7 +276,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           transition: color var(--duration-fast) var(--ease-default);
         }
         .pa-search-clear:hover { color: var(--color-text-primary); }
-
         /* ── Cards ── */
         .pa-list { display: flex; flex-direction: column; gap: var(--space-4); }
         .pa-card {
@@ -352,7 +329,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           border: 1px solid var(--color-border-subtle);
         }
         .pa-chevron { color: var(--color-text-tertiary); display: flex; align-items: center; }
-
         /* ── Card body ── */
         .pa-card-body {
           border-top: 1px solid var(--color-border-subtle);
@@ -388,7 +364,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           flex-shrink: 0;
           font-family: var(--font-mono);
         }
-
         /* ── Task chips ── */
         .pa-tasks {
           display: flex;
@@ -421,7 +396,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
         }
         .pa-task-sep { color: var(--color-border-subtle); }
         .pa-no-tasks { margin: 0; font-size: 13px; color: var(--color-text-tertiary); font-style: italic; }
-
         /* ── Loading ── */
         .pa-loading {
           display: flex;
@@ -442,7 +416,6 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           animation: pa-spin 700ms linear infinite;
         }
         @keyframes pa-spin { to { transform: rotate(360deg); } }
-
         /* ── Error / empty ── */
         .pa-error-box {
           background: var(--color-status-error-bg);

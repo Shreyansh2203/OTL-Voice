@@ -1,6 +1,4 @@
 import type { ChatMessage } from "../types";
-
-/** Replace the content of the last assistant message (the streaming target). */
 export function updateLastAssistant(
   messages: ChatMessage[],
   content: string,

@@ -1,25 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as api from "../api/client";
 import type { SubmitResponse, TimecardEntry } from "../types";
-
-/**
- * Properties for the ReviewPanel component.
- */
 export interface ReviewPanelProps {
-  /** The timecard entries extracted from the assistant's response to be reviewed. */
   entries: TimecardEntry[];
-  /** Callback fired when an API call indicates the session has expired. */
   onSessionExpired: () => void;
-  /** Automatically trigger submission on mount. */
   autoSubmit?: boolean;
 }
-
-/**
- * An interactive panel allowing the user to review, approve, and submit extracted 
- * timecard entries to Oracle Fusion. Displays submission success/failure results.
- * 
- * @param props - Component properties.
- */
 export default function ReviewPanel({
   entries,
   onSessionExpired,
@@ -28,11 +14,8 @@ export default function ReviewPanel({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   const [countdown, setCountdown] = useState<number | null>(null);
-
   const totalHours = entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-
   const submit = useCallback(async () => {
     setCountdown(null);
     setBusy(true);
@@ -49,30 +32,36 @@ export default function ReviewPanel({
       setBusy(false);
     }
   }, [entries, onSessionExpired]);
-
   const hasAutoSubmitted = useRef(false);
-
+  const isSubmittingRef = useRef(false);
+  const prevEntriesRef = useRef<TimecardEntry[]>([]);
   useEffect(() => {
+    if (prevEntriesRef.current !== entries) {
+      hasAutoSubmitted.current = false;
+      prevEntriesRef.current = entries;
+    }
     if (autoSubmit && !hasAutoSubmitted.current && !result && !error) {
       hasAutoSubmitted.current = true;
       setCountdown(4);
     }
-  }, [autoSubmit, result, error]);
-
+  }, [autoSubmit, result, error, entries]);
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
-      const timer = setTimeout(() => {
-        submit();
-      }, 0);
-      return () => clearTimeout(timer);
+      if (!isSubmittingRef.current) {
+        isSubmittingRef.current = true;
+        const timer = setTimeout(() => {
+          submit();
+          isSubmittingRef.current = false;
+        }, 0);
+        return () => clearTimeout(timer);
+      }
     }
     const timer = setTimeout(() => {
       setCountdown((prev) => (prev !== null ? prev - 1 : null));
     }, 1000);
     return () => clearTimeout(timer);
   }, [countdown, submit]);
-
   return (
     <div className="approval-card" aria-busy={busy}>
       <div className="approval-head">
@@ -88,7 +77,6 @@ export default function ReviewPanel({
           {entries.length} {entries.length === 1 ? "entry" : "entries"} &bull; {totalHours}h total
         </span>
       </div>
-
       <div className="table-wrap">
         <table>
           <thead>
@@ -102,7 +90,7 @@ export default function ReviewPanel({
           </thead>
           <tbody>
             {entries.map((e, i) => (
-              <tr key={i}>
+              <tr key={e.projectNo ? `${e.projectNo}-${e.taskDetails}-${e.hours}-${i}` : `entry-${i}`}>
                 <td>
                   {e.employeeName || "—"}
                   <span className="muted small"> #{e.employeeNumber || "—"}</span>
@@ -121,9 +109,7 @@ export default function ReviewPanel({
           </tbody>
         </table>
       </div>
-
       {error && <div className="error" role="alert">{error}</div>}
-
       {result ? (
         <>
           <div className={`result ${result.failed ? "warn" : "ok"}`} aria-live="polite">
@@ -147,7 +133,7 @@ export default function ReviewPanel({
                 {result.results.map((r) => {
                   const entry = entries[r.index];
                   return (
-                    <tr key={r.index}>
+                    <tr key={`${r.index}-${entry?.projectNo}-${entry?.taskDetails}`}>
                       <td className="muted">{r.index + 1}</td>
                       <td>
                         {entry?.projectName || "—"}
@@ -189,4 +175,4 @@ export default function ReviewPanel({
       )}
     </div>
   );
-}
+}

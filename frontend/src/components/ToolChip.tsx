@@ -1,5 +1,4 @@
 import type { ToolCall } from "../types";
-
 export default function ToolChip({ tool }: { tool: ToolCall }) {
   return (
     <div className={`tool-chip ${tool.status}`}>

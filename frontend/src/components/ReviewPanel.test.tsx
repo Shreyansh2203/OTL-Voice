@@ -3,12 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ReviewPanel from './ReviewPanel';
 import * as api from '../api/client';
 import { ApiError } from '../api/client';
-
 describe('ReviewPanel', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
   const mockEntries = [
     {
       employeeName: 'John',
@@ -20,7 +18,6 @@ describe('ReviewPanel', () => {
       hours: '5'
     },
     {
-      // Missing some fields to hit fallback branches
       projectName: '',
       projectNo: undefined,
       workOrder: '',
@@ -28,14 +25,12 @@ describe('ReviewPanel', () => {
       hours: undefined
     }
   ];
-
   it('renders entries and total hours', () => {
     const onSessionExpired = vi.fn();
     render(<ReviewPanel entries={mockEntries as any} onSessionExpired={onSessionExpired} />);
     expect(screen.getByText('2 entries • 5h total')).toBeDefined();
     expect(screen.getByText('Proj A')).toBeDefined();
   });
-
   it('submits successfully', async () => {
     const onSessionExpired = vi.fn();
     vi.spyOn(api, 'submitTimecard').mockResolvedValue({
@@ -47,44 +42,31 @@ describe('ReviewPanel', () => {
         { index: 1, ok: false, error: 'Bad data' }
       ]
     });
-
     render(<ReviewPanel entries={mockEntries as any} onSessionExpired={onSessionExpired} />);
-    
     const approveBtn = screen.getByText('Approve & Submit');
     fireEvent.click(approveBtn);
-    
     expect(approveBtn.textContent).toBe('Approving…');
     expect(approveBtn).toHaveProperty('disabled', true);
-    
     await waitFor(() => {
       expect(screen.getByText('1/2 submitted to OTL · 1 failed.')).toBeDefined();
     });
-    
     expect(screen.getByText('✓ 12345')).toBeDefined();
     expect(screen.getByText('✗ Bad data')).toBeDefined();
   });
-
   it('handles general errors on submit', async () => {
     const onSessionExpired = vi.fn();
     vi.spyOn(api, 'submitTimecard').mockRejectedValue(new Error('Network Error'));
-
     render(<ReviewPanel entries={mockEntries as any} onSessionExpired={onSessionExpired} />);
-    
     fireEvent.click(screen.getByText('Approve & Submit'));
-    
     await waitFor(() => {
       expect(screen.getByText('Network Error')).toBeDefined();
     });
   });
-
   it('handles ApiError 401 on submit', async () => {
     const onSessionExpired = vi.fn();
     vi.spyOn(api, 'submitTimecard').mockRejectedValue(new ApiError(401, 'Unauthorized'));
-
     render(<ReviewPanel entries={mockEntries as any} onSessionExpired={onSessionExpired} />);
-    
     fireEvent.click(screen.getByText('Approve & Submit'));
-    
     await waitFor(() => {
       expect(onSessionExpired).toHaveBeenCalled();
     });
@@ -106,15 +88,11 @@ describe('ReviewPanel', () => {
       expect(screen.getByText('2/2 submitted to OTL.')).toBeDefined();
     });
   });
-  
   it('handles general string reject on submit', async () => {
     const onSessionExpired = vi.fn();
     vi.spyOn(api, 'submitTimecard').mockRejectedValue('String Error');
-
     render(<ReviewPanel entries={mockEntries as any} onSessionExpired={onSessionExpired} />);
-    
     fireEvent.click(screen.getByText('Approve & Submit'));
-    
     await waitFor(() => {
       expect(screen.getByText('Submission failed.')).toBeDefined();
     });

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
 const WORKLET_CODE = `
 class STTProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -10,16 +9,18 @@ class STTProcessor extends AudioWorkletProcessor {
     this.targetSampleRate = 16000;
     this.ratio = this.inputSampleRate / this.targetSampleRate;
     this.sampleAcc = 0;
+    // Pre-calculate low-pass filter coefficient for anti-aliasing
+    // alpha = 1 / (1 + 2*pi*fc/fs) where fc is cutoff frequency (targetSampleRate/2)
+    const fc = this.targetSampleRate / 2;
+    this.alpha = 1 / (1 + 2 * Math.PI * fc / this.inputSampleRate);
   }
   process(inputs) {
     const input = inputs[0];
     if (input.length > 0) {
       const channelData = input[0];
       // 1st-order IIR low-pass filter to prevent aliasing
-      const alpha = Math.min(1.0, Math.max(0.1, 16000 / this.inputSampleRate));
-      
       for (let i = 0; i < channelData.length; i++) {
-         this.lastVal = this.lastVal + alpha * (channelData[i] - this.lastVal);
+         this.lastVal = this.lastVal + this.alpha * (channelData[i] - this.lastVal);
          this.sampleAcc += 1;
          if (this.sampleAcc >= this.ratio) {
              this.sampleAcc -= this.ratio;
@@ -38,22 +39,32 @@ class STTProcessor extends AudioWorkletProcessor {
 }
 registerProcessor("stt-processor", STTProcessor);
 `;
-
 export function useSpeechInput() {
   const [supported] = useState(() => !!navigator.mediaDevices?.getUserMedia && !!(window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext));
   const [listening, setListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const nodeRef = useRef<AudioWorkletNode | null>(null);
   const manualStopRef = useRef(false);
-
+  const isCleaningUpRef = useRef(false);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noSpeechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cleanup = useCallback(() => {
+    if (isCleaningUpRef.current) return;
+    isCleaningUpRef.current = true;
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    if (noSpeechTimeoutRef.current) {
+      clearTimeout(noSpeechTimeoutRef.current);
+      noSpeechTimeoutRef.current = null;
+    }
     if (nodeRef.current) {
-        nodeRef.current.disconnect();
-        nodeRef.current = null;
+      nodeRef.current.disconnect();
+      nodeRef.current = null;
     }
     if (ctxRef.current && ctxRef.current.state !== "closed") {
       ctxRef.current.close().catch(() => {});
@@ -63,140 +74,151 @@ export function useSpeechInput() {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    isCleaningUpRef.current = false;
   }, []);
-
   const stop = useCallback((cancel = false) => {
     manualStopRef.current = cancel;
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-       wsRef.current.send(new Uint8Array(0));
-       if (cancel) {
-          wsRef.current.close();
-       }
+      wsRef.current.send(new Uint8Array(0));
+      if (cancel) {
+        wsRef.current.close();
+      }
     }
     cleanup();
     setListening(false);
   }, [cleanup]);
-
-  const start = useCallback(async (
+const start = useCallback(async (
     onFinal: (text: string) => void,
     onInterim?: (text: string) => void,
     onSpeechStart?: () => void
   ) => {
     setErrorMsg(null);
     if (!supported) return;
-    
     cleanup();
     if (wsRef.current) wsRef.current.close();
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/api/stt/stream`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
-
       let finalText = "";
       let hasStarted = false;
       let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-
       const resetSilenceTimeout = () => {
         if (silenceTimer) clearTimeout(silenceTimer);
         silenceTimer = setTimeout(() => {
           stop(false);
         }, 10000);
       };
-
+      connectTimeoutRef.current = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          setErrorMsg("Connection to speech server timed out.");
+          ws.close();
+        }
+      }, 10000);
       ws.onopen = async () => {
-         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-         const actx = new AudioCtx();
-         ctxRef.current = actx;
-         
-         const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
-         const url = URL.createObjectURL(blob);
-         await actx.audioWorklet.addModule(url);
-         URL.revokeObjectURL(url);
-         
-         const source = actx.createMediaStreamSource(stream);
-         const node = new AudioWorkletNode(actx, "stt-processor", {
-            processorOptions: { sampleRate: actx.sampleRate }
-         });
-         nodeRef.current = node;
-         
-         node.port.onmessage = (e) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(e.data);
-                if (!hasStarted) {
-                   hasStarted = true;
-                   onSpeechStart?.();
-                }
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const actx = new AudioCtx();
+        ctxRef.current = actx;
+        const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        try {
+          await actx.audioWorklet.addModule(url);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+        const source = actx.createMediaStreamSource(stream);
+        const node = new AudioWorkletNode(actx, "stt-processor", {
+          processorOptions: { sampleRate: actx.sampleRate }
+        });
+        nodeRef.current = node;
+        node.port.onmessage = (e) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(e.data);
+            if (!hasStarted) {
+              hasStarted = true;
+              onSpeechStart?.();
+              resetSilenceTimeout();
+              if (noSpeechTimeoutRef.current) {
+                clearTimeout(noSpeechTimeoutRef.current);
+                noSpeechTimeoutRef.current = null;
+              }
             }
-         };
-         
-         source.connect(node);
-         node.connect(actx.destination);
-         setListening(true);
-         resetSilenceTimeout();
+          }
+        };
+        source.connect(node);
+        setListening(true);
+        noSpeechTimeoutRef.current = setTimeout(() => {
+          if (!hasStarted) {
+            setErrorMsg("No speech detected. Please try again.");
+            stop(false);
+          }
+        }, 30000);
       };
-
       ws.onmessage = (e) => {
-         try {
-            const data = JSON.parse(e.data);
-            if (data.text) {
-               finalText = data.text;
-               if (data.isFinal) {
-                  onFinal(finalText);
-                  ws.close();
-                  cleanup();
-                  setListening(false);
-                  if (silenceTimer) clearTimeout(silenceTimer);
-               } else {
-                  onInterim?.(finalText);
-                  resetSilenceTimeout(); // Reset timer only when actual speech is recognized
-               }
+        try {
+          const data = JSON.parse(e.data);
+          if (data.text) {
+            finalText = data.text;
+            if (data.isFinal) {
+              onFinal(finalText);
+              ws.close();
+              setListening(false);
+              if (silenceTimer) clearTimeout(silenceTimer);
+            } else {
+              onInterim?.(finalText);
+              resetSilenceTimeout(); 
             }
-         } catch(err) {
-             console.error("WS error", err);
-         }
+          }
+        } catch(err) {
+          console.error("WS error", err);
+        }
       };
-
-      ws.onerror = () => {
-         setErrorMsg("Connection to speech server failed.");
-         stop(true);
+      ws.onerror = (_event) => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          setErrorMsg("Connection to speech server failed.");
+        }
       };
-      
       ws.onclose = () => {
-         stop(true);
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        if (silenceTimer) clearTimeout(silenceTimer);
+        setListening(false);
+        cleanup();
       };
-      
     } catch (err: any) {
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
       setListening(false);
       let msg = "Microphone error: " + err.message;
       if (err.name === "NotAllowedError") msg = "Microphone access blocked.";
       setErrorMsg(msg);
     }
   }, [supported, cleanup, stop]);
-
   const isListening = useCallback(() => listening, [listening]);
   useEffect(() => () => stop(true), [stop]);
-
   return { supported, listening, isListening, errorMsg, start, stop };
 }
-
-/** Plays TTS audio blobs, one at a time, cleaning up object URLs. */
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const [playing, setPlaying] = useState(false);
-
   const stop = useCallback(() => {
     audioRef.current?.pause();
     setPlaying(false);
   }, []);
-
   const play = useCallback(
-    (blob: Blob): Promise<boolean> => {
+    (blob: Blob): Promise<{ success: boolean; autoplayBlocked?: boolean }> => {
       return new Promise((resolve) => {
         audioRef.current?.pause();
         if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -204,37 +226,36 @@ export function useAudioPlayer() {
         urlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
-        
         audio.onended = () => {
           setPlaying(false);
-          resolve(true); // natural completion
+          resolve({ success: true }); 
         };
         audio.onpause = () => {
           setPlaying(false);
-          resolve(false); // interrupted or stopped
+          resolve({ success: false }); 
         };
-        audio.onerror = () => {
+        audio.onerror = (e) => {
           setPlaying(false);
-          resolve(false);
+          const isAutoplayBlocked = audio.error?.code === 4 || 
+                                    (e as any).name === 'NotAllowedError';
+          resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
         };
-
         audio.play().then(() => {
           setPlaying(true);
-        }).catch(() => {
-          setPlaying(false); // autoplay may be blocked until a user gesture
-          resolve(false);
+        }).catch((err) => {
+          setPlaying(false);
+          const isAutoplayBlocked = err.name === 'NotAllowedError' || err.name === 'AbortError';
+          resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
         });
       });
     },
     []
   );
-
   useEffect(
     () => () => {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     },
     []
   );
-
   return { play, stop, playing };
-}
+}
