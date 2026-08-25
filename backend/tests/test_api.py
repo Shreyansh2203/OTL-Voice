@@ -53,7 +53,7 @@ def test_login_not_found(client):
         assert response.status_code == 401
 @pytest.fixture
 def auth_client(client, mock_otl_client):
-    mock_otl_client.aget_worker.return_value = {"personNumber": "testuser", "fullName": "Test User"}
+    mock_otl_client.aget_worker.return_value = {"personNumber": "testuser", "fullName": "Pytest User"}
     mock_otl_client.aget_worker.side_effect = None
     res = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
     assert res.status_code == 200
