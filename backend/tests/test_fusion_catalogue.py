@@ -139,9 +139,10 @@ def test_do_load_catalogue(mock_service_credential, mock_assignments, mock_membe
     assert "bob" in names
     assert "alice" in names
 def test_load_catalogue():
-    with patch('threading.Thread') as mock_thread:
-        load_catalogue()
-        mock_thread.assert_called_once()
+    with patch.dict("os.environ", {"TEST_MODE": "false"}):
+        with patch('threading.Thread') as mock_thread:
+            load_catalogue()
+            mock_thread.assert_called_once()
         mock_thread.return_value.start.assert_called_once()
 def test_get_project_by_id(mock_db):
     mock_db.execute("INSERT INTO projects (project_id, data) VALUES (?, ?)", ("P1", json.dumps({"project_id": "P1"})))

@@ -308,6 +308,9 @@ def _save_catalogue(conn: sqlite3.Connection, enriched: list[dict], person_index
             pass
         raise
 def load_catalogue() -> None:
+    if os.getenv("TEST_MODE", "false").strip().lower() == "true":
+        logger.info("TEST_MODE is true. Skipping live Fusion catalogue load.")
+        return
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
     row = cur.fetchone()
