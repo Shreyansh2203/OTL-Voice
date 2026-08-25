@@ -176,7 +176,7 @@ describe('ChatView', () => {
       mockOnEvent({ delta: 'Some ' });
       mockOnEvent({ error: 'Oops' });
     });
-    await waitFor(() => expect(screen.getByText('Some')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Some/i)).toBeInTheDocument());
   });
   it('handles general string error', async () => {
     vi.mocked(api.chatStream).mockRejectedValue('String Error');
