@@ -608,7 +608,22 @@ async def stt_stream(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
-_FENCED_JSON = re.compile(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", re.MULTILINE)
+_FENCED_JSON = re.compile(r"```(?:json)?\s*([\{\[][\s\S]*?[\}\]])\s*```", re.MULTILINE)
+def _normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    norm = dict(entry)
+    if "project_number" in norm and "projectNo" not in norm:
+        norm["projectNo"] = norm["project_number"]
+    if "project_name" in norm and "projectName" not in norm:
+        norm["projectName"] = norm["project_name"]
+    if "task_name" in norm and "taskDetails" not in norm:
+        norm["taskDetails"] = norm["task_name"]
+    if "work_order_number" in norm and "workOrder" not in norm:
+        norm["workOrder"] = norm["work_order_number"]
+    if "person_number" in norm and "employeeNumber" not in norm:
+        norm["employeeNumber"] = norm["person_number"]
+    if "employee_name" in norm and "employeeName" not in norm:
+        norm["employeeName"] = norm["employee_name"]
+    return norm
 def _extract_json_object(text: str) -> dict[str, Any] | None:
     text = text.strip()
     if not text.startswith("{"):
@@ -626,17 +641,24 @@ def _extract_entries(assistant_message: str) -> list[dict[str, Any]]:
     if match:
         try:
             data = json.loads(match.group(1))
+            if isinstance(data, list):
+                return [_normalize_entry(e) for e in data if isinstance(e, dict)]
+            if isinstance(data, dict):
+                entries = data.get("entries")
+                if isinstance(entries, list):
+                    return [_normalize_entry(e) for e in entries if isinstance(e, dict)]
         except json.JSONDecodeError:
-            data = _extract_json_object(match.group(1))
-        if data and isinstance(data, dict):
+            pass
+    try:
+        data = json.loads(assistant_message.strip())
+        if isinstance(data, list):
+            return [_normalize_entry(e) for e in data if isinstance(e, dict)]
+        if isinstance(data, dict):
             entries = data.get("entries")
             if isinstance(entries, list):
-                return entries
-    data = _extract_json_object(assistant_message)
-    if data and isinstance(data, dict):
-        entries = data.get("entries")
-        if isinstance(entries, list):
-            return entries
+                return [_normalize_entry(e) for e in entries if isinstance(e, dict)]
+    except json.JSONDecodeError:
+        pass
     return []
 _STRICT_ASSIGNMENT_CACHE: bool | None = None
 def _strict_assignment() -> bool:
@@ -645,6 +667,7 @@ def _strict_assignment() -> bool:
         _STRICT_ASSIGNMENT_CACHE = os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
     return _STRICT_ASSIGNMENT_CACHE
 def _validate_timecard_entry(entry: dict[str, Any], assignments: list[dict[str, Any]] | None = None) -> tuple[bool, str | None]:
+    entry = _normalize_entry(entry)
     hours = entry.get("hours")
     if hours is None or not isinstance(hours, (int, float)):
         return False, "Hours is required and must be a number"
@@ -679,18 +702,19 @@ def _validate_timecard_entry(entry: dict[str, Any], assignments: list[dict[str, 
             return False, f"Project {project_no or project_name} is not in your assigned projects"
     return True, None
 def _resolve_entry(entry: dict[str, Any], ctx: SessionContext, assignments: list[dict[str, Any]]) -> dict[str, Any]:
-    resolved = dict(entry)
+    norm = _normalize_entry(entry)
+    resolved = dict(norm)
     resolved["employeeNumber"] = ctx.employee_id
     resolved["employeeName"] = ctx.full_name
     project = None
-    project_no = entry.get("projectNo")
+    project_no = norm.get("projectNo")
     for order in assignments:
         for p in order.get("projects", []):
             if project_no and str(p.get("projectNo")) == str(project_no):
                 project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
-            if not project_no and entry.get("projectName") and p.get("projectName") == entry.get("projectName"):
+            if not project_no and norm.get("projectName") and p.get("projectName") == norm.get("projectName"):
                 project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
@@ -700,7 +724,7 @@ def _resolve_entry(entry: dict[str, Any], ctx: SessionContext, assignments: list
         "projectId": project.get("projectId") if project else None,
         "projectNo": project.get("projectNo") if project else project_no,
         "workOrder": project.get("workOrder") if project else None,
-        "projectName": project.get("projectName") if project else entry.get("projectName"),
+        "projectName": project.get("projectName") if project else norm.get("projectName"),
     })
     if not resolved.get("taskId") and resolved.get("taskDetails"):
         target_name = str(resolved["taskDetails"]).lower()
