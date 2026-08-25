@@ -98,7 +98,10 @@ export default function ChatView({
   const sendUser = useCallback(
     (content: string) => {
       handleBargeIn();
-      const historyForApi = [...messagesRef.current, { role: "user", content } as ChatMessage];
+      const cleanPrev = messagesRef.current.filter(
+        (m) => m.content && m.content.trim().length > 0 && !m.content.startsWith("Sorry —")
+      );
+      const historyForApi = [...cleanPrev, { role: "user", content } as ChatMessage];
       setMessages(historyForApi);
       setTimeout(() => runAssistantRef.current?.(historyForApi), 0);
     },
@@ -151,9 +154,13 @@ export default function ChatView({
         isPlayingRef.current = false;
       };
 
+      const cleanHistory = history.filter(
+        (m) => m.content && m.content.trim().length > 0 && !m.content.startsWith("Sorry —")
+      );
+
       try {
         await api.chatStream(
-          history,
+          cleanHistory,
           (ev) => {
             if (interruptTokenRef.current !== thisToken) return;
             if (ev.delta) {

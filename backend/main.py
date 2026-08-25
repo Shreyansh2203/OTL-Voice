@@ -294,10 +294,10 @@ class LoginBody(BaseModel):
     personNumber: str = ""
     password: str = ""
 class ChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=10000)
+    role: Literal["user", "assistant", "system"] = "user"
+    content: str = Field(default="", max_length=10000)
 class ChatBody(BaseModel):
-    messages: list[ChatMessage] = Field(default_factory=list, min_length=0, max_length=50)
+    messages: list[ChatMessage] = Field(default_factory=list, max_length=50)
 class TtsBody(BaseModel):
     text: str
     rate: float = 1.0
@@ -489,7 +489,11 @@ async def chat_stream(
         assignments=assignments,
         recent_history=recent_history_str,
     )
-    history = [{"role": m.role, "content": m.content} for m in body.messages]
+    history = [
+        {"role": m.role, "content": m.content}
+        for m in body.messages
+        if m.content and m.content.strip()
+    ]
     return StreamingResponse(
         chat.stream_sse(system_prompt, history),
         media_type="text/event-stream",
