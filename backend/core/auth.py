@@ -1,15 +1,26 @@
-
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import secrets
 import time
 from dataclasses import dataclass
+from threading import Lock
+from typing import ClassVar, Self
 
 from fastapi import Cookie, HTTPException, status
 
 from ..models import Employee
 
+logger = logging.getLogger(__name__)
+
 SESSION_COOKIE_NAME = "otl_session"
+
+
+def _session_cookie_name() -> str:
+    """Return the session cookie name with __Host- prefix when secure (production)."""
+    return f"__Host-{SESSION_COOKIE_NAME}" if cookie_secure() else SESSION_COOKIE_NAME
 
 
 def _ttl_seconds() -> int:
@@ -21,25 +32,148 @@ def cookie_secure() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Session store (Stateless JWT)
+# Session store (Stateless JWT with revocation blocklist)
 # --------------------------------------------------------------------------- #
-import secrets
 
 import jwt
 
 JWT_ALGORITHM = "HS256"
 
-# Generate a strong fallback secret once at startup if missing.
-_FALLBACK_SECRET = secrets.token_urlsafe(32)
 
 def _jwt_secret() -> str:
-    # Do NOT use a hardcoded insecure secret in production.
-    return os.getenv("SESSION_SECRET_KEY") or _FALLBACK_SECRET
+    secret = os.getenv("SESSION_SECRET_KEY")
+    test_mode = os.getenv("TEST_MODE", "false").strip().lower() == "true"
+    dev_mode = os.getenv("DEV_MODE", "false").strip().lower() == "true"
+    
+    if not secret:
+        if test_mode or dev_mode:
+            logger.warning(
+                "SESSION_SECRET_KEY not set - generating temporary secret for development. "
+                "Set SESSION_SECRET_KEY in .env for production use!"
+            )
+            secret = secrets.token_urlsafe(32)
+        else:
+            raise RuntimeError(
+                "SESSION_SECRET_KEY is not set. "
+                "This environment variable is REQUIRED for production use. "
+                "Generate a secret with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+                "and add it to your .env file. "
+                "For local development only, you can set DEV_MODE=true or TEST_MODE=true to allow a temporary secret."
+            )
+    return secret
 
 
-@dataclass
+# Token blocklist for logout/revocation
+# Uses Redis when available for multi-worker deployments, falls back to in-memory
+class _TokenBlocklist:
+    _instance: ClassVar[_TokenBlocklist | None] = None
+    _init_lock: ClassVar[Lock] = Lock()
+    _local_revoked: dict[str, float]
+    _local_lock: asyncio.Lock
+
+    def __new__(cls) -> _TokenBlocklist:
+        if cls._instance is None:
+            # Use threading lock for sync-safe initialization
+            with cls._init_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._redis = None
+                    cls._instance._use_redis = False
+                    cls._instance._local_revoked = {}
+                    cls._instance._local_lock = asyncio.Lock()
+        return cls._instance
+
+    def _get_redis(self):
+        if not self._use_redis:
+            return None
+        if self._redis is None:
+            try:
+                import redis.asyncio as redis
+                redis_url = os.getenv("REDIS_URL")
+                if redis_url:
+                    self._redis = redis.from_url(redis_url, decode_responses=True)
+            except Exception:
+                self._use_redis = False
+                self._redis = None
+                logger.warning("Redis unavailable for token blocklist, falling back to in-memory mode")
+        return self._redis
+
+    async def _ensure_redis(self):
+        r = self._get_redis()
+        if r:
+            try:
+                await r.ping()
+                self._use_redis = True
+            except Exception:
+                self._use_redis = False
+                self._redis = None
+
+    async def add(self, token: str) -> None:
+        r = await self._ensure_redis()
+        if r:
+            try:
+                # Decode token to get expiry
+                try:
+                    payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM], options={"verify_signature": False})
+                    exp = float(payload.get("exp", time.time() + _ttl_seconds()))
+                except jwt.PyJWTError:
+                    exp = float(time.time() + _ttl_seconds())
+                
+                ttl = max(1, exp - int(time.time()))
+                await r.setex(f"revoked:{token}", ttl, "1")
+                return
+            except Exception:
+                pass  # Fall back to in-memory
+
+        # In-memory fallback
+        async with self._local_lock:
+            try:
+                payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM], options={"verify_signature": False})
+                exp = float(payload.get("exp", time.time() + _ttl_seconds()))
+            except jwt.PyJWTError:
+                exp = float(time.time() + _ttl_seconds())
+            # Bound memory: evict expired entries before recording the new one.
+            current = time.time()
+            expired = [t for t, e in self._local_revoked.items() if e < current]
+            for t in expired:
+                del self._local_revoked[t]
+            self._local_revoked[token] = exp
+
+    async def is_revoked(self, token: str) -> bool:
+        r = await self._ensure_redis()
+        if r:
+            try:
+                return await r.exists(f"revoked:{token}") > 0
+            except Exception:
+                pass  # Fall back to in-memory
+
+        # In-memory fallback
+        async with self._local_lock:
+            # Clean up expired entries
+            current = time.time()
+            expired = [t for t, exp in self._local_revoked.items() if exp < current]
+            for t in expired:
+                del self._local_revoked[t]
+            return token in self._local_revoked
+
+    async def close(self):
+        if self._redis:
+            await self._redis.close()
+            self._redis = None
+
+
+_blocklist_instance: _TokenBlocklist | None = None
+
+
+def _blocklist() -> _TokenBlocklist:
+    global _blocklist_instance
+    if _blocklist_instance is None:
+        _blocklist_instance = _TokenBlocklist()
+    return _blocklist_instance
+
+
+@dataclass(frozen=True)
 class SessionContext:
-
     employee_id: str  # -> Employee_Number_c
     username: str
     full_name: str  # -> Employee_Name_c
@@ -56,11 +190,14 @@ def create_session(employee: Employee) -> str:
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
-def resolve(token: str | None) -> SessionContext | None:
+async def resolve(token: str | None) -> SessionContext | None:
     if not token:
         return None
     try:
         payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        # Check if token is revoked
+        if await _blocklist().is_revoked(token):
+            return None
         return SessionContext(
             employee_id=payload["sub"],
             username=payload["username"],
@@ -70,19 +207,19 @@ def resolve(token: str | None) -> SessionContext | None:
         return None
 
 
-def destroy(sid: str | None) -> None:
-    # JWTs are stateless and cannot be destroyed server-side without a blocklist.
-    # We rely on the client deleting the cookie.
-    pass
+async def destroy(sid: str | None) -> None:
+    """Add token to blocklist. Must be awaited."""
+    if sid:
+        await _blocklist().add(sid)
 
 
 # --------------------------------------------------------------------------- #
 # FastAPI dependency
 # --------------------------------------------------------------------------- #
-def current_session(
-    otl_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+async def current_session(
+    otl_session: str | None = Cookie(default=None, alias=_session_cookie_name()),
 ) -> SessionContext:
-    ctx = resolve(otl_session)
+    ctx = await resolve(otl_session)
     if not ctx:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

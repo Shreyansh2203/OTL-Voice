@@ -1,8 +1,12 @@
+# Set required env var for tests
+import os
 from unittest.mock import patch
 
 import jwt
 import pytest
 from fastapi import HTTPException
+
+os.environ["SESSION_SECRET_KEY"] = "test-secret-key-for-testing-only"
 
 from backend.core.auth import (
     JWT_ALGORITHM,
@@ -25,55 +29,60 @@ def test_create_session():
     assert payload["full_name"] == "Test User"
 
 
-def test_resolve():
+@pytest.mark.asyncio
+async def test_resolve():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     token = create_session(employee)
     
-    ctx = resolve(token)
+    ctx = await resolve(token)
     assert ctx is not None
     assert ctx.employee_id == "123"
     
     # Missing sid
-    assert resolve(None) is None
+    assert await resolve(None) is None
     
     # Invalid sid
-    assert resolve("invalid") is None
+    assert await resolve("invalid") is None
 
-def test_resolve_expired():
+
+@pytest.mark.asyncio
+async def test_resolve_expired():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     
     with patch("backend.core.auth._ttl_seconds", return_value=-10):
         token = create_session(employee)
     
-    assert resolve(token) is None
+    assert await resolve(token) is None
 
 
-def test_destroy():
+@pytest.mark.asyncio
+async def test_destroy():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     token = create_session(employee)
     
     # JWT destroy is a no-op server side
-    destroy(token)
+    await destroy(token)
     
     # None sid
-    destroy(None)
+    await destroy(None)
 
 
-def test_current_session():
+@pytest.mark.asyncio
+async def test_current_session():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     token = create_session(employee)
     
-    ctx = current_session(otl_session=token)
+    ctx = await current_session(otl_session=token)
     assert ctx.employee_id == "123"
     
     with pytest.raises(HTTPException) as exc:
-        current_session(otl_session=None)
+        await current_session(otl_session=None)
     assert exc.value.status_code == 401
 
 
 def test_cookie_secure():
     import os
-
+    
     from backend.core.auth import cookie_secure
     
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "false"}):

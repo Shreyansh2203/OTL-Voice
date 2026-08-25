@@ -18,8 +18,17 @@ def _client() -> GeminiChatClient:
     return GeminiChatClient()
 
 
-@lru_cache(maxsize=1)
+def _safe_err(msg: str | Exception) -> str:
+    """Sanitize an exception message before sending it to the client.
+
+    Strips newlines/control characters and truncates so verbose upstream
+    (OCI) error strings cannot leak request identifiers or stack detail.
+    """
+    return " ".join(str(msg).split())[:200]
+
+
 def load_prompt_template() -> str:
+    """Load the prompt template from file (not cached, allows live reload)."""
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
@@ -34,18 +43,39 @@ def render_assignments(work_orders: list[dict[str, Any]]) -> str:
     for order in work_orders:
         description = order.get("description")
         suffix = f" - {description}" if description else ""
-        lines.append(f"Work Order {order['workOrder']}{suffix}")
+        lines.append(f"Work Order {order.get('workOrder')}{suffix}")
         for project in order.get("projects", []):
             proj_id = project.get("projectId")
             id_str = f" [ID: {proj_id}]" if proj_id else ""
             lines.append(
-                f"  Project {project['projectNo']}: {project['projectName']}{id_str}"
+                f"  Project {project.get('projectNo')}: {project.get('projectName')}{id_str}"
             )
             for task in project.get("tasks", []):
                 t_id = task.get("taskId")
                 t_id_str = f" [ID: {t_id}]" if t_id else ""
-                lines.append(f"    - {task['taskDetails']}{t_id_str}")
+                lines.append(f"    - {task.get('taskDetails')}{t_id_str}")
     return "\n".join(lines)
+
+
+def _sanitize_template_value(value: str) -> str:
+    """Sanitize a value before injecting into the system prompt to prevent prompt injection."""
+    if not value:
+        return "not provided"
+    # Remove potential injection patterns
+    sanitized = value.replace("{{", "").replace("}}", "")
+    # Limit length to prevent token overflow
+    return sanitized[:500]
+
+
+def _sanitize_assignments(text: str) -> str:
+    """Sanitize catalogue-derived assignment text before prompt injection.
+
+    Assignment names/comments originate from Fusion and could contain
+    template tokens or injection phrasing; strip those and cap the length.
+    """
+    if not text:
+        return text
+    return text.replace("{{", "").replace("}}", "")[:4000]
 
 
 def build_system_prompt(
@@ -58,12 +88,12 @@ def build_system_prompt(
     date_str = datetime.now(UTC).strftime("%A, %Y-%m-%d")
 
     prompt = load_prompt_template()
-    prompt = prompt.replace("{{USERNAME}}", username or "not provided")
-    prompt = prompt.replace("{{EMPLOYEE_NUMBER}}", employee_id or "not provided")
-    prompt = prompt.replace("{{EMPLOYEE_NAME}}", employee_name or "not provided")
+    prompt = prompt.replace("{{USERNAME}}", _sanitize_template_value(username))
+    prompt = prompt.replace("{{EMPLOYEE_NUMBER}}", _sanitize_template_value(employee_id))
+    prompt = prompt.replace("{{EMPLOYEE_NAME}}", _sanitize_template_value(employee_name))
     prompt = prompt.replace("{{CURRENT_DATE}}", date_str)
-    prompt = prompt.replace("{{ASSIGNMENTS}}", render_assignments(assignments or []))
-    prompt = prompt.replace("{{RECENT_HISTORY}}", recent_history or "No recent history available.")
+    prompt = prompt.replace("{{ASSIGNMENTS}}", _sanitize_assignments(render_assignments(assignments or [])))
+    prompt = prompt.replace("{{RECENT_HISTORY}}", _sanitize_template_value(recent_history) if recent_history else "No recent history available.")
     return prompt
 
 
@@ -75,7 +105,7 @@ def stream_sse(system_prompt: str, history: list[dict]) -> Iterator[str]:
     try:
         client = _client()
     except Exception as exc:
-        yield _sse({"error": f"Model unavailable: {exc}"})
+        yield _sse({"error": f"Model unavailable: {_safe_err(exc)}"})
         return
 
     try:
@@ -83,7 +113,7 @@ def stream_sse(system_prompt: str, history: list[dict]) -> Iterator[str]:
             if delta:
                 yield _sse({"delta": delta})
     except Exception as exc:
-        yield _sse({"error": str(exc)})
+        yield _sse({"error": _safe_err(exc)})
         return
 
     yield _sse({"done": True})

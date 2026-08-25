@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import TypeVar
 from xml.sax.saxutils import escape
 
 import oci
@@ -10,7 +11,9 @@ from oci.ai_speech import models as speech_models
 
 # Reuse the chat client's config builder and small env helper so OCI identity is
 # resolved in exactly one place.
-from .oci_gemini import _env, build_oci_config
+from .oci_gemini import _env, _retry_with_backoff, build_oci_config
+
+T = TypeVar("T")
 
 
 def _speech_endpoint(region: str) -> str:
@@ -136,12 +139,15 @@ class SpeechClient:
         )
 
     def _call(self, details) -> bytes:
-        response = self.client.synthesize_speech(details)
-        data = response.data
-        # The SDK returns a streaming binary body; ``.content`` yields the bytes.
-        if hasattr(data, "content") and data.content is not None:
-            return data.content
-        return data.raw.read()
+        def _do_call():
+            response = self.client.synthesize_speech(details)
+            data = response.data
+            # The SDK returns a streaming binary body; ``.content`` yields the bytes.
+            if hasattr(data, "content") and data.content is not None:
+                return data.content
+            return data.raw.read()
+        
+        return _retry_with_backoff(_do_call, max_retries=3, base_delay=1.0)
 
     # -- public API ---------------------------------------------------------- #
     def synthesize(self, text: str, rate: float = 1.0) -> bytes:
@@ -161,9 +167,12 @@ class SpeechClient:
                 ssml_payload = f'<speak><prosody rate="{_rate_to_percent(rate)}">{clean}</prosody></speak>'
             
             try:
+                import xml.etree.ElementTree as ET
+                ET.fromstring(ssml_payload)
                 return self._call(self._details(ssml_payload, "SSML"))
-            except oci.exceptions.ServiceError:
-                pass # fallback to text
+            except (oci.exceptions.ServiceError, Exception):
+                import re
+                clean = re.sub(r'<[^>]+>', '', clean) # fallback to text without tags
 
         if abs(rate - 1.0) < 1e-3:
             return self._call(self._details(clean, "TEXT"))
@@ -192,44 +201,49 @@ try:
         RealtimeSpeechClient,
         RealtimeSpeechClientListener,
     )
+
+
+    class _STTListener(RealtimeSpeechClientListener):
+        def __init__(self, result_queue: asyncio.Queue):
+            self.result_queue = result_queue
+            self.done = asyncio.Event()
+            self.connected = asyncio.Event()
+
+        def on_result(self, result):
+            transcriptions = result.get("transcriptions", [])
+            if transcriptions:
+                tx = transcriptions[0]
+                text = tx.get("transcription", "")
+                is_final = tx.get("isFinal", False)
+                if text:
+                    try:
+                        self.result_queue.put_nowait({"text": text, "isFinal": is_final})
+                    except asyncio.QueueFull:
+                        pass
+
+        def on_ack_message(self, ackmessage):
+            pass
+
+        def on_connect(self):
+            self.connected.set()
+
+        def on_connect_message(self, connectmessage):
+            self.connected.set()
+
+        def on_network_event(self, ackmessage):
+            pass
+
+        def on_error(self, error_message):
+            self.done.set()
+
+        def on_close(self, error_code, error_message):
+            self.done.set()
+
 except ImportError:
-    pass
-
-class _STTListener(RealtimeSpeechClientListener):
-    def __init__(self, result_queue: asyncio.Queue):
-        self.result_queue = result_queue
-        self.done = asyncio.Event()
-        self.connected = asyncio.Event()
-
-    def on_result(self, result):
-        transcriptions = result.get("transcriptions", [])
-        if transcriptions:
-            tx = transcriptions[0]
-            text = tx.get("transcription", "")
-            is_final = tx.get("isFinal", False)
-            if text:
-                try:
-                    self.result_queue.put_nowait({"text": text, "isFinal": is_final})
-                except asyncio.QueueFull:
-                    pass
-
-    def on_ack_message(self, ackmessage):
+    # Define a dummy class if imports fail
+    class _DummySTTListener:
         pass
-
-    def on_connect(self):
-        self.connected.set()
-
-    def on_connect_message(self, connectmessage):
-        self.connected.set()
-
-    def on_network_event(self, ackmessage):
-        pass
-
-    def on_error(self, error_message):
-        self.done.set()
-
-    def on_close(self, error_code, error_message):
-        self.done.set()
+    _STTListener = _DummySTTListener  # type: ignore
 
 class STTClient:
     def __init__(self) -> None:
@@ -246,6 +260,7 @@ class STTClient:
                 tenancy=self.config["tenancy"],
                 user=self.config["user"],
                 fingerprint=self.config["fingerprint"],
+                private_key_file_location=None,
                 private_key_content=self.config["key_content"],
                 pass_phrase=self.config.get("pass_phrase")
             )
@@ -254,7 +269,7 @@ class STTClient:
                 tenancy=self.config["tenancy"],
                 user=self.config["user"],
                 fingerprint=self.config["fingerprint"],
-                private_key_file_name=self.config.get("key_file"),
+                private_key_file_location=self.config.get("key_file"),
                 pass_phrase=self.config.get("pass_phrase")
             )
 
@@ -269,7 +284,7 @@ class STTClient:
         params.encoding = "audio/raw;rate=16000"
         params.partial_silence_threshold_in_ms = 0
         params.final_silence_threshold_in_ms = 2000
-        params.punctuation = RealtimeParameters.PUNCTUATION_ENABLED
+        params.punctuation = RealtimeParameters.PUNCTUATION_AUTO
         
         result_queue = asyncio.Queue()
         listener = _STTListener(result_queue)

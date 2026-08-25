@@ -7,7 +7,6 @@ from backend.main import (
     _options_hint,
     _otl_config_error_handler,
     _otl_error_handler,
-    app,
 )
 from backend.services.otl_client import OtlConfigError, OtlError
 
@@ -42,9 +41,9 @@ def test_health(client):
     assert client.get("/api/health").status_code == 200
 
 
-def test_health_otl(client, mock_otl_client):
-    mock_otl_client.validate.return_value = {"valid": True}
-    assert client.get("/api/health/otl").status_code == 200
+def test_health_otl(auth_client, mock_otl_client):
+    mock_otl_client.avalidate.return_value = {"ok": True, "username": "test"}
+    assert auth_client.get("/api/health/otl").status_code == 200
 
 
 # Auth tests
@@ -60,21 +59,21 @@ def test_login_success(client):
 
 
 def test_login_failure(client):
-    with patch("backend.main.otl_client.get_worker", side_effect=Exception("error")):
+    with patch("backend.main.otl_client.aget_worker", side_effect=Exception("error")):
         response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
         assert response.status_code == 500
 
 
 def test_login_not_found(client):
-    with patch("backend.main.otl_client.get_worker", return_value=None):
+    with patch("backend.main.otl_client.aget_worker", return_value=None):
         response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
         assert response.status_code == 401
 
 
 @pytest.fixture
 def auth_client(client, mock_otl_client):
-    mock_otl_client.get_worker.return_value = {"personNumber": "testuser", "fullName": "Test User"}
-    mock_otl_client.get_worker.side_effect = None
+    mock_otl_client.aget_worker.return_value = {"personNumber": "testuser", "fullName": "Test User"}
+    mock_otl_client.aget_worker.side_effect = None
     res = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
     assert res.status_code == 200
     return client
@@ -132,8 +131,8 @@ def test_submit_timecard_no_entries(auth_client):
     assert auth_client.post("/api/otl/timecard", json={}).status_code == 400
 
 
-def test_submit_timecard(auth_client, mock_otl_client):
-    mock_otl_client.list_worker_assignments.return_value = [{
+def test_submit_timecard(auth_client, mock_otl_client, mock_fusion_catalogue):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = [{
         "workOrder": "WO1",
         "projects": [{
             "projectId": 1,
@@ -142,12 +141,12 @@ def test_submit_timecard(auth_client, mock_otl_client):
             "tasks": [{"taskId": 10, "taskDetails": "Task 1"}]
         }]
     }]
-    mock_otl_client.create_many.return_value = [{"ok": True}, {"ok": False}]
+    mock_otl_client.acreate_many.return_value = [{"ok": True}, {"ok": False}]
     
     response = auth_client.post("/api/otl/timecard", json={
         "entries": [
-            {"projectNo": "P1", "taskDetails": "Task 1"},
-            {"projectName": "Proj 1"}
+            {"projectNo": "P1", "taskDetails": "Task 1", "hours": 4},
+            {"projectName": "Proj 1", "taskDetails": "Task 1", "hours": 2}
         ]
     })
     assert response.status_code == 200
@@ -155,33 +154,32 @@ def test_submit_timecard(auth_client, mock_otl_client):
     assert response.json()["succeeded"] == 1
 
 
-def test_submit_timecard_unknown_project(auth_client, mock_otl_client):
-    mock_otl_client.list_worker_assignments.return_value = []
-    response = auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99"}]})
+def test_submit_timecard_unknown_project(auth_client, mock_fusion_catalogue):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = []
+    response = auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]})
     assert response.status_code == 400
-    assert "Unknown project" in response.text
+    assert "not in your assigned projects" in response.text
 
 
-def test_options_hint(mock_otl_client):
-    mock_otl_client.list_worker_assignments.return_value = []
-    assert _options_hint("1", "A") == "You have no project assignments."
+def test_options_hint():
+    assert _options_hint([]) == "You have no project assignments."
 
-def test_options_hint_with_projects(mock_otl_client):
-    mock_otl_client.list_worker_assignments.return_value = [{
+
+def test_options_hint_with_projects():
+    assert _options_hint([{
         "workOrder": "WO1",
         "projects": [{"projectNo": "P1", "projectName": "Proj 1"}]
-    }]
-    assert _options_hint("1", "A") == "Assigned projects: P1 (Proj 1, WO WO1)."
+    }]) == "Assigned projects: P1 (Proj 1, WO WO1)."
 
 
 def test_submit_timecard_not_strict(auth_client, mock_otl_client):
     with patch("backend.main._strict_assignment", return_value=False):
-        mock_otl_client.create_many.return_value = [{"ok": True}]
-        assert auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99"}]}).status_code == 200
+        mock_otl_client.acreate_many.return_value = [{"ok": True}]
+        assert auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]}).status_code == 200
 
 
 def test_list_timecards(auth_client, mock_otl_client, mock_fusion_catalogue):
-    mock_otl_client.list_timecard_entries.return_value = {
+    mock_otl_client.alist_timecard_entries.return_value = {
         "items": [{
             "timeRecordEvent": [{
                 "timeRecordEventAttribute": [
@@ -196,6 +194,7 @@ def test_list_timecards(auth_client, mock_otl_client, mock_fusion_catalogue):
             }]
         }]
     }
+    # get_project_by_id is an AsyncMock, need to set return_value on the mock
     mock_fusion_catalogue.get_project_by_id.return_value = {"project_name": "Proj 1"}
     response = auth_client.get("/api/otl/timecards")
     assert response.status_code == 200
@@ -204,24 +203,22 @@ def test_list_timecards(auth_client, mock_otl_client, mock_fusion_catalogue):
 
 
 # Catalogue tests
-def test_labour_assignments(auth_client, mock_otl_client):
-    mock_otl_client.list_worker_assignments.return_value = []
+def test_labour_assignments(auth_client, mock_fusion_catalogue):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = []
     assert auth_client.get("/api/labour/assignments").status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_refresh_catalogue(client, mock_fusion_catalogue):
-    from httpx import ASGITransport, AsyncClient
+async def test_refresh_catalogue(auth_client, mock_fusion_catalogue):
     mock_fusion_catalogue.refresh_catalogue = AsyncMock()
-    mock_fusion_catalogue.status.return_value = {"status": "ok"}
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.post("/api/admin/refresh-catalogue")
+    mock_fusion_catalogue.status.return_value = {"isLoaded": True, "isLoading": False, "totalProjects": 0, "totalPersonsIndexed": 0, "refreshIntervalSeconds": 21600}
+    response = auth_client.post("/api/admin/refresh-catalogue")
     assert response.status_code == 200
 
 
-def test_catalogue_status(client, mock_fusion_catalogue):
-    mock_fusion_catalogue.status.return_value = {"status": "ok"}
-    assert client.get("/api/admin/catalogue-status").status_code == 200
+def test_catalogue_status(auth_client, mock_fusion_catalogue):
+    mock_fusion_catalogue.status.return_value = {"isLoaded": True, "isLoading": False, "totalProjects": 0, "totalPersonsIndexed": 0, "refreshIntervalSeconds": 21600}
+    assert auth_client.get("/api/admin/catalogue-status").status_code == 200
 
 
 # SPA tests
@@ -233,3 +230,57 @@ def test_serve_spa(client):
     assert client.get("/sw.js").status_code == 200
     assert client.get("/").status_code == 200
     assert client.get("/api/not-found").status_code == 404
+
+
+# WebSocket tests
+def test_stt_stream_origin_validation_allowed():
+    """Test that WebSocket accepts connections from allowed origins."""
+    with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()), \
+         patch("backend.main.ws_tracker.acquire", return_value=True), \
+         patch("backend.main.ws_tracker.release"), \
+         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]), \
+         patch("backend.services.oci_speech.STTClient"):
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+        with TestClient(app) as client:
+            with client.websocket_connect("/api/stt/stream", headers={"Origin": "http://localhost:5173"}) as _:
+                # Connection should be accepted (will fail later due to mocked STTClient but origin check passes)
+                pass
+
+
+def test_stt_stream_origin_validation_blocked():
+    """Test that WebSocket rejects connections from disallowed origins."""
+    with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()), \
+         patch("backend.main.ws_tracker.acquire", return_value=True), \
+         patch("backend.main.ws_tracker.release"), \
+         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]):
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+        with TestClient(app) as client:
+            # Should be rejected with 1008 policy violation
+            try:
+                with client.websocket_connect("/api/stt/stream", headers={"Origin": "http://evil.com"}):
+                    pass
+                assert False, "Expected WebSocketDisconnect"
+            except Exception as e:
+                # FastAPI TestClient raises WebSocketDisconnect with code 1008
+                # The exception may not have string representation of code, check the code attribute
+                assert hasattr(e, 'code') and e.code == 1008, f"Expected code 1008, got {getattr(e, 'code', None)}"
+
+
+def test_stt_stream_origin_validation_sec_websocket_origin():
+    """Test that WebSocket also checks Sec-WebSocket-Origin header."""
+    with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()), \
+         patch("backend.main.ws_tracker.acquire", return_value=True), \
+         patch("backend.main.ws_tracker.release"), \
+         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]), \
+         patch("backend.services.oci_speech.STTClient"):
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+        with TestClient(app) as client:
+            with client.websocket_connect("/api/stt/stream", headers={"Sec-WebSocket-Origin": "http://localhost:5173"}) as _:
+                # Connection should be accepted via Sec-WebSocket-Origin header
+                pass

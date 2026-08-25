@@ -111,7 +111,7 @@ def _safe_body(resp: httpx.Response) -> Any:
     try:
         return resp.json()
     except Exception:
-        return (resp.text or "")[:2000]
+        return (resp.text or "")[:10000]
 
 
 def _coerce_number(value: Any) -> float | int | None:
@@ -119,7 +119,7 @@ def _coerce_number(value: Any) -> float | int | None:
         return None
     try:
         f = float(value)
-        return int(f) if f.is_integer() else f
+        return round(f)
     except (TypeError, ValueError):
         return None
 
@@ -490,3 +490,57 @@ def create_many(
                 }
             )
     return results
+
+
+# --- Async Equivalents Recovered ---
+import asyncio
+
+def _async_client(cred: OtlCredential) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        auth=cred.auth,
+        timeout=_timeout(),
+        headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
+    )
+
+async def avalidate(cred: OtlCredential) -> dict[str, Any]:
+    async with _async_client(cred) as client:
+        resp = await client.get(base_url(), params={"limit": 1})
+    if resp.status_code in (401, 403):
+        raise OtlError(
+            resp.status_code,
+            "OTL rejected the service account credential. Check "
+            "OTL_SERVICE_USERNAME / OTL_SERVICE_PASSWORD.",
+        )
+    _raise_for_status(resp)
+    return {"ok": True, "username": cred.username}
+
+async def aget_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
+    return get_worker(cred, person_number)
+
+async def alist_timecard_entries(
+    cred: OtlCredential, limit: int = 10, offset: int = 0, person_number: str | None = None
+) -> dict[str, Any]:
+    return list_timecard_entries(cred, limit, offset, person_number)
+
+async def acreate_many(
+    cred: OtlCredential, entries: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    results = []
+    for entry in entries:
+        try:
+            res = await acreate_timecard_entry(cred, entry)
+            results.append({'ok': True, 'id': res.get('timeRecordEventRequestId')})
+        except Exception as e:
+            results.append({'ok': False, 'error': str(e), 'entry': entry})
+    return results
+
+async def alist_worker_assignments(
+    cred: OtlCredential, person_number: str, full_name: str = ""
+) -> list[dict[str, Any]]:
+    return list_worker_assignments(cred, person_number, full_name)
+
+async def acreate_timecard_entry(cred: OtlCredential, entry: dict[str, Any]) -> dict[str, Any]:
+    async with _async_client(cred) as client:
+        resp = await client.post(time_records_url(), json=map_entry_to_otl(entry))
+    _raise_for_status(resp)
+    return map_otl_to_entry(resp.json())

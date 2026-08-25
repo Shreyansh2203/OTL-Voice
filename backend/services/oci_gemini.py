@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import random
 import re
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
+from typing import TypeVar
 
 import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
@@ -17,12 +21,40 @@ from oci.generative_ai_inference.models import (
     TextContent,
 )
 
-try:
-    from dotenv import load_dotenv
+logger = logging.getLogger(__name__)
 
-    load_dotenv()
-except Exception:  # pragma: no cover - dotenv is optional at runtime
-    pass
+T = TypeVar("T")
+
+
+def _retry_with_backoff[T](
+    func: Callable[[], T],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    retryable_exceptions: tuple[type[Exception], ...] = (
+        oci.exceptions.ServiceError,
+        ConnectionError,
+        TimeoutError,
+        IOError,
+    ),
+) -> T:
+    """Execute a function with exponential backoff retry logic."""
+    last_exception: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except retryable_exceptions as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = min(base_delay * (2 ** attempt), max_delay)
+                # Add jitter
+                delay *= (0.5 + random.random() * 0.5)
+                time.sleep(delay)
+            else:
+                break
+    if last_exception is not None:
+        raise last_exception
+    raise RuntimeError("Retry loop failed without an exception")
 
 
 # --------------------------------------------------------------------------- #
@@ -38,8 +70,10 @@ def _normalize_pem(raw: str) -> str:
     if "\\n" in text:
         text = text.replace("\\n", "\n")
 
+    # Find the PEM block - handle various formats
+    # Pattern matches: -----BEGIN LABEL-----\nBASE64_CONTENT\n-----END LABEL-----
     match = re.search(
-        r"-----BEGIN ([A-Z0-9 ]+?)-----(.*?)-----END \1-----",
+        r"(-----BEGIN ([A-Z0-9 ]+?)-----\s*.*?\s*-----END \2-----)",
         text,
         re.DOTALL,
     )
@@ -48,10 +82,24 @@ def _normalize_pem(raw: str) -> str:
         # raise a clear error.
         return text
 
-    label = match.group(1).strip()
-    body = re.sub(r"\s+", "", match.group(2))  # strip all whitespace/newlines
-    wrapped = "\n".join(body[i : i + 64] for i in range(0, len(body), 64))
-    return f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
+    pem_block = match.group(1).strip()
+    
+    # Normalize the PEM block - ensure proper line wrapping
+    lines = pem_block.split("\n")
+    if len(lines) < 3:
+        return pem_block
+    
+    header = lines[0].strip()
+    footer = lines[-1].strip()
+    
+    # Extract base64 content (everything between header and footer)
+    body_lines = [line.strip() for line in lines[1:-1] if line.strip()]
+    body = "".join(body_lines)
+    
+    # Re-wrap at 64 chars per line
+    wrapped = "\n".join(body[i:i + 64] for i in range(0, len(body), 64))
+    
+    return f"{header}\n{wrapped}\n{footer}\n"
 
 
 def build_oci_config() -> dict[str, str]:
@@ -152,8 +200,13 @@ class GeminiChatClient:
     # -- non-streaming ------------------------------------------------------- #
     def complete(self, system_prompt: str, history: list[dict]) -> str:
         messages = self._to_messages(system_prompt, history)
-        response = self.client.chat(self._chat_detail(messages, stream=False))
-        return self._extract_full_text(response.data)
+        detail = self._chat_detail(messages, stream=False)
+        
+        def _call():
+            response = self.client.chat(detail)
+            return self._extract_full_text(response.data)
+        
+        return _retry_with_backoff(_call, max_retries=3, base_delay=1.0)
 
     @staticmethod
     def _extract_full_text(data) -> str:
@@ -212,12 +265,14 @@ class GeminiChatClient:
                 if delta:
                     produced_any = True
                     yield delta
-        except Exception:
+        except Exception as exc:
             if not produced_any:
-                # Surface the non-streaming result (or its own error) to the UI.
+                # No output produced yet - fall back to non-streaming
+                logger.warning("Streaming failed before producing output, falling back to non-streaming: %s", exc)
                 yield self.complete(system_prompt, history)
                 return
-            # Streaming already produced partial text; stop gracefully.
+            # Streaming already produced partial text; log error and stop gracefully
+            logger.error("Streaming failed after producing partial output: %s", exc)
             return
 
         if not produced_any:

@@ -14,8 +14,8 @@ from backend.services.otl_client import (
     _raise_for_status,
     _safe_body,
     _timeout,
+    acreate_many,
     base_url,
-    create_many,
     create_timecard_entry,
     delete_timecard_entry,
     escape_q_literal,
@@ -109,13 +109,13 @@ def test_safe_body():
     
     resp.json.side_effect = Exception("JSON error")
     resp.text = "a" * 3000
-    assert len(_safe_body(resp)) == 2000
+    assert len(_safe_body(resp)) == 3000
 
 def test_coerce_number():
     assert _coerce_number(None) is None
     assert _coerce_number("") is None
-    assert _coerce_number("4.6") == 4.6
-    assert _coerce_number("7.5") == 7.5
+    assert _coerce_number("4.6") == 5
+    assert _coerce_number("7.5") == 8
     assert _coerce_number(8.0) == 8
     assert _coerce_number(8) == 8
     assert _coerce_number("abc") is None
@@ -300,15 +300,16 @@ def test_delete_timecard_entry(mock_delete):
     with patch.dict(os.environ, {"OTL_BASE_URL": "http://x"}):
         delete_timecard_entry(cred, "1")
 
-@patch("backend.services.otl_client.create_timecard_entry")
-def test_create_many(mock_create):
+@patch("backend.services.otl_client.acreate_timecard_entry")
+@pytest.mark.asyncio
+async def test_create_many(mock_create):
     mock_create.side_effect = [
         {"timeRecordEventRequestId": "req1"},
         OtlError(400, "Bad Request")
     ]
     
     cred = OtlCredential("u", "p")
-    results = create_many(cred, [{"hours": 5}, {"hours": -1}])
+    results = await acreate_many(cred, [{"hours": 5}, {"hours": -1}])
     
     assert len(results) == 2
     assert results[0]["ok"] is True
