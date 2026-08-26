@@ -1,7 +1,9 @@
-utf-8import json
+import json
 from pathlib import Path
+
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
+
 data_dir = Path(__file__).resolve().parent / "data"
 catalogue_path = data_dir / "fusion_master_catalogue.json"
 if not catalogue_path.is_file():

@@ -6,7 +6,7 @@ vi.mock("./api/client", () => ({
   getSession: vi.fn(),
   logout: vi.fn(),
 }));
-vi.mock("./components/LoginView", () => ({
+vi.mock("./features/auth/LoginView", () => ({
   default: ({ onLogin }: { onLogin: (u: any) => void }) => (
     <div data-testid="login-view">
       <button onClick={() => onLogin({ username: "user", fullName: "User" })}>
@@ -15,7 +15,7 @@ vi.mock("./components/LoginView", () => ({
     </div>
   ),
 }));
-vi.mock("./components/ChatView", () => ({
+vi.mock("./features/chat/ChatView", () => ({
   default: ({ onLogout, onSessionExpired }: any) => (
     <div data-testid="chat-view">
       <button onClick={onLogout}>Simulate Logout</button>

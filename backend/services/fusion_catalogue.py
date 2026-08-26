@@ -224,6 +224,7 @@ def _do_load_catalogue() -> None:
         return
     logger.info("Loading Fusion catalogue from live APIs...")
     start = time.time()
+    load_succeeded = False
     try:
         from . import otl_client
         cred = otl_client.service_credential()
@@ -234,7 +235,15 @@ def _do_load_catalogue() -> None:
         )
     except Exception as e:
         logger.error("Cannot create Fusion API client: %s", e)
-        _set_loading_false(conn, lock_path)
+        try:
+            os.unlink(lock_path)
+        except Exception:
+            pass
+        try:
+            conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')")
+            conn.commit()
+        except Exception:
+            pass
         return
     try:
         raw_projects = _fetch_all_projects(client)
@@ -288,6 +297,7 @@ def _do_load_catalogue() -> None:
         logger.info("Building project index...")
         person_index = _build_index(enriched, assignments_data=assignments)
         _save_catalogue(conn, enriched, person_index)
+        load_succeeded = True
         elapsed = time.time() - start
         logger.info(
             "Fusion catalogue ready: %d projects, %d persons indexed (%.1fs)",
@@ -299,7 +309,19 @@ def _do_load_catalogue() -> None:
         logger.exception("Failed to load Fusion catalogue")
     finally:
         client.close()
-        _set_loading_false(conn, lock_path)
+        if load_succeeded:
+            _set_loading_false(conn, lock_path)
+        else:
+            # Keep is_loading=true so operators know catalogue is stale
+            try:
+                conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')")
+                conn.commit()
+            except Exception:
+                pass
+        try:
+            os.unlink(lock_path)
+        except Exception:
+            pass
 def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
     global _is_loading
     try:

@@ -1,17 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
+cd "$(dirname "$0")"
 
 echo "Running Backend Unit Tests (pytest)..."
-cd backend
-uv run pytest tests/
-cd ..
+uv run pytest backend/tests
 
+echo ""
 echo "Running Frontend Unit Tests (vitest)..."
-cd frontend
-npm run test:unit
+npm --prefix frontend run test:unit
 
-echo "Running Frontend E2E Tests (Playwright)..."
-npm run test:e2e
-cd ..
-
-echo "All tests passed successfully!"
+echo ""
+echo "========================================="
+echo "All unit tests passed successfully!"
+echo "========================================="

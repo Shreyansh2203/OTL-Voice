@@ -1,8 +1,8 @@
 import { useCallback, useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "./api/client";
-import LoginView from "./components/LoginView";
-import ChatView from "./components/ChatView";
+import { LoginView } from "./features/auth";
+import { ChatView } from "./features/chat";
 import type { Identity } from "./types";
 function AppContent() {
   const qc = useQueryClient();

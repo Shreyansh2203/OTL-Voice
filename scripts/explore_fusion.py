@@ -1,15 +1,18 @@
-utf-8import json
+import json
 import os
+import sys
 import urllib.parse
+
 import httpx
 from dotenv import load_dotenv
+
 load_dotenv()
 DEFAULT_USERNAME = os.getenv("OTL_SERVICE_USERNAME", "").strip()
 DEFAULT_PASSWORD = os.getenv("OTL_SERVICE_PASSWORD", "")
 DEFAULT_OTL_URL = os.getenv("OTL_BASE_URL", "")
 if not DEFAULT_OTL_URL:
     print("Error: OTL_BASE_URL environment variable is not set. Please configure it in .env")
-    exit(1)
+    sys.exit(1)
 parsed = urllib.parse.urlparse(DEFAULT_OTL_URL)
 HOST_URL = f"{parsed.scheme}://{parsed.netloc}"
 def get_client(username: str, password: str) -> httpx.Client:

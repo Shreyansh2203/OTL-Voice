@@ -84,7 +84,7 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     if not emp_num:
         raise OtlError(400, "employeeNumber is required.")
     emp_num = str(emp_num).strip()
-    hours = _coerce_number(entry.get("hours")) or 0
+    hours = _coerce_number(entry.get("hours")) or 0  # default to 0 if None/empty
     if hours <= 0:
         raise OtlError(400, f"Timecard entry hours must be greater than zero, got {hours}.")
     now = datetime.now(UTC)
@@ -100,14 +100,14 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         raise OtlError(400, f"Invalid date format '{date_str}'. Expected YYYY-MM-DD.")
     default_start_hour = int(os.getenv("DEFAULT_START_HOUR", "9"))
-    if start_time_str:
-        try:
+    try:
+        if start_time_str:
             h1, m1 = map(int, start_time_str.split(":"))
             start_dt = base_dt.replace(hour=h1, minute=m1)
-        except Exception:
-            raise OtlError(400, f"Invalid startTime format '{start_time_str}'. Expected HH:MM.")
-    else:
-        start_dt = base_dt.replace(hour=default_start_hour, minute=0) 
+        else:
+            start_dt = base_dt.replace(hour=default_start_hour, minute=0)
+    except Exception:
+        raise OtlError(400, f"Invalid startTime format '{start_time_str}'. Expected HH:MM.")
     if stop_time_str:
         try:
             h2, m2 = map(int, stop_time_str.split(":"))
@@ -356,15 +356,6 @@ async def acreate_many(
                     "ok": False,
                     "status": exc.status_code,
                     "error": exc.message,
-                }
-            )
-        except Exception as exc:
-            results.append(
-                {
-                    "index": index,
-                    "ok": False,
-                    "status": 500,
-                    "error": str(exc),
                 }
             )
     return results

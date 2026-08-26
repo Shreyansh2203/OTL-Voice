@@ -1,13 +1,15 @@
-utf-8
 """
 Strip comments and docstrings from Python files using the tokenize module.
 Preserves string literals that are not docstrings.
 """
-import tokenize
+from __future__ import annotations
+
 import sys
-import os
+import tokenize
 from pathlib import Path
-def strip_python_file(input_path: Path, output_path: Path = None) -> str:
+
+
+def strip_python_file(input_path: Path, output_path: Path | None = None) -> str:
     with open(input_path, 'rb') as f:
         tokens = list(tokenize.tokenize(f.readline))
     output = []

@@ -28,17 +28,13 @@ jobs:
       run: uv sync --all-groups
 
     - name: Run Ruff (Python Linting)
-      run: uv run ruff check backend
+      run: uv run ruff check .
 
     - name: Run Mypy (Python Type Checking)
       run: uv run mypy backend
 
-    - name: Verify Python Compilation
-      run: |
-        python -m py_compile backend/main.py backend/services/otl_client.py
-
-    - name: Run Backend Tests (Pytest)
-      run: uv run pytest
+    - name: Run Backend Tests & Coverage (Pytest)
+      run: uv run pytest --cov=backend
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -62,3 +58,8 @@ jobs:
     - name: Run Frontend Tests (Vitest)
       working-directory: ./frontend
       run: npm run test:unit
+
+    - name: Build Frontend (Vite)
+      working-directory: ./frontend
+      run: npm run build
+

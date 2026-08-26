@@ -15,6 +15,25 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+ACTION="${1:-}"
+
+if [ "$ACTION" = "down" ]; then
+    cd deploy && docker compose down
+    exit 0
+elif [ "$ACTION" = "stop" ]; then
+    cd deploy && docker compose stop
+    exit 0
+elif [ "$ACTION" = "logs" ]; then
+    cd deploy && docker compose logs -f
+    exit 0
+elif [ "$ACTION" = "status" ] || [ "$ACTION" = "ps" ]; then
+    cd deploy && docker compose ps
+    exit 0
+elif [ "$ACTION" = "shell" ]; then
+    cd deploy && docker compose exec app bash
+    exit 0
+fi
+
 cd deploy
 docker compose up -d --build
 

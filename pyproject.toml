@@ -38,8 +38,24 @@ ignore = ["B008", "BLE001", "S110", "TRY002", "SIM117"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
-norecursedirs = ["scripts", "backend/scripts", "frontend"]
-addopts = "--ignore=backend/scripts --ignore=scripts"
+asyncio_mode = "strict"
 
 [tool.mypy]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+    "backend/tests/*",
+    "backend/core/oci_ai_speech_realtime/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+

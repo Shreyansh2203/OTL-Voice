@@ -18,6 +18,15 @@ if not exist ".env" (
     exit /b 1
 )
 
+REM Check if subcommands were provided
+set "ACTION=%~1"
+if /I "%ACTION%"=="down"    goto :do_down
+if /I "%ACTION%"=="stop"    goto :do_stop
+if /I "%ACTION%"=="logs"    goto :do_logs
+if /I "%ACTION%"=="status"  goto :do_status
+if /I "%ACTION%"=="ps"      goto :do_status
+if /I "%ACTION%"=="shell"   goto :do_shell
+
 cd deploy
 docker compose up -d --build
 if %errorlevel% neq 0 (
@@ -46,5 +55,31 @@ echo   API Docs: http://localhost/api/docs
 echo =======================================================
 echo.
 pause
+goto :eof
+
+:do_down
+cd deploy
+docker compose down
+goto :eof
+
+:do_stop
+cd deploy
+docker compose stop
+goto :eof
+
+:do_logs
+cd deploy
+docker compose logs -f
+goto :eof
+
+:do_status
+cd deploy
+docker compose ps
+goto :eof
+
+:do_shell
+cd deploy
+docker compose exec app bash
+goto :eof
 
 endlocal

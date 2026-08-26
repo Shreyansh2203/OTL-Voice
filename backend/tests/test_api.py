@@ -38,19 +38,27 @@ def test_health_otl(auth_client, mock_otl_client):
     assert auth_client.get("/api/health/otl").status_code == 200
 def test_session_unauthorized(client):
     assert client.get("/api/auth/session").status_code == 401
+
+
 def test_login_success(client):
     response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
     assert response.status_code == 200
     assert response.json()["username"] == "testuser"
     assert "otl_session" in response.headers.get("set-cookie", "").lower()
+
+
 def test_login_failure(client):
-    with patch("backend.main.otl_client.aget_worker", side_effect=Exception("error")):
+    with patch("backend.api.v1.auth.otl_client.aget_worker", side_effect=Exception("error")):
         response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
         assert response.status_code == 500
+
+
 def test_login_not_found(client):
-    with patch("backend.main.otl_client.aget_worker", return_value=None):
+    with patch("backend.api.v1.auth.otl_client.aget_worker", return_value=None):
         response = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
         assert response.status_code == 401
+
+
 def test_login_passwordless_success(client, mock_otl_client):
     mock_otl_client.aget_worker.return_value = {"personNumber": "208", "fullName": "Jessy Brown"}
     mock_otl_client.aget_worker.side_effect = None
@@ -58,11 +66,15 @@ def test_login_passwordless_success(client, mock_otl_client):
     assert response.status_code == 200
     assert response.json()["fullName"] == "Jessy Brown"
     assert response.json()["username"] == "208"
+
+
 def test_login_passwordless_not_found(client, mock_otl_client):
     mock_otl_client.aget_worker.return_value = None
     mock_otl_client.aget_worker.side_effect = None
     response = client.post("/api/auth/login", json={"username": "9999", "password": ""})
     assert response.status_code == 401
+
+
 @pytest.fixture
 def auth_client(client, mock_otl_client):
     mock_otl_client.aget_worker.return_value = {"personNumber": "testuser", "fullName": "Pytest User"}
@@ -70,22 +82,32 @@ def auth_client(client, mock_otl_client):
     res = client.post("/api/auth/login", json={"username": "testuser", "password": "dummy-password"})
     assert res.status_code == 200
     return client
+
+
 def test_session_authorized(auth_client):
     assert auth_client.get("/api/auth/session").status_code == 200
+
+
 def test_logout(auth_client):
     response = auth_client.post("/api/auth/logout")
     assert response.status_code == 200
     assert "signed out" in response.json()["status"]
+
+
 def test_chat_requires_auth(client):
     assert client.post("/api/chat", json={"messages": [{"role": "user", "content": "hello"}]}).status_code == 401
+
+
 def test_chat_stream(auth_client):
-    with patch("backend.main.chat.stream_sse") as mock_stream:
+    with patch("backend.services.chat.stream_sse") as mock_stream:
         mock_stream.return_value = iter(["data: hello\n\n"])
         response = auth_client.post("/api/chat", json={"messages": [{"role": "user", "content": "hello"}]})
         assert response.status_code == 200
         assert "hello" in response.text
+
+
 def test_tts(auth_client):
-    with patch("backend.main._speech_client") as mock_speech:
+    with patch("backend.api.v1.chat._speech_client") as mock_speech:
         mock_instance = MagicMock()
         mock_instance.synthesize.return_value = b"audio"
         mock_instance.mime = "audio/wav"
@@ -93,17 +115,25 @@ def test_tts(auth_client):
         response = auth_client.post("/api/tts", json={"text": "hello"})
         assert response.status_code == 200
         assert response.content == b"audio"
+
+
 def test_tts_error(auth_client):
-    with patch("backend.main._speech_client") as mock_speech:
+    with patch("backend.api.v1.chat._speech_client") as mock_speech:
         mock_speech.return_value.synthesize.side_effect = Exception("error")
         assert auth_client.post("/api/tts", json={"text": "hello"}).status_code == 503
+
+
 def test_extract_entries():
     assert _extract_entries("```json\n{\"entries\": [{\"a\": 1}]}\n```") == [{"a": 1}]
     assert _extract_entries("```json\n{invalid}\n```") == []
     assert _extract_entries("no json") == []
     assert _extract_entries("```json\n{\"other\": 1}\n```") == []
+
+
 def test_submit_timecard_no_entries(auth_client):
     assert auth_client.post("/api/otl/timecard", json={}).status_code == 400
+
+
 def test_submit_timecard(auth_client, mock_otl_client, mock_fusion_catalogue):
     mock_fusion_catalogue.alist_assignments_for_worker.return_value = [{
         "workOrder": "WO1",
@@ -111,35 +141,54 @@ def test_submit_timecard(auth_client, mock_otl_client, mock_fusion_catalogue):
             "projectId": 1,
             "projectNo": "P1",
             "projectName": "Proj 1",
-            "tasks": [{"taskId": 10, "taskDetails": "Task 1"}]
-        }]
+            "tasks": [{"taskId": 10, "taskDetails": "Task 1"}],
+        }],
     }]
     mock_otl_client.acreate_many.return_value = [{"ok": True}, {"ok": False}]
-    response = auth_client.post("/api/otl/timecard", json={
-        "entries": [
-            {"projectNo": "P1", "taskDetails": "Task 1", "hours": 4},
-            {"projectName": "Proj 1", "taskDetails": "Task 1", "hours": 2}
-        ]
-    })
+    response = auth_client.post(
+        "/api/otl/timecard",
+        json={
+            "entries": [
+                {"projectNo": "P1", "taskDetails": "Task 1", "hours": 4},
+                {"projectName": "Proj 1", "taskDetails": "Task 1", "hours": 2},
+            ]
+        },
+    )
     assert response.status_code == 200
     assert response.json()["submitted"] == 2
     assert response.json()["succeeded"] == 1
+
+
 def test_submit_timecard_unknown_project(auth_client, mock_fusion_catalogue):
     mock_fusion_catalogue.alist_assignments_for_worker.return_value = []
-    response = auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]})
+    response = auth_client.post(
+        "/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]}
+    )
     assert response.status_code == 400
     assert "not in your assigned projects" in response.text
+
+
 def test_options_hint():
     assert _options_hint([]) == "You have no project assignments."
+
+
 def test_options_hint_with_projects():
-    assert _options_hint([{
-        "workOrder": "WO1",
-        "projects": [{"projectNo": "P1", "projectName": "Proj 1"}]
-    }]) == "Assigned projects: P1 (Proj 1, WO WO1)."
+    assert (
+        _options_hint([{"workOrder": "WO1", "projects": [{"projectNo": "P1", "projectName": "Proj 1"}]}])
+        == "Assigned projects: P1 (Proj 1, WO WO1)."
+    )
+
+
 def test_submit_timecard_not_strict(auth_client, mock_otl_client):
-    with patch("backend.main._strict_assignment", return_value=False):
+    with patch("backend.api.v1.timecards._strict_assignment", return_value=False):
         mock_otl_client.acreate_many.return_value = [{"ok": True}]
-        assert auth_client.post("/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]}).status_code == 200
+        assert (
+            auth_client.post(
+                "/api/otl/timecard", json={"entries": [{"projectNo": "P99", "hours": 4, "taskDetails": "Task 1"}]}
+            ).status_code
+            == 200
+        )
+
 def test_list_timecards(auth_client, mock_otl_client, mock_fusion_catalogue):
     mock_otl_client.alist_timecard_entries.return_value = {
         "items": [{
