@@ -26,7 +26,7 @@ fi
 # 3. Run Linters
 echo "-> Running Python Linter (Ruff)..."
 cd ..
-uv run ruff check backend
+uv run ruff check .
 if [ $? -ne 0 ]; then
   echo "❌ Error: Ruff linting failed."
   exit 1
