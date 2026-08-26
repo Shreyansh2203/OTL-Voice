@@ -240,18 +240,20 @@ if _DIST is not None:
     if _assets.is_dir():
         app.mount("/assets", StaticFiles(directory=_assets), name="assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def serve_spa(full_path: str) -> Response:
-        if _DIST is None:
-            raise HTTPException(status_code=404, detail="Not found")
-        if full_path == "api" or full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="Not found")
-        candidate = (_DIST / full_path).resolve()
-        if full_path and (_DIST == candidate or _DIST in candidate.parents) and candidate.is_file():
-            revalidate = candidate.name in ("sw.js", "manifest.webmanifest")
-            headers = {"Cache-Control": "no-cache"} if revalidate else None
-            return FileResponse(candidate, headers=headers)
-        return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_spa(full_path: str) -> Response:
+    if _DIST is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = (_DIST / full_path).resolve()
+    if full_path and (_DIST == candidate or _DIST in candidate.parents) and candidate.is_file():
+        revalidate = candidate.name in ("sw.js", "manifest.webmanifest")
+        headers = {"Cache-Control": "no-cache"} if revalidate else None
+        return FileResponse(candidate, headers=headers)
+    return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})
+
 
 
 __all__ = [

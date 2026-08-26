@@ -222,13 +222,22 @@ async def test_refresh_catalogue(auth_client, mock_fusion_catalogue):
 def test_catalogue_status(auth_client, mock_fusion_catalogue):
     mock_fusion_catalogue.status.return_value = {"isLoaded": True, "isLoading": False, "totalProjects": 0, "totalPersonsIndexed": 0, "refreshIntervalSeconds": 21600}
     assert auth_client.get("/api/admin/catalogue-status").status_code == 200
-def test_serve_spa(client):
-    with patch("backend.main._DIST", new=None):
+def test_serve_spa(client, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html><body>Test SPA</body></html>", encoding="utf-8")
+    (dist / "sw.js").write_text("// service worker", encoding="utf-8")
+
+    with patch("backend.main._DIST", new=dist):
+        assert client.get("/index.html").status_code == 200
+        assert client.get("/sw.js").status_code == 200
+        assert client.get("/").status_code == 200
         assert client.get("/api/not-found").status_code == 404
-    assert client.get("/index.html").status_code == 200
-    assert client.get("/sw.js").status_code == 200
-    assert client.get("/").status_code == 200
-    assert client.get("/api/not-found").status_code == 404
+
+    with patch("backend.main._DIST", new=None):
+        assert client.get("/").status_code == 404
+        assert client.get("/api/not-found").status_code == 404
+
 def test_stt_stream_origin_validation_allowed():
     with patch("backend.main.auth.resolve", return_value=type("ctx", (), {"employee_id": "123", "username": "test", "full_name": "Test User"})()),         patch("backend.main.ws_tracker.acquire", return_value=True),         patch("backend.main.ws_tracker.release"),         patch("backend.main._cors_origins", return_value=["http://localhost:5173", "http://localhost:4173"]),         patch("backend.services.oci_speech.STTClient"):
         from fastapi.testclient import TestClient
