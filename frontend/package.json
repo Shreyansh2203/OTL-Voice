@@ -14,7 +14,8 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "prepare": "node -e \"try { require('child_process').execSync('git config core.hooksPath .husky', {stdio: 'ignore', cwd: '..'}) } catch (e) {}\""
+    "prepare": "node -e \"if (!process.env.CI) { try { require('child_process').execSync('git config core.hooksPath .husky', {stdio: 'ignore', cwd: '..'}) } catch (e) {} }\""
+
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.2",
