@@ -73,7 +73,7 @@ def test_speech_client_properties(mock_client, mock_build, mock_env, monkeypatch
     mock_build.return_value = {}
     monkeypatch.setenv("TTS_OUTPUT_FORMAT", "MP3")
     client = SpeechClient()
-    assert client.mime == "audio/mp3"
+    assert client.mime == "audio/mpeg"
     monkeypatch.setenv("TTS_OUTPUT_FORMAT", "OGG")
     client = SpeechClient()
     assert client.mime == "audio/ogg"
@@ -82,7 +82,7 @@ def test_speech_client_properties(mock_client, mock_build, mock_env, monkeypatch
     assert client.mime == "audio/wav"
     monkeypatch.setenv("TTS_OUTPUT_FORMAT", "UNKNOWN")
     client = SpeechClient()
-    assert client.mime == "audio/mp3"
+    assert client.mime == "audio/mpeg"
     client.voice_id = "Brian"
     client.model_name = "TTS_2_NATURAL"
     client.language_code = "en-US"

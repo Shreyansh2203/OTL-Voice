@@ -85,7 +85,11 @@ export async function refreshSession(): Promise<void> {
   if (!res.ok) throw await parseError(res);
 }
 export async function logout(): Promise<void> {
-  await fetch(`${API}/auth/logout`, jsonInit("POST"));
+  try {
+    await fetch(`${API}/auth/logout`, jsonInit("POST"));
+  } catch {
+    // Silently ignore network/CSRF errors on sign out so UI session teardown proceeds
+  }
 }
 export async function chatStream(
   messages: ChatMessage[],

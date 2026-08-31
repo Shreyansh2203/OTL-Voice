@@ -65,21 +65,31 @@ class RateLimiter:
             except Exception:
                 pass
         async with self._local_lock:
-            self._local_requests[key] = [
+            active_timestamps = [
                 t for t in self._local_requests[key] if now - t < self.window_seconds
             ]
             if len(self._local_requests) > self._max_local_keys:
-                sorted_keys = sorted(
-                    self._local_requests.items(),
-                    key=lambda kv: kv[1][0] if kv[1] else now,
-                )
-                for k, _ in sorted_keys[
-                    : len(self._local_requests) - self._max_local_keys
-                ]:
+                expired_keys = [
+                    k
+                    for k, ts in self._local_requests.items()
+                    if not ts or now - ts[-1] >= self.window_seconds
+                ]
+                for k in expired_keys:
                     del self._local_requests[k]
-            if len(self._local_requests[key]) >= self.max_requests:
+                if len(self._local_requests) > self._max_local_keys:
+                    sorted_keys = sorted(
+                        self._local_requests.items(),
+                        key=lambda kv: kv[1][0] if kv[1] else now,
+                    )
+                    for k, _ in sorted_keys[
+                        : len(self._local_requests) - self._max_local_keys
+                    ]:
+                        del self._local_requests[k]
+            if len(active_timestamps) >= self.max_requests:
+                self._local_requests[key] = active_timestamps
                 return False
-            self._local_requests[key].append(now)
+            active_timestamps.append(now)
+            self._local_requests[key] = active_timestamps
             return True
 
     async def close(self) -> None:

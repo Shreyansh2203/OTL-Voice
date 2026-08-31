@@ -104,7 +104,11 @@ class GeminiLiveSession:
                 "GEMINI_API_KEY or GOOGLE_API_KEY is not configured for Gemini Live session."
             )
         url = f"{GEMINI_LIVE_WS_URL}?key={self.api_key}"
-        self.ws = await websockets.connect(url, ping_interval=20, ping_timeout=20)
+        ping_interval = int(os.getenv("GEMINI_LIVE_PING_INTERVAL", "30"))
+        ping_timeout = int(os.getenv("GEMINI_LIVE_PING_TIMEOUT", "10"))
+        self.ws = await websockets.connect(
+            url, ping_interval=ping_interval, ping_timeout=ping_timeout
+        )
 
         # Send initial Setup message
         setup_payload = {

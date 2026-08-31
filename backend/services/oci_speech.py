@@ -81,10 +81,10 @@ class SpeechClient:
     @property
     def mime(self) -> str:
         return {
-            "MP3": "audio/mp3",
+            "MP3": "audio/mpeg",
             "OGG": "audio/ogg",
             "PCM": "audio/wav",
-        }.get(self.output_format, "audio/mp3")
+        }.get(self.output_format, "audio/mpeg")
 
     @property
     def signature(self) -> str:

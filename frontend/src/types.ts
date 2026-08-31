@@ -50,7 +50,7 @@ export interface TimecardEntry {
 export interface SubmitResultRow {
   index: number;
   ok: boolean;
-  id?: number;
+  id?: string | number;
   recordNumber?: string;
   recordName?: string;
   status?: number;

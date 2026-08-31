@@ -14,6 +14,23 @@ class PCMRecorderProcessor extends AudioWorkletProcessor {
     this.noiseThreshold = 0.005;
     this.hangoverFrames = 0;
     this.maxHangover = Math.ceil(0.3 * (this.inputSampleRate / 128)); // 300ms hangover
+
+    this.port.onmessage = (event) => {
+      if (event.data?.type === "flush" && this.buffer.length > 0) {
+        const out = new Int16Array(this.buffer);
+        this.port.postMessage(
+          {
+            type: "audio",
+            buffer: out.buffer,
+            rms: 0,
+            zcr: 0,
+            isVoiceActive: false,
+          },
+          [out.buffer]
+        );
+        this.buffer = [];
+      }
+    };
   }
 
   process(inputs) {
