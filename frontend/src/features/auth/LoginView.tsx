@@ -1,13 +1,12 @@
-import { FormEvent, useState } from "react";
-import * as api from "../../api/client";
-import type { Identity } from "../../types";
+import { FormEvent, useState } from 'react';
+import * as api from '../../api/client';
+import type { Identity } from '../../types';
 export default function LoginView({
   onLogin,
 }: {
   onLogin: (identity: Identity) => void;
 }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -15,9 +14,9 @@ export default function LoginView({
     setError(null);
     setBusy(true);
     try {
-      onLogin(await api.login(username.trim(), password.trim()));
+      onLogin(await api.login(username.trim(), ''));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
     } finally {
       setBusy(false);
     }
@@ -44,19 +43,13 @@ export default function LoginView({
             autoFocus
           />
         </label>
-        <label>
-          <span>Password</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-          />
-        </label>
-        {error && <div className="error" role="alert">{error}</div>}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
         <button className="primary" type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="muted small">
           Your Person Number is checked securely against Oracle Fusion Cloud.
@@ -65,4 +58,4 @@ export default function LoginView({
       </form>
     </div>
   );
-}
+}

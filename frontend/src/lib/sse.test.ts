@@ -3,11 +3,13 @@ import { readSse } from './sse';
 describe('readSse', () => {
   it('throws error if response body is null', async () => {
     const mockResponse = { body: null } as unknown as Response;
-    await expect(readSse(mockResponse, vi.fn())).rejects.toThrow('No response body to stream.');
+    await expect(readSse(mockResponse, vi.fn())).rejects.toThrow(
+      'No response body to stream.'
+    );
   });
   it('reads frames and parses JSON', async () => {
     const encoder = new TextEncoder();
-    const data = "data: {\"delta\": \"hello\"}\n\n";
+    const data = 'data: {"delta": "hello"}\n\n';
     let chunkSent = false;
     const mockReader = {
       read: vi.fn().mockImplementation(() => {
@@ -22,7 +24,7 @@ describe('readSse', () => {
     const mockResponse = {
       body: {
         getReader: () => mockReader,
-      }
+      },
     } as unknown as Response;
     const onEvent = vi.fn();
     await readSse(mockResponse, onEvent);
@@ -31,8 +33,8 @@ describe('readSse', () => {
   });
   it('ignores malformed frames and respects abort signal', async () => {
     const encoder = new TextEncoder();
-    const data1 = "data: {bad json\n\n";
-    const data2 = "data: {\"done\": true}\n\n";
+    const data1 = 'data: {bad json\n\n';
+    const data2 = 'data: {"done": true}\n\n';
     let count = 0;
     const mockReader = {
       read: vi.fn().mockImplementation(() => {
@@ -51,7 +53,7 @@ describe('readSse', () => {
     const mockResponse = {
       body: {
         getReader: () => mockReader,
-      }
+      },
     } as unknown as Response;
     const onEvent = vi.fn();
     const abortController = new AbortController();
@@ -60,8 +62,11 @@ describe('readSse', () => {
     expect(onEvent).toHaveBeenCalledWith({ done: true });
     count = 0;
     mockReader.read.mockImplementation(() => {
-      abortController.abort(); 
-      return Promise.resolve({ done: false, value: encoder.encode("data: {}\n\n") });
+      abortController.abort();
+      return Promise.resolve({
+        done: false,
+        value: encoder.encode('data: {}\n\n'),
+      });
     });
     const onEvent2 = vi.fn();
     abortController.abort();
@@ -71,12 +76,18 @@ describe('readSse', () => {
   it('ignores lines that do not start with data or have empty payload', async () => {
     const encoder = new TextEncoder();
     const mockReader = {
-      read: vi.fn()
-        .mockResolvedValueOnce({ done: false, value: encoder.encode("event: something\ndata: \n\n") })
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: encoder.encode('event: something\ndata: \n\n'),
+        })
         .mockResolvedValueOnce({ done: true, value: undefined }),
       releaseLock: vi.fn(),
     };
-    const mockResponse = { body: { getReader: () => mockReader } } as unknown as Response;
+    const mockResponse = {
+      body: { getReader: () => mockReader },
+    } as unknown as Response;
     const onEvent = vi.fn();
     await readSse(mockResponse, onEvent);
     expect(onEvent).not.toHaveBeenCalled();

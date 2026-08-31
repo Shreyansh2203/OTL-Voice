@@ -1,20 +1,19 @@
-import ReactMarkdown from "react-markdown";
-import { ThinkingState, ToolChip } from "../../components/ui";
-import { stripEntriesBlock } from "../../lib/entries";
-import type { ChatMessage } from "../../types";
+import ReactMarkdown from 'react-markdown';
+import { ThinkingState, ToolChip } from '../../components/ui';
+import { stripEntriesBlock } from '../../lib/entries';
+import type { ChatMessage } from '../../types';
 
-export default function MessageBubble({
-  message,
-}: {
-  message: ChatMessage;
-}) {
-  const isUser = message.role === "user";
+export default function MessageBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === 'user';
   let text = isUser ? message.content : stripEntriesBlock(message.content);
-if (!isUser) {
-    text = text.replace(/<\/?(break|emphasis|prosody|speak|say-as|phoneme|sub)[^>]*>/gi, "");
-}
+  if (!isUser) {
+    text = text.replace(
+      /<\/?(break|emphasis|prosody|speak|say-as|phoneme|sub)[^>]*>/gi,
+      ''
+    );
+  }
   return (
-    <div className={`bubble-row ${isUser ? "user" : "assistant"}`}>
+    <div className={`bubble-row ${isUser ? 'user' : 'assistant'}`}>
       <div className="bubble-wrapper">
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="tool-chips-container">
@@ -29,7 +28,7 @@ if (!isUser) {
             {isUser ? (
               <p>{message.content}</p>
             ) : (
-              <div className={`md ${message.streaming ? "streaming" : ""}`}>
+              <div className={`md ${message.streaming ? 'streaming' : ''}`}>
                 <ReactMarkdown
                   components={{
                     a: ({ ...props }) => (
@@ -37,7 +36,7 @@ if (!isUser) {
                     ),
                   }}
                 >
-                  {text || (message.streaming ? "…" : "")}
+                  {text || (message.streaming ? '…' : '')}
                 </ReactMarkdown>
                 {message.streaming && <span className="caret" aria-hidden />}
               </div>
@@ -47,4 +46,4 @@ if (!isUser) {
       </div>
     </div>
   );
-}
+}

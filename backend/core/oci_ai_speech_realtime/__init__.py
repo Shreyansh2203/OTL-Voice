@@ -1,4 +1,3 @@
-
 from .ai_service_speech_realtime_client import (
     RealtimeSpeechClient,
     RealtimeSpeechClientListener,

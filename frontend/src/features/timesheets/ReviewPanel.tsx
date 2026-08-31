@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import * as api from "../../api/client";
-import type { SubmitResponse, TimecardEntry } from "../../types";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import * as api from '../../api/client';
+import type { SubmitResponse, TimecardEntry } from '../../types';
 export interface ReviewPanelProps {
   entries: TimecardEntry[];
   onSessionExpired: () => void;
@@ -15,7 +15,10 @@ export default function ReviewPanel({
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const totalHours = entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+  const totalHours = entries.reduce(
+    (sum, e) => sum + (Number(e.hours) || 0),
+    0
+  );
   const submit = useCallback(async () => {
     setCountdown(null);
     setBusy(true);
@@ -27,7 +30,7 @@ export default function ReviewPanel({
         onSessionExpired();
         return;
       }
-      setError(err instanceof Error ? err.message : "Submission failed.");
+      setError(err instanceof Error ? err.message : 'Submission failed.');
     } finally {
       setBusy(false);
     }
@@ -69,12 +72,18 @@ export default function ReviewPanel({
           {!result ? (
             <span className="approval-badge">Action Required</span>
           ) : (
-            <span className="approval-badge" style={{ background: 'var(--accent-color)' }}>Completed</span>
+            <span
+              className="approval-badge"
+              style={{ background: 'var(--accent-color)' }}
+            >
+              Completed
+            </span>
           )}
-          <h3>{!result ? "Approve Timesheet" : "Timesheet Submitted"}</h3>
+          <h3>{!result ? 'Approve Timesheet' : 'Timesheet Submitted'}</h3>
         </div>
         <span className="approval-meta">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"} &bull; {totalHours}h total
+          {entries.length} {entries.length === 1 ? 'entry' : 'entries'} &bull;{' '}
+          {totalHours}h total
         </span>
       </div>
       <div className="table-wrap">
@@ -90,32 +99,48 @@ export default function ReviewPanel({
           </thead>
           <tbody>
             {entries.map((e, i) => (
-              <tr key={e.projectNo ? `${e.projectNo}-${e.taskDetails}-${e.hours}-${i}` : `entry-${i}`}>
+              <tr
+                key={
+                  e.projectNo
+                    ? `${e.projectNo}-${e.taskDetails}-${e.hours}-${i}`
+                    : `entry-${i}`
+                }
+              >
                 <td>
-                  {e.employeeName || "—"}
-                  <span className="muted small"> #{e.employeeNumber || "—"}</span>
+                  {e.employeeName || '—'}
+                  <span className="muted small">
+                    {' '}
+                    #{e.employeeNumber || '—'}
+                  </span>
                 </td>
                 <td>
-                  {e.projectName || "—"}
+                  {e.projectName || '—'}
                   {e.projectNo != null && (
                     <span className="muted small"> ({e.projectNo})</span>
                   )}
                 </td>
-                <td>{e.workOrder || "—"}</td>
-                <td>{e.taskDetails || "—"}</td>
-                <td className="num">{e.hours ?? "—"}</td>
+                <td>{e.workOrder || '—'}</td>
+                <td>{e.taskDetails || '—'}</td>
+                <td className="num">{e.hours ?? '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {error && <div className="error" role="alert">{error}</div>}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
       {result ? (
         <>
-          <div className={`result ${result.failed ? "warn" : "ok"}`} aria-live="polite">
+          <div
+            className={`result ${result.failed ? 'warn' : 'ok'}`}
+            aria-live="polite"
+          >
             <strong>
               {result.succeeded}/{result.submitted} submitted to OTL
-              {result.failed ? ` · ${result.failed} failed` : ""}.
+              {result.failed ? ` · ${result.failed} failed` : ''}.
             </strong>
           </div>
           <div className="table-wrap">
@@ -133,21 +158,30 @@ export default function ReviewPanel({
                 {result.results.map((r) => {
                   const entry = entries[r.index];
                   return (
-                    <tr key={`${r.index}-${entry?.projectNo}-${entry?.taskDetails}`}>
+                    <tr
+                      key={`${r.index}-${entry?.projectNo}-${entry?.taskDetails}`}
+                    >
                       <td className="muted">{r.index + 1}</td>
                       <td>
-                        {entry?.projectName || "—"}
+                        {entry?.projectName || '—'}
                         {entry?.projectNo != null && (
-                          <span className="muted small"> ({entry.projectNo})</span>
+                          <span className="muted small">
+                            {' '}
+                            ({entry.projectNo})
+                          </span>
                         )}
                       </td>
-                      <td>{entry?.taskDetails || "—"}</td>
-                      <td className="num">{entry?.hours ?? "—"}</td>
+                      <td>{entry?.taskDetails || '—'}</td>
+                      <td className="num">{entry?.hours ?? '—'}</td>
                       <td>
                         {r.ok ? (
-                          <span className="status-ok">✓ {r.recordNumber || "Created"}</span>
+                          <span className="status-ok">
+                            ✓ {r.recordNumber || 'Created'}
+                          </span>
                         ) : (
-                          <span className="status-fail">✗ {r.error || "Failed"}</span>
+                          <span className="status-fail">
+                            ✗ {r.error || 'Failed'}
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -158,21 +192,26 @@ export default function ReviewPanel({
           </div>
         </>
       ) : (
-        <div className="approval-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div
+          className="approval-actions"
+          style={{ display: 'flex', gap: '10px', alignItems: 'center' }}
+        >
           {countdown !== null ? (
             <>
-              <span className="muted small">Auto-submitting in {countdown}s...</span>
+              <span className="muted small">
+                Auto-submitting in {countdown}s...
+              </span>
               <button className="ghost" onClick={() => setCountdown(null)}>
                 Cancel Auto-Submit
               </button>
             </>
           ) : (
             <button className="btn-approve" onClick={submit} disabled={busy}>
-              {busy ? "Approving…" : `Approve & Submit`}
+              {busy ? 'Approving…' : `Approve & Submit`}
             </button>
           )}
         </div>
       )}
     </div>
   );
-}
+}

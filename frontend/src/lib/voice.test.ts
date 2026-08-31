@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useSpeechInput, useAudioPlayer } from "./voice";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useSpeechInput, useAudioPlayer } from './voice';
 
-describe("useSpeechInput with Web Speech API", () => {
+describe('useSpeechInput with Web Speech API', () => {
   let mockRecognitionInstance: any;
 
   beforeEach(() => {
     class MockSpeechRecognition {
       continuous = false;
       interimResults = false;
-      lang = "";
+      lang = '';
       maxAlternatives = 1;
       start = vi.fn();
       stop = vi.fn();
@@ -35,13 +35,13 @@ describe("useSpeechInput with Web Speech API", () => {
     delete (window as any).webkitSpeechRecognition;
   });
 
-  it("detects browser support correctly", () => {
+  it('detects browser support correctly', () => {
     const { result } = renderHook(() => useSpeechInput());
     expect(result.current.supported).toBe(true);
     expect(result.current.listening).toBe(false);
   });
 
-  it("starts speech recognition and triggers callbacks on results", async () => {
+  it('starts speech recognition and triggers callbacks on results', async () => {
     const { result } = renderHook(() => useSpeechInput());
 
     const onFinal = vi.fn();
@@ -67,14 +67,14 @@ describe("useSpeechInput with Web Speech API", () => {
         resultIndex: 0,
         results: [
           {
-            0: { transcript: "I worked 4 hours" },
+            0: { transcript: 'I worked 4 hours' },
             isFinal: false,
             length: 1,
           },
         ],
       });
     });
-    expect(onInterim).toHaveBeenCalledWith("I worked 4 hours");
+    expect(onInterim).toHaveBeenCalledWith('I worked 4 hours');
     expect(onFinal).not.toHaveBeenCalled();
 
     // Trigger final speech result
@@ -83,17 +83,17 @@ describe("useSpeechInput with Web Speech API", () => {
         resultIndex: 0,
         results: [
           {
-            0: { transcript: "I worked 4 hours on Alpha" },
+            0: { transcript: 'I worked 4 hours on Alpha' },
             isFinal: true,
             length: 1,
           },
         ],
       });
     });
-    expect(onFinal).toHaveBeenCalledWith("I worked 4 hours on Alpha");
+    expect(onFinal).toHaveBeenCalledWith('I worked 4 hours on Alpha');
   });
 
-  it("stops speech recognition cleanly", async () => {
+  it('stops speech recognition cleanly', async () => {
     const { result } = renderHook(() => useSpeechInput());
 
     await act(async () => {
@@ -109,7 +109,7 @@ describe("useSpeechInput with Web Speech API", () => {
     expect(result.current.listening).toBe(false);
   });
 
-  it("aborts when cancelled", async () => {
+  it('aborts when cancelled', async () => {
     const { result } = renderHook(() => useSpeechInput());
 
     await act(async () => {
@@ -124,7 +124,7 @@ describe("useSpeechInput with Web Speech API", () => {
     expect(result.current.listening).toBe(false);
   });
 
-  it("handles permission denied errors", async () => {
+  it('handles permission denied errors', async () => {
     const { result } = renderHook(() => useSpeechInput());
 
     await act(async () => {
@@ -132,20 +132,20 @@ describe("useSpeechInput with Web Speech API", () => {
     });
 
     act(() => {
-      mockRecognitionInstance.onerror({ error: "not-allowed" });
+      mockRecognitionInstance.onerror({ error: 'not-allowed' });
     });
 
     expect(result.current.listening).toBe(false);
-    expect(result.current.errorMsg).toContain("Microphone access blocked");
+    expect(result.current.errorMsg).toContain('Microphone access blocked');
   });
 });
 
-describe("useAudioPlayer", () => {
+describe('useAudioPlayer', () => {
   let originalAudio: typeof Audio;
 
   beforeEach(() => {
     originalAudio = window.Audio;
-    window.URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    window.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
     window.URL.revokeObjectURL = vi.fn();
   });
 
@@ -153,7 +153,7 @@ describe("useAudioPlayer", () => {
     window.Audio = originalAudio;
   });
 
-  it("initializes in not playing state", () => {
+  it('initializes in not playing state', () => {
     const { result } = renderHook(() => useAudioPlayer());
     expect(result.current.playing).toBe(false);
   });

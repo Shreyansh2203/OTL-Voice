@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -11,29 +10,44 @@ from typing import Any
 import httpx
 
 _STR_MAX = 80
+
+
 def base_url() -> str:
     url = os.getenv("OTL_BASE_URL")
     if not url:
-        raise ValueError("OTL_BASE_URL environment variable is not set. Please configure it in .env")
+        raise ValueError(
+            "OTL_BASE_URL environment variable is not set. Please configure it in .env"
+        )
     return url.rstrip("/")
+
+
 def _timeout() -> httpx.Timeout:
     secs = float(os.getenv("OTL_TIMEOUT_SECONDS", "30"))
     return httpx.Timeout(secs, connect=10.0)
+
+
 @dataclass(frozen=True)
 class OtlCredential:
     username: str
     password: str
+
     @property
     def auth(self) -> tuple[str, str]:
         return (self.username, self.password)
+
+
 class OtlError(Exception):
     def __init__(self, status_code: int, message: str, detail: Any = None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.message = message
         self.detail = detail
+
+
 class OtlConfigError(RuntimeError):
     pass
+
+
 def service_credential() -> OtlCredential:
     username = os.getenv("OTL_SERVICE_USERNAME", "").strip()
     password = os.getenv("OTL_SERVICE_PASSWORD", "")
@@ -43,12 +57,16 @@ def service_credential() -> OtlCredential:
             "OTL_SERVICE_PASSWORD in the environment."
         )
     return OtlCredential(username=username, password=password)
+
+
 def _client(cred: OtlCredential) -> httpx.Client:
     return httpx.Client(
         auth=cred.auth,
         timeout=_timeout(),
         headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
     )
+
+
 def _extract_error(resp: httpx.Response) -> str:
     try:
         data = resp.json()
@@ -60,14 +78,20 @@ def _extract_error(resp: httpx.Response) -> str:
         pass
     text = (resp.text or "").strip()
     return text or f"OTL request failed with HTTP {resp.status_code}"
+
+
 def _raise_for_status(resp: httpx.Response) -> None:
     if resp.status_code >= 400:
         raise OtlError(resp.status_code, _extract_error(resp), detail=_safe_body(resp))
+
+
 def _safe_body(resp: httpx.Response) -> Any:
     try:
         return resp.json()
     except Exception:
         return (resp.text or "")[:10000]
+
+
 def _coerce_number(value: Any) -> float | int | None:
     if value is None or value == "":
         return None
@@ -75,10 +99,14 @@ def _coerce_number(value: Any) -> float | int | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
 def _clip(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)[:_STR_MAX]
+
+
 def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     emp_num = entry.get("employeeNumber")
     if not emp_num:
@@ -86,7 +114,9 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     emp_num = str(emp_num).strip()
     hours = _coerce_number(entry.get("hours")) or 0  # default to 0 if None/empty
     if hours <= 0:
-        raise OtlError(400, f"Timecard entry hours must be greater than zero, got {hours}.")
+        raise OtlError(
+            400, f"Timecard entry hours must be greater than zero, got {hours}."
+        )
     now = datetime.now(UTC)
     start_time_str = entry.get("startTime")
     stop_time_str = entry.get("stopTime")
@@ -107,13 +137,17 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
         else:
             start_dt = base_dt.replace(hour=default_start_hour, minute=0)
     except Exception:
-        raise OtlError(400, f"Invalid startTime format '{start_time_str}'. Expected HH:MM.")
+        raise OtlError(
+            400, f"Invalid startTime format '{start_time_str}'. Expected HH:MM."
+        )
     if stop_time_str:
         try:
             h2, m2 = map(int, stop_time_str.split(":"))
             stop_dt = base_dt.replace(hour=h2, minute=m2)
         except Exception:
-            raise OtlError(400, f"Invalid stopTime format '{stop_time_str}'. Expected HH:MM.")
+            raise OtlError(
+                400, f"Invalid stopTime format '{stop_time_str}'. Expected HH:MM."
+            )
     else:
         stop_dt = start_dt + timedelta(hours=hours)
 
@@ -125,7 +159,9 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     project_name = entry.get("projectName")
     if project_name:
         project_no = entry.get("projectNo")
-        parts.append(f"Project: {project_name}" + (f" ({project_no})" if project_no else ""))
+        parts.append(
+            f"Project: {project_name}" + (f" ({project_no})" if project_no else "")
+        )
     task_details = entry.get("taskDetails")
     if task_details:
         parts.append(f"Task: {task_details}")
@@ -153,35 +189,47 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
                 comment_str = rest[:allowed_len] + " | " + total_hours_part
             else:
                 comment_str = total_hours_part[:_STR_MAX]
-        attrs.append({
-            "attributeName": "Comment",
-            "attributeValue": comment_str,
-        })
+        attrs.append(
+            {
+                "attributeName": "Comment",
+                "attributeValue": comment_str,
+            }
+        )
     payroll_time_type = entry.get("payrollTimeType")
     if payroll_time_type:
-        attrs.append({
-            "attributeName": "PayrollTimeType",
-            "attributeValue": str(payroll_time_type),
-        })
+        attrs.append(
+            {
+                "attributeName": "PayrollTimeType",
+                "attributeValue": str(payroll_time_type),
+            }
+        )
     project_id = entry.get("projectId")
     if project_id:
-        attrs.append({
-            "attributeName": "PJC_PROJECT_ID",
-            "attributeValue": str(project_id),
-        })
+        attrs.append(
+            {
+                "attributeName": "PJC_PROJECT_ID",
+                "attributeValue": str(project_id),
+            }
+        )
     task_id = entry.get("taskId")
     if task_id:
-        attrs.append({
-            "attributeName": "PJC_TASK_ID",
-            "attributeValue": str(task_id),
-        })
-    default_expenditure_type = os.getenv("DEFAULT_EXPENDITURE_TYPE", "Professional Services")
+        attrs.append(
+            {
+                "attributeName": "PJC_TASK_ID",
+                "attributeValue": str(task_id),
+            }
+        )
+    default_expenditure_type = os.getenv(
+        "DEFAULT_EXPENDITURE_TYPE", "Professional Services"
+    )
     expenditure_type = entry.get("expenditureType", default_expenditure_type)
     if project_id and expenditure_type:
-        attrs.append({
-            "attributeName": "PJC_EXPENDITURE_TYPE_NAME",
-            "attributeValue": expenditure_type,
-        })
+        attrs.append(
+            {
+                "attributeName": "PJC_EXPENDITURE_TYPE_NAME",
+                "attributeValue": expenditure_type,
+            }
+        )
     if attrs:
         event["timeRecordEventAttribute"] = attrs
     return {
@@ -189,10 +237,14 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
         "processMode": "TIME_ENTER",
         "timeRecordEvent": [event],
     }
+
+
 def _default_record_name(entry: dict[str, Any]) -> str:
     emp = str(entry.get("employeeNumber") or "EMP").strip()
     wo = str(entry.get("workOrder") or "WO").strip()
     return f"{emp}-{wo}-{int(time.time() * 1000) % 1_000_000}"
+
+
 def validate(cred: OtlCredential) -> dict[str, Any]:
     with _client(cred) as client:
         resp = client.get(base_url(), params={"limit": 1})
@@ -204,8 +256,12 @@ def validate(cred: OtlCredential) -> dict[str, Any]:
         )
     _raise_for_status(resp)
     return {"ok": True, "username": cred.username}
+
+
 def escape_q_literal(value: str) -> str:
     return str(value).replace("'", "''")
+
+
 def list_timecard_entries(
     cred: OtlCredential,
     limit: int = 25,
@@ -227,11 +283,15 @@ def list_timecard_entries(
         resp = client.get(url, params=params)
     _raise_for_status(resp)
     return resp.json()
+
+
 def hcm_base_url() -> str:
     url = base_url()
     if "/timeRecordEventRequests" in url:
         return url.replace("/timeRecordEventRequests", "")
     return url
+
+
 def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
     with _client(cred) as client:
         resp = client.get(
@@ -239,8 +299,8 @@ def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None
             params={
                 "q": f"PersonNumber='{escape_q_literal(person_number)}'",
                 "expand": "names",
-                "limit": 1
-            }
+                "limit": 1,
+            },
         )
     _raise_for_status(resp)
     data = resp.json()
@@ -258,19 +318,28 @@ def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None
         "personId": worker.get("PersonId"),
         "personNumber": worker.get("PersonNumber"),
         "fullName": full_name,
-        "isActive": worker.get("ActiveFlag", True)  # Documented: actual status might require expanding workRelationships
+        "isActive": worker.get(
+            "ActiveFlag", True
+        ),  # Documented: actual status might require expanding workRelationships
     }
-def list_worker_assignments(cred: OtlCredential, person_number: str, full_name: str = "") -> list[dict[str, Any]]:
+
+
+def list_worker_assignments(
+    cred: OtlCredential, person_number: str, full_name: str = ""
+) -> list[dict[str, Any]]:
     from . import fusion_catalogue
+
     return fusion_catalogue.list_assignments_for_worker(person_number, full_name)
+
+
 def get_timecard_entry(cred: OtlCredential, record_id: Any) -> dict[str, Any]:
     with _client(cred) as client:
         resp = client.get(f"{base_url()}/{record_id}")
     _raise_for_status(resp)
     return resp.json()
-def create_timecard_entry(
-    cred: OtlCredential, entry: dict[str, Any]
-) -> dict[str, Any]:
+
+
+def create_timecard_entry(cred: OtlCredential, entry: dict[str, Any]) -> dict[str, Any]:
     body = map_entry_to_otl(entry)
     with _client(cred) as client:
         resp = client.post(
@@ -280,10 +349,14 @@ def create_timecard_entry(
         )
     _raise_for_status(resp)
     return resp.json()
+
+
 def delete_timecard_entry(cred: OtlCredential, record_id: Any) -> None:
     with _client(cred) as client:
         resp = client.delete(f"{base_url()}/{record_id}")
     _raise_for_status(resp)
+
+
 def create_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -296,7 +369,8 @@ def create_many(
                     "index": index,
                     "ok": True,
                     "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                    "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordNumber": created.get("timeRecordEventRequestId")
+                    or "UNKNOWN",
                     "recordName": _default_record_name(entry),
                 }
             )
@@ -310,12 +384,16 @@ def create_many(
                 }
             )
     return results
+
+
 def _async_client(cred: OtlCredential) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         auth=cred.auth,
         timeout=_timeout(),
         headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
     )
+
+
 async def avalidate(cred: OtlCredential) -> dict[str, Any]:
     async with _async_client(cred) as client:
         resp = await client.get(base_url(), params={"limit": 1})
@@ -327,12 +405,23 @@ async def avalidate(cred: OtlCredential) -> dict[str, Any]:
         )
     _raise_for_status(resp)
     return {"ok": True, "username": cred.username}
+
+
 async def aget_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
     return await asyncio.to_thread(get_worker, cred, person_number)
+
+
 async def alist_timecard_entries(
-    cred: OtlCredential, limit: int = 10, offset: int = 0, person_number: str | None = None
+    cred: OtlCredential,
+    limit: int = 10,
+    offset: int = 0,
+    person_number: str | None = None,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(list_timecard_entries, cred, limit, offset, person_number)
+    return await asyncio.to_thread(
+        list_timecard_entries, cred, limit, offset, person_number
+    )
+
+
 async def acreate_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -345,7 +434,8 @@ async def acreate_many(
                     "index": index,
                     "ok": True,
                     "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                    "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordNumber": created.get("timeRecordEventRequestId")
+                    or "UNKNOWN",
                     "recordName": _default_record_name(entry),
                 }
             )
@@ -359,11 +449,19 @@ async def acreate_many(
                 }
             )
     return results
+
+
 async def alist_worker_assignments(
     cred: OtlCredential, person_number: str, full_name: str = ""
 ) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(list_worker_assignments, cred, person_number, full_name)
-async def acreate_timecard_entry(cred: OtlCredential, entry: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        list_worker_assignments, cred, person_number, full_name
+    )
+
+
+async def acreate_timecard_entry(
+    cred: OtlCredential, entry: dict[str, Any]
+) -> dict[str, Any]:
     async with _async_client(cred) as client:
         resp = await client.post(base_url(), json=map_entry_to_otl(entry))
     _raise_for_status(resp)

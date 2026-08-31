@@ -10,7 +10,7 @@ vi.mock('../../api/client', () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 describe('TimecardHistory', () => {
   beforeEach(() => {
@@ -19,13 +19,17 @@ describe('TimecardHistory', () => {
   it('renders loading state initially', () => {
     vi.mocked(api.listTimecards).mockReturnValue(new Promise(() => {}));
     render(<TimecardHistory onSessionExpired={vi.fn()} />);
-    expect(screen.getByText('Loading timesheets from Oracle Fusion...')).toBeInTheDocument();
+    expect(
+      screen.getByText('Loading timesheets from Oracle Fusion...')
+    ).toBeInTheDocument();
   });
   it('handles successful fetch with no items', async () => {
     vi.mocked(api.listTimecards).mockResolvedValue({ items: [] });
     render(<TimecardHistory onSessionExpired={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText('No recent timesheets found.')).toBeInTheDocument();
+      expect(
+        screen.getByText('No recent timesheets found.')
+      ).toBeInTheDocument();
     });
   });
   it('handles successful fetch with items', async () => {
@@ -38,40 +42,44 @@ describe('TimecardHistory', () => {
               eventStatus: 'APPROVED',
               measure: 8,
               timeRecordEventAttribute: [
-                { attributeName: 'Comment', attributeValue: 'Test project' }
-              ]
-            }
-          ]
+                { attributeName: 'Comment', attributeValue: 'Test project' },
+              ],
+            },
+          ],
         },
         {
           startTime: '2023-10-11T10:00:00Z',
           measure: 4,
-          timeRecordEventAttribute: []
+          timeRecordEventAttribute: [],
         },
         {
-          measure: 2
-        }
-      ]
+          measure: 2,
+        },
+      ],
     });
     render(<TimecardHistory onSessionExpired={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText('Test project')).toBeInTheDocument();
       expect(screen.getByText('APPROVED')).toBeInTheDocument();
       expect(screen.getByText('8')).toBeInTheDocument();
-      expect(screen.getAllByText('N/A').length).toBeGreaterThan(0); 
-      expect(screen.getByText('Unknown Date')).toBeInTheDocument(); 
+      expect(screen.getAllByText('N/A').length).toBeGreaterThan(0);
+      expect(screen.getByText('Unknown Date')).toBeInTheDocument();
     });
   });
   it('handles successful fetch with no items array', async () => {
-    vi.mocked(api.listTimecards).mockResolvedValue({}); 
+    vi.mocked(api.listTimecards).mockResolvedValue({});
     render(<TimecardHistory onSessionExpired={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText('No recent timesheets found.')).toBeInTheDocument();
+      expect(
+        screen.getByText('No recent timesheets found.')
+      ).toBeInTheDocument();
     });
   });
   it('handles API error 401', async () => {
     const onSessionExpired = vi.fn();
-    vi.mocked(api.listTimecards).mockRejectedValue(new api.ApiError(401, 'Unauthorized'));
+    vi.mocked(api.listTimecards).mockRejectedValue(
+      new api.ApiError(401, 'Unauthorized')
+    );
     render(<TimecardHistory onSessionExpired={onSessionExpired} />);
     await waitFor(() => {
       expect(onSessionExpired).toHaveBeenCalled();

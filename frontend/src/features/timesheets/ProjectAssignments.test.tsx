@@ -66,7 +66,9 @@ describe('ProjectAssignments', () => {
     expect(screen.getByText('ORA_Construction_0120')).toBeInTheDocument();
     expect(screen.getByText(/#101125/)).toBeInTheDocument();
     expect(screen.getByText('WO-101109')).toBeInTheDocument();
-    expect(screen.getByText('Project_Performance_Prev_date')).toBeInTheDocument();
+    expect(
+      screen.getByText('Project_Performance_Prev_date')
+    ).toBeInTheDocument();
   });
   it('renders tasks within a project', async () => {
     vi.mocked(api.getAssignments).mockResolvedValue(mockAssignments);
@@ -90,14 +92,18 @@ describe('ProjectAssignments', () => {
     });
   });
   it('shows error message on API failure', async () => {
-    vi.mocked(api.getAssignments).mockRejectedValue(new ApiError(500, 'Internal Server Error'));
+    vi.mocked(api.getAssignments).mockRejectedValue(
+      new ApiError(500, 'Internal Server Error')
+    );
     render(<ProjectAssignments onSessionExpired={mockOnSessionExpired} />);
     await waitFor(() => {
       expect(screen.getByText(/error/i)).toBeInTheDocument();
     });
   });
   it('calls onSessionExpired on 401 error', async () => {
-    vi.mocked(api.getAssignments).mockRejectedValue(new ApiError(401, 'Unauthorized'));
+    vi.mocked(api.getAssignments).mockRejectedValue(
+      new ApiError(401, 'Unauthorized')
+    );
     render(<ProjectAssignments onSessionExpired={mockOnSessionExpired} />);
     await waitFor(() => {
       expect(mockOnSessionExpired).toHaveBeenCalled();

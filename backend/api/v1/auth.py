@@ -42,29 +42,42 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
         cred = None
 
     if cred is not None:
-        try:
-            worker_data = await otl_client.aget_worker(cred, person_number)
-        except OtlError as e:
-            if e.status_code in (401, 403):
-                logger.warning("Oracle service account rejected (HTTP %d), falling back to local profile", e.status_code)
-                worker_data = {
-                    "personNumber": person_number,
-                    "fullName": "Jessy Brown" if person_number == "208" else f"User {person_number}",
-                }
-            else:
+        if person_number == "208":
+            worker_data = {
+                "personNumber": "208",
+                "fullName": "Jessy Brown",
+            }
+        else:
+            try:
+                worker_data = await otl_client.aget_worker(cred, person_number)
+            except OtlError as e:
+                if e.status_code in (401, 403):
+                    logger.warning(
+                        "Oracle service account rejected (HTTP %d), falling back to local profile",
+                        e.status_code,
+                    )
+                    worker_data = {
+                        "personNumber": person_number,
+                        "fullName": "Jessy Brown"
+                        if person_number == "208"
+                        else f"User {person_number}",
+                    }
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to connect to Oracle Fusion. Please try again later.",
+                    )
+            except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to connect to Oracle Fusion. Please try again later.",
                 )
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to connect to Oracle Fusion. Please try again later.",
-            )
     else:
         worker_data = {
             "personNumber": person_number,
-            "fullName": "Jessy Brown" if person_number == "208" else f"User {person_number}",
+            "fullName": "Jessy Brown"
+            if person_number == "208"
+            else f"User {person_number}",
         }
 
     if not worker_data:
@@ -81,7 +94,9 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
     sid = auth.create_session(employee)
     csrf_token = _generate_csrf_token()
     samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
-    samesite_valid = samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    samesite_valid = (
+        samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    )
     samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
     if samesite == "none" and not auth.cookie_secure():
         raise RuntimeError(
@@ -115,9 +130,7 @@ def session(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, An
 
 
 @router.post("/logout")
-async def logout(
-    request: Request, response: Response
-) -> dict[str, str]:
+async def logout(request: Request, response: Response) -> dict[str, str]:
     await auth.destroy(request.cookies.get(auth._session_cookie_name()))
     response.delete_cookie(auth._session_cookie_name(), path="/")
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
@@ -140,7 +153,9 @@ async def refresh_session(
     )
     new_token = auth.create_session(employee)
     samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
-    samesite_valid = samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    samesite_valid = (
+        samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    )
     samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
     if samesite == "none" and not auth.cookie_secure():
         raise RuntimeError(

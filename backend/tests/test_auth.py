@@ -1,4 +1,3 @@
-
 import os
 from unittest.mock import patch
 
@@ -25,6 +24,8 @@ def test_create_session():
     assert payload["sub"] == "123"
     assert payload["username"] == "testuser"
     assert payload["full_name"] == "Test User"
+
+
 @pytest.mark.asyncio
 async def test_resolve():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
@@ -34,18 +35,24 @@ async def test_resolve():
     assert ctx.employee_id == "123"
     assert await resolve(None) is None
     assert await resolve("invalid") is None
+
+
 @pytest.mark.asyncio
 async def test_resolve_expired():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     with patch("backend.core.auth._ttl_seconds", return_value=-10):
         token = create_session(employee)
     assert await resolve(token) is None
+
+
 @pytest.mark.asyncio
 async def test_destroy():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
     token = create_session(employee)
     await destroy(token)
     await destroy(None)
+
+
 @pytest.mark.asyncio
 async def test_current_session():
     employee = Employee(employee_id="123", username="testuser", full_name="Test User")
@@ -55,10 +62,13 @@ async def test_current_session():
     with pytest.raises(HTTPException) as exc:
         await current_session(otl_session=None)
     assert exc.value.status_code == 401
+
+
 def test_cookie_secure():
     import os
 
     from backend.core.auth import cookie_secure
+
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "false"}):
         assert cookie_secure() is False
     with patch.dict(os.environ, {"SESSION_COOKIE_SECURE": "true"}):

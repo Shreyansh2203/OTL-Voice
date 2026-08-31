@@ -12,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    def __init__(self, max_requests: int = 60, window_seconds: int = 60, redis_url: str | None = None):
+    def __init__(
+        self,
+        max_requests: int = 60,
+        window_seconds: int = 60,
+        redis_url: str | None = None,
+    ):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.redis_url = redis_url or os.getenv("REDIS_URL")
@@ -35,7 +40,9 @@ class RateLimiter:
             except Exception:
                 self._use_redis = False
                 self._redis = None
-                logger.warning("Redis unavailable for rate limiter, falling back to in-memory mode")
+                logger.warning(
+                    "Redis unavailable for rate limiter, falling back to in-memory mode"
+                )
         return self._redis
 
     async def is_allowed(self, key: str) -> bool:
@@ -58,13 +65,17 @@ class RateLimiter:
             except Exception:
                 pass
         async with self._local_lock:
-            self._local_requests[key] = [t for t in self._local_requests[key] if now - t < self.window_seconds]
+            self._local_requests[key] = [
+                t for t in self._local_requests[key] if now - t < self.window_seconds
+            ]
             if len(self._local_requests) > self._max_local_keys:
                 sorted_keys = sorted(
                     self._local_requests.items(),
                     key=lambda kv: kv[1][0] if kv[1] else now,
                 )
-                for k, _ in sorted_keys[: len(self._local_requests) - self._max_local_keys]:
+                for k, _ in sorted_keys[
+                    : len(self._local_requests) - self._max_local_keys
+                ]:
                     del self._local_requests[k]
             if len(self._local_requests[key]) >= self.max_requests:
                 return False
@@ -100,4 +111,3 @@ class WSConnectionTracker:
 ws_tracker = WSConnectionTracker(max_connections_per_ip=5)
 rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
 auth_rate_limiter = RateLimiter(max_requests=10, window_seconds=60)
-

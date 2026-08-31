@@ -39,7 +39,7 @@ export interface ChatMessage {
 export interface TimecardEntry {
   employeeNumber?: string;
   employeeName?: string;
-  projectNo?: number;
+  projectNo?: string | number;
   projectName?: string;
   workOrder?: string;
   taskDetails?: string;

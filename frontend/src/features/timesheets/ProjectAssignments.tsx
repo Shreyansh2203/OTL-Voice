@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
-import * as api from "../../api/client";
-import type { AssignmentsResponse, AssignedWorkOrder } from "../../types";
+import { useEffect, useState } from 'react';
+import * as api from '../../api/client';
+import type { AssignmentsResponse, AssignedWorkOrder } from '../../types';
 function FolderIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -11,9 +20,18 @@ function FolderIcon() {
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
-      width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-      strokeLinecap="round" strokeLinejoin="round"
-      style={{ transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{
+        transition: 'transform 0.2s',
+        transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+      }}
     >
       <polyline points="9 18 15 12 9 6" />
     </svg>
@@ -21,7 +39,16 @@ function ChevronIcon({ open }: { open: boolean }) {
 }
 function TaskIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="9 11 12 14 22 4" />
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
     </svg>
@@ -29,25 +56,50 @@ function TaskIcon() {
 }
 function SearchIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
 function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
   const [open, setOpen] = useState(true);
-  const totalTasks = wo.projects.reduce((sum, p) => sum + (p.tasks?.length ?? 0), 0);
+  const totalTasks = wo.projects.reduce(
+    (sum, p) => sum + (p.tasks?.length ?? 0),
+    0
+  );
   return (
     <div className="pa-card">
-      <button className="pa-card-header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button
+        className="pa-card-header"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
         <span className="pa-card-header-left">
-          <span className="pa-folder-icon"><FolderIcon /></span>
+          <span className="pa-folder-icon">
+            <FolderIcon />
+          </span>
           <span className="pa-wo-label">{wo.workOrder}</span>
         </span>
         <span className="pa-card-header-right">
-          <span className="pa-badge">{wo.projects.length} project{wo.projects.length !== 1 ? "s" : ""}</span>
-          <span className="pa-badge pa-badge-subtle">{totalTasks} task{totalTasks !== 1 ? "s" : ""}</span>
-          <span className="pa-chevron"><ChevronIcon open={open} /></span>
+          <span className="pa-badge">
+            {wo.projects.length} project{wo.projects.length !== 1 ? 's' : ''}
+          </span>
+          <span className="pa-badge pa-badge-subtle">
+            {totalTasks} task{totalTasks !== 1 ? 's' : ''}
+          </span>
+          <span className="pa-chevron">
+            <ChevronIcon open={open} />
+          </span>
         </span>
       </button>
       {open && (
@@ -62,7 +114,9 @@ function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
                 <div className="pa-tasks">
                   {p.tasks.map((t, k) => (
                     <span key={k} className="pa-task-chip">
-                      <span className="pa-task-icon"><TaskIcon /></span>
+                      <span className="pa-task-icon">
+                        <TaskIcon />
+                      </span>
                       <span className="pa-task-id">{t.taskId}</span>
                       <span className="pa-task-sep">·</span>
                       <span>{t.taskDetails}</span>
@@ -79,19 +133,30 @@ function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
     </div>
   );
 }
-export default function ProjectAssignments({ onSessionExpired }: { onSessionExpired: () => void }) {
+export default function ProjectAssignments({
+  onSessionExpired,
+}: {
+  onSessionExpired: () => void;
+}) {
   const [data, setData] = useState<AssignmentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
   useEffect(() => {
-    api.getAssignments()
-      .then((res) => { setData(res); setLoading(false); })
+    api
+      .getAssignments()
+      .then((res) => {
+        setData(res);
+        setLoading(false);
+      })
       .catch((err) => {
-        if (err instanceof api.ApiError && (err.status === 401 || err.status === 403)) {
+        if (
+          err instanceof api.ApiError &&
+          (err.status === 401 || err.status === 403)
+        ) {
           onSessionExpired();
         } else {
-          setError(err.message || "Failed to load projects.");
+          setError(err.message || 'Failed to load projects.');
         }
         setLoading(false);
       });
@@ -137,21 +202,27 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
           <h2 className="pa-title">My Projects</h2>
           <p className="pa-subtitle">
             {workOrders.length === 0
-              ? "You have no project assignments."
-              : `${totalProjects} project${totalProjects !== 1 ? "s" : ""} across ${workOrders.length} work order${workOrders.length !== 1 ? "s" : ""}`}
+              ? 'You have no project assignments.'
+              : `${totalProjects} project${totalProjects !== 1 ? 's' : ''} across ${workOrders.length} work order${workOrders.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         {workOrders.length > 0 && (
           <div className="pa-summary-chips">
-            <span className="pa-stat"><strong>{workOrders.length}</strong> WOs</span>
-            <span className="pa-stat"><strong>{totalProjects}</strong> Projects</span>
+            <span className="pa-stat">
+              <strong>{workOrders.length}</strong> WOs
+            </span>
+            <span className="pa-stat">
+              <strong>{totalProjects}</strong> Projects
+            </span>
           </div>
         )}
       </div>
       {}
       {workOrders.length > 0 && (
         <div className="pa-search-wrap">
-          <span className="pa-search-icon"><SearchIcon /></span>
+          <span className="pa-search-icon">
+            <SearchIcon />
+          </span>
           <input
             className="pa-search"
             type="text"
@@ -160,7 +231,13 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
-            <button className="pa-search-clear" onClick={() => setSearch("")} aria-label="Clear search">×</button>
+            <button
+              className="pa-search-clear"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+            >
+              ×
+            </button>
           )}
         </div>
       )}
@@ -169,7 +246,9 @@ export default function ProjectAssignments({ onSessionExpired }: { onSessionExpi
         <div className="pa-empty">
           <div className="pa-empty-icon">🗂️</div>
           <p className="pa-empty-title">No projects assigned</p>
-          <p className="pa-empty-sub">Please contact your manager to get project access.</p>
+          <p className="pa-empty-sub">
+            Please contact your manager to get project access.
+          </p>
         </div>
       )}
       {}

@@ -8,6 +8,7 @@ Using SQLite allows multiple Uvicorn workers to share the catalogue without dupl
 memory usage or fragmenting state.
 The catalogue auto-refreshes on a configurable interval (default: 6 hours).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,11 +25,13 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
-_REFRESH_INTERVAL = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))  
+_REFRESH_INTERVAL = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))
 _DB_PATH = Path(__file__).parent.parent.parent / "data" / "catalogue.db"
 _thread_local = threading.local()
 _load_lock = threading.Lock()
 _is_loading = False
+
+
 def _get_db() -> sqlite3.Connection:
     if not hasattr(_thread_local, "conn") or _thread_local.conn is None:
         _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -37,32 +40,50 @@ def _get_db() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode = DELETE")
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute('''CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)''')
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)"""
+        )
         conn.commit()
         _thread_local.conn = conn
     return _thread_local.conn
+
+
 def _close_db() -> None:
     if hasattr(_thread_local, "conn") and _thread_local.conn is not None:
         _thread_local.conn.close()
         _thread_local.conn = None
+
+
 def _host_url() -> str:
     from . import otl_client
+
     url = otl_client.base_url()
     parsed = urllib.parse.urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def _ppm_base() -> str:
     api_version = os.getenv("FUSION_API_VERSION", "11.13.18.05")
     return f"{_host_url()}/fscmRestApi/resources/{api_version}"
+
+
 def _client() -> httpx.Client:
     from . import otl_client
+
     cred = otl_client.service_credential()
     return httpx.Client(
         auth=cred.auth,
         timeout=httpx.Timeout(60.0, connect=15.0),
         headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
     )
+
+
 def _fetch_all_projects(client: httpx.Client) -> list[dict]:
     projects = []
     offset = 0
@@ -76,7 +97,11 @@ def _fetch_all_projects(client: httpx.Client) -> list[dict]:
             },
         )
         if resp.status_code != 200:
-            logger.error("Failed to fetch projects (HTTP %d): %s", resp.status_code, resp.text[:300])
+            logger.error(
+                "Failed to fetch projects (HTTP %d): %s",
+                resp.status_code,
+                resp.text[:300],
+            )
             break
         items = resp.json().get("items", [])
         if not items:
@@ -87,6 +112,8 @@ def _fetch_all_projects(client: httpx.Client) -> list[dict]:
             break
         offset += limit
     return projects
+
+
 def _fetch_project_tasks(client: httpx.Client, project_id: str) -> list[dict]:
     resp = client.get(
         f"{_ppm_base()}/projects/{project_id}/child/Tasks",
@@ -95,6 +122,8 @@ def _fetch_project_tasks(client: httpx.Client, project_id: str) -> list[dict]:
     if resp.status_code != 200:
         return []
     return resp.json().get("items", [])
+
+
 def _fetch_project_team_members(client: httpx.Client, project_id: str) -> list[dict]:
     resp = client.get(
         f"{_ppm_base()}/projects/{project_id}/child/ProjectTeamMembers",
@@ -103,6 +132,8 @@ def _fetch_project_team_members(client: httpx.Client, project_id: str) -> list[d
     if resp.status_code != 200:
         return []
     return resp.json().get("items", [])
+
+
 def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
     assignments = []
     offset = 0
@@ -117,7 +148,9 @@ def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
             },
         )
         if resp.status_code != 200:
-            logger.error("Failed to fetch resource assignments (HTTP %d)", resp.status_code)
+            logger.error(
+                "Failed to fetch resource assignments (HTTP %d)", resp.status_code
+            )
             break
         items = resp.json().get("items", [])
         if not items:
@@ -127,7 +160,11 @@ def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
             break
         offset += limit
     return assignments
-def _build_index(projects_data: list[dict], assignments_data: list[dict] | None = None) -> dict[str, list[dict]]:
+
+
+def _build_index(
+    projects_data: list[dict], assignments_data: list[dict] | None = None
+) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = {}
     seen_projects: dict[str, set[str]] = {}
     if assignments_data is None:
@@ -154,8 +191,12 @@ def _build_index(projects_data: list[dict], assignments_data: list[dict] | None 
             "tasks": proj.get("tasks", []),
         }
         for member in proj.get("team_members", []):
-            person_id = str(member.get("HCMPersonId") or member.get("PersonId") or "").strip()
-            member_name = str(member.get("PersonName") or member.get("TeamMemberName") or "").strip()
+            person_id = str(
+                member.get("HCMPersonId") or member.get("PersonId") or ""
+            ).strip()
+            member_name = str(
+                member.get("PersonName") or member.get("TeamMemberName") or ""
+            ).strip()
             member_entry = {
                 **proj_entry,
                 "role": member.get("ProjectRole", "Team Member"),
@@ -190,6 +231,8 @@ def _build_index(projects_data: list[dict], assignments_data: list[dict] | None 
             _add_to_index(mgr_name, mgr_entry)
 
     return index
+
+
 def _do_load_catalogue() -> None:
     lock_path = _DB_PATH.with_suffix(".lock")
     try:
@@ -213,7 +256,9 @@ def _do_load_catalogue() -> None:
         return
     conn = _get_db()
     try:
-        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')")
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')"
+        )
         conn.commit()
     except Exception:
         logger.exception("Failed to set loading state")
@@ -227,6 +272,7 @@ def _do_load_catalogue() -> None:
     load_succeeded = False
     try:
         from . import otl_client
+
         cred = otl_client.service_credential()
         client = httpx.Client(
             auth=cred.auth,
@@ -240,7 +286,9 @@ def _do_load_catalogue() -> None:
         except Exception:
             pass
         try:
-            conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')")
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+            )
             conn.commit()
         except Exception:
             pass
@@ -249,15 +297,19 @@ def _do_load_catalogue() -> None:
         raw_projects = _fetch_all_projects(client)
         logger.info("Fetched %d projects total.", len(raw_projects))
         import concurrent.futures
+
         enriched = []
+
         def create_client() -> httpx.Client:
             from . import otl_client
+
             cred = otl_client.service_credential()
             return httpx.Client(
                 auth=cred.auth,
                 timeout=httpx.Timeout(60.0, connect=15.0),
                 headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
             )
+
         def fetch_project_details(p):
             thread_client = create_client()
             try:
@@ -272,24 +324,37 @@ def _do_load_catalogue() -> None:
                     "project_name": p_name,
                     "status": p.get("ProjectStatus", ""),
                     "manager": p.get("ProjectManagerName", ""),
-                    "manager_id": str(p.get("ProjectManagerId") or p.get("ProjectManagerEmail") or "").strip(),
+                    "manager_id": str(
+                        p.get("ProjectManagerId") or p.get("ProjectManagerEmail") or ""
+                    ).strip(),
                     "tasks": [
-                        {"task_id": str(t.get("TaskId", "")), "task_number": str(t.get("TaskNumber", "")), "task_name": t.get("TaskName", "")}
+                        {
+                            "task_id": str(t.get("TaskId", "")),
+                            "task_number": str(t.get("TaskNumber", "")),
+                            "task_name": t.get("TaskName", ""),
+                        }
                         for t in tasks
                     ],
                     "team_members": members,
                 }
             finally:
                 thread_client.close()
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_proj = {executor.submit(fetch_project_details, p): p for p in raw_projects}
+            future_to_proj = {
+                executor.submit(fetch_project_details, p): p for p in raw_projects
+            }
             for i, future in enumerate(concurrent.futures.as_completed(future_to_proj)):
                 try:
                     enriched.append(future.result())
                 except Exception as exc:
-                    logger.error("Project details fetch generated an exception: %s", exc)
+                    logger.error(
+                        "Project details fetch generated an exception: %s", exc
+                    )
                 if (i + 1) % 10 == 0:
-                    logger.info("  Enriched %d/%d projects...", i + 1, len(raw_projects))
+                    logger.info(
+                        "  Enriched %d/%d projects...", i + 1, len(raw_projects)
+                    )
         logger.info("Fetched details for %d projects.", len(enriched))
         logger.info("Fetching project resource assignments...")
         assignments = _fetch_all_resource_assignments(client)
@@ -314,7 +379,9 @@ def _do_load_catalogue() -> None:
         else:
             # Keep is_loading=true so operators know catalogue is stale
             try:
-                conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')")
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')"
+                )
                 conn.commit()
             except Exception:
                 pass
@@ -322,10 +389,14 @@ def _do_load_catalogue() -> None:
             os.unlink(lock_path)
         except Exception:
             pass
+
+
 def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
     global _is_loading
     try:
-        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')")
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+        )
         conn.commit()
     except Exception:
         pass
@@ -335,17 +406,32 @@ def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
         pass
     with _load_lock:
         _is_loading = False
-def _save_catalogue(conn: sqlite3.Connection, enriched: list[dict], person_index: dict[str, list[dict]]) -> None:
+
+
+def _save_catalogue(
+    conn: sqlite3.Connection, enriched: list[dict], person_index: dict[str, list[dict]]
+) -> None:
     try:
         conn.execute("BEGIN IMMEDIATE TRANSACTION")
         conn.execute("DELETE FROM projects")
         conn.execute("DELETE FROM person_index")
         for proj in enriched:
-            conn.execute("INSERT OR REPLACE INTO projects (project_id, data) VALUES (?, ?)", (proj['project_id'], json.dumps(proj)))
+            conn.execute(
+                "INSERT OR REPLACE INTO projects (project_id, data) VALUES (?, ?)",
+                (proj["project_id"], json.dumps(proj)),
+            )
         for name, projs in person_index.items():
-            conn.execute("INSERT OR REPLACE INTO person_index (name, projects) VALUES (?, ?)", (name, json.dumps(projs)))
-        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('last_refresh', ?)", (str(time.time()),))
-        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loaded', 'true')")
+            conn.execute(
+                "INSERT OR REPLACE INTO person_index (name, projects) VALUES (?, ?)",
+                (name, json.dumps(projs)),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_refresh', ?)",
+            (str(time.time()),),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loaded', 'true')"
+        )
         conn.commit()
     except Exception:
         logger.exception("Failed to save catalogue to database")
@@ -354,6 +440,8 @@ def _save_catalogue(conn: sqlite3.Connection, enriched: list[dict], person_index
         except Exception:
             pass
         raise
+
+
 def load_catalogue() -> None:
     if os.getenv("TEST_MODE", "false").strip().lower() == "true":
         logger.info("TEST_MODE is true. Skipping live Fusion catalogue load.")
@@ -361,17 +449,23 @@ def load_catalogue() -> None:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
     row = cur.fetchone()
-    if row and row[0] == 'true':
+    if row and row[0] == "true":
         logger.warning("Catalogue load already in progress, not starting another")
         return
     threading.Thread(target=_do_load_catalogue, daemon=True).start()
+
+
 def get_project_by_id(project_id: str) -> dict | None:
     conn = _get_db()
-    cur = conn.execute("SELECT data FROM projects WHERE project_id = ?", (str(project_id),))
+    cur = conn.execute(
+        "SELECT data FROM projects WHERE project_id = ?", (str(project_id),)
+    )
     row = cur.fetchone()
     if row:
         return json.loads(row[0])
     return None
+
+
 def _find_person_projects(person_id: str, full_name: str = "") -> list[dict]:
     conn = _get_db()
     for key in [person_id.strip().lower(), full_name.strip().lower()]:
@@ -382,6 +476,8 @@ def _find_person_projects(person_id: str, full_name: str = "") -> list[dict]:
         if row:
             return json.loads(row[0])
     return []
+
+
 def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for proj in assigned:
@@ -399,40 +495,49 @@ def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
                 task_id = int(raw_id)
             except (ValueError, TypeError):
                 task_id = raw_id
-            tasks.append({
-                "taskId": task_id,
-                "taskDetails": t.get("task_name", ""),
-            })
-        result.append({
-            "workOrder": f"WO-{p_num}",
-            "projects": [
+            tasks.append(
                 {
-                    "projectId": proj.get("project_id", ""),
-                    "projectNo": project_no,
-                    "projectName": proj.get("project_name", ""),
-                    "tasks": tasks,
+                    "taskId": task_id,
+                    "taskDetails": t.get("task_name", ""),
                 }
-            ],
-        })
+            )
+        result.append(
+            {
+                "workOrder": f"WO-{p_num}",
+                "projects": [
+                    {
+                        "projectId": proj.get("project_id", ""),
+                        "projectNo": project_no,
+                        "projectName": proj.get("project_name", ""),
+                        "tasks": tasks,
+                    }
+                ],
+            }
+        )
     return result
-def list_assignments_for_worker(employee_number: str, full_name: str = "") -> list[dict[str, Any]]:
+
+
+def list_assignments_for_worker(
+    employee_number: str, full_name: str = ""
+) -> list[dict[str, Any]]:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
     row = cur.fetchone()
-    is_loaded = row and row[0] == 'true'
+    is_loaded = row and row[0] == "true"
     if not is_loaded:
         cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
         row = cur.fetchone()
-        is_loading = row and row[0] == 'true'
+        is_loading = row and row[0] == "true"
         if is_loading:
             logger.info("Catalogue is loading, waiting for completion...")
             import time
+
             max_wait = 10.0
             waited = 0.0
             while waited < max_wait:
                 cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
                 row = cur.fetchone()
-                if row and row[0] == 'true':
+                if row and row[0] == "true":
                     is_loaded = True
                     break
                 time.sleep(0.2)
@@ -444,15 +549,19 @@ def list_assignments_for_worker(employee_number: str, full_name: str = "") -> li
     if not assigned:
         return []
     return _transform_assignments(assigned)
-async def alist_assignments_for_worker(employee_number: str, full_name: str = "") -> list[dict[str, Any]]:
+
+
+async def alist_assignments_for_worker(
+    employee_number: str, full_name: str = ""
+) -> list[dict[str, Any]]:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
     row = cur.fetchone()
-    is_loaded = row and row[0] == 'true'
+    is_loaded = row and row[0] == "true"
     if not is_loaded:
         cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
         row = cur.fetchone()
-        is_loading = row and row[0] == 'true'
+        is_loading = row and row[0] == "true"
         if is_loading:
             logger.info("Catalogue is loading, waiting for completion...")
             max_wait = 10.0
@@ -460,7 +569,7 @@ async def alist_assignments_for_worker(employee_number: str, full_name: str = ""
             while waited < max_wait:
                 cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
                 row = cur.fetchone()
-                if row and row[0] == 'true':
+                if row and row[0] == "true":
                     is_loaded = True
                     break
                 await asyncio.sleep(0.2)
@@ -472,6 +581,8 @@ async def alist_assignments_for_worker(employee_number: str, full_name: str = ""
     if not assigned:
         return []
     return _transform_assignments(assigned)
+
+
 def catalogue_age_seconds() -> float | None:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'last_refresh'")
@@ -479,14 +590,16 @@ def catalogue_age_seconds() -> float | None:
     if row:
         return time.time() - float(row[0])
     return None
+
+
 def status() -> dict[str, Any]:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
     row = cur.fetchone()
-    is_loaded = row and row[0] == 'true'
+    is_loaded = row and row[0] == "true"
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
     row = cur.fetchone()
-    is_loading = row and row[0] == 'true'
+    is_loading = row and row[0] == "true"
     cur = conn.execute("SELECT COUNT(*) FROM projects")
     total_projects = cur.fetchone()[0]
     cur = conn.execute("SELECT COUNT(*) FROM person_index")
@@ -499,10 +612,12 @@ def status() -> dict[str, Any]:
         "catalogueAgeSeconds": catalogue_age_seconds(),
         "refreshIntervalSeconds": _REFRESH_INTERVAL,
     }
+
+
 async def refresh_catalogue() -> None:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
     row = cur.fetchone()
-    is_loading = row and row[0] == 'true'
+    is_loading = row and row[0] == "true"
     if not is_loading:
         load_catalogue()

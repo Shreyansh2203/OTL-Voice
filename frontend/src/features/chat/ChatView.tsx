@@ -73,13 +73,15 @@ export default function ChatView({
     setVoiceState(mic.listening ? "listening" : "idle");
   }, [player, mic.listening]);
 
-  const sendUserRef = useRef<((content: string) => void) | null>(null);
+  const sendUserRef = useRef<((content: string, isVoice?: boolean) => void) | null>(null);
   const runAssistantRef = useRef<((history: ChatMessage[]) => Promise<void>) | null>(null);
   const composerMicTriggerRef = useRef<(() => void) | null>(null);
+  const wasLastInputVoiceRef = useRef<boolean>(true);
 
   const sendUser = useCallback(
-    (content: string) => {
+    (content: string, isVoice?: boolean) => {
       handleBargeIn();
+      wasLastInputVoiceRef.current = !!isVoice;
       const cleanPrev = messagesRef.current.filter(
         (m) => m.content && m.content.trim().length > 0 && !m.content.startsWith("Sorry —")
       );
@@ -253,10 +255,10 @@ export default function ChatView({
       if (isFarewell) {
         mic.stop();
         setVoiceState("idle");
-      } else if (voiceOnRef.current && mic.supported) {
+      } else if (mic.supported && wasLastInputVoiceRef.current) {
         // Alexa / Google Assistant Hands-Free Dialogue Loop
         await new Promise((resolve) => setTimeout(resolve, 300));
-        if (interruptTokenRef.current === thisToken && voiceOnRef.current) {
+        if (interruptTokenRef.current === thisToken) {
           composerMicTriggerRef.current?.();
         }
       } else if (mic.listening) {

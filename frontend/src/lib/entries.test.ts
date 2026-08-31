@@ -16,7 +16,7 @@ describe('entries utils', () => {
       expect(entries).toEqual([{ projectNo: 1234, hours: 5 }]);
     });
     it('should return null if no code block exists', () => {
-      const entries = extractEntries("No json here!");
+      const entries = extractEntries('No json here!');
       expect(entries).toBeNull();
     });
     it('should return null if JSON is invalid', () => {
@@ -33,11 +33,11 @@ describe('entries utils', () => {
   });
   describe('stripEntriesBlock', () => {
     it('should strip the markdown code block and everything after', () => {
-      const text = "Message text\n```json\n{...}\n```";
-      expect(stripEntriesBlock(text)).toBe("Message text");
+      const text = 'Message text\n```json\n{...}\n```';
+      expect(stripEntriesBlock(text)).toBe('Message text');
     });
     it('should return the original text if no block exists', () => {
-      expect(stripEntriesBlock("Just text")).toBe("Just text");
+      expect(stripEntriesBlock('Just text')).toBe('Just text');
     });
   });
 });

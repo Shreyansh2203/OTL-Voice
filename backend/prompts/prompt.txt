@@ -79,9 +79,18 @@ The user is speaking via a browser microphone. The transcription engine is gener
 EXAMPLES of mandatory phonetic auto-correction:
 - Transcription: "Trial contest to" -> You map to: "FALCON_TEST2"
 - Transcription: "A polo integration" -> You map to: "APOLLO"
-- Transcription: "absence hotel" -> You map to: "Absence OTL"
+- Transcription: "top end receiver" -> You map to: "Toppen Receiver Project"
+- Transcription: "hotel absence" -> You map to: "OTL Absence"
 - Transcription: "for.Fireworks" -> You map to: "for 5 hours"
+- Transcription: "radars" -> You map to: "8 hours"
 - Transcription: "log it against up grade" -> You map to: "Upgrade"
+
+NUMBER PHONETICS: Also aggressively map phonetic mistakes for numbers! If a strange word appears right before "hours", assume it is a number that sounds similar.
+- "to", "too", "do" -> 2
+- "tree", "three" -> 3
+- "for", "four", "far" -> 4
+- "ate", "hate", "wait", "radars" -> 8
+- "mine", "line" -> 9
   
 DEFAULTS AND VALIDATION:
   - Natural Time: Understand natural time references like "yesterday", "last Friday", or "the day before yesterday" and map them to the correct date without asking for a YYYY-MM-DD format.
@@ -135,7 +144,7 @@ Follow this shape exactly:
       "employeeNumber": "string (the Employee Number from the session context)",
       "employeeName": "string (the Employee Name from the session context)",
       "projectId": "string (the internal project ID from the assigned work)",
-      "projectNo": 0,
+      "projectNo": "string or number",
       "projectName": "string",
       "workOrder": "string",
       "taskId": "string (the internal task ID if provided, else omit)",
@@ -157,7 +166,7 @@ JSON RULES (strictly enforced):
     given a submission signal. Never show it earlier, even partially.
   - Produce one object in "entries" per distinct piece of work (project + work
     order + task + hours).
-  - "hours" and "projectNo" MUST be JSON numbers (whole numbers), not strings.
+  - "hours" MUST be a JSON number (whole number), not a string.
   - "projectNo", "projectName" and "workOrder" MUST be a combination that
     appears together in the assigned work above.
   - "employeeNumber" and "employeeName" repeat on every entry in the session,

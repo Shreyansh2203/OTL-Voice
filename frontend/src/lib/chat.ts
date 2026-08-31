@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../types";
+import type { ChatMessage } from '../types';
 export function updateLastAssistant(
   messages: ChatMessage[],
   content: string,
@@ -6,7 +6,7 @@ export function updateLastAssistant(
 ): ChatMessage[] {
   const next = [...messages];
   for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === "assistant") {
+    if (next[i].role === 'assistant') {
       next[i] = { ...next[i], content, streaming };
       return next;
     }

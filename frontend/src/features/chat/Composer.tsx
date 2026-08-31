@@ -3,7 +3,7 @@ import { MicIcon, SendIcon, StopIcon } from "../../components/ui/icons";
 import { playMicStart, playMicStop } from "../../lib/audio";
 export interface ComposerProps {
   disabled: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, isVoice?: boolean) => void;
   supported?: boolean;
   listening?: boolean;
   onStartMic?: (
@@ -54,7 +54,7 @@ export default function Composer({
     if (listening) {
       onStopMic?.();
     }
-    onSend(trimmed);
+    onSend(trimmed, false);
     setText("");
   }
 
@@ -86,7 +86,7 @@ export default function Composer({
       onStopMicRef.current?.();
       const current = text.trim();
       if (current && !disabledRef.current) {
-        onSendRef.current(current);
+        onSendRef.current(current, true);
         setText("");
       }
       return;
@@ -105,10 +105,10 @@ export default function Composer({
         if (toSend && !disabledRef.current) {
           void playMicStop();
           onStopMicRef.current?.();
-          onSendRef.current(toSend);
+          onSendRef.current(toSend, true);
           setText("");
         }
-      }, 500);
+      }, 2000);
     };
 
     onStartMicRef.current?.(

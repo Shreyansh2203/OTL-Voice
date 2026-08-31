@@ -29,7 +29,9 @@ def health() -> dict[str, str]:
 
 
 @router.get("/api/health/otl")
-async def health_otl(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, Any]:
+async def health_otl(
+    ctx: SessionContext = Depends(auth.current_session),
+) -> dict[str, Any]:
     return await otl_client.avalidate(otl_client.service_credential())
 
 

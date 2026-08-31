@@ -1,9 +1,16 @@
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatView from './ChatView';
 import { updateLastAssistant } from '../../lib/chat';
 import * as api from '../../api/client';
 import * as voiceLib from '../../lib/voice';
+import * as ociVoiceLib from '../../lib/oci_voice';
 vi.mock('../../api/client', () => ({
   chatStream: vi.fn(),
   tts: vi.fn(),
@@ -13,23 +20,49 @@ vi.mock('../../api/client', () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 vi.mock('../../lib/voice', () => ({
   useAudioPlayer: vi.fn(() => ({
     play: vi.fn(),
-    stop: vi.fn()
+    stop: vi.fn(),
   })),
   useSpeechInput: vi.fn(() => ({
     supported: true,
     listening: false,
     isListening: vi.fn(() => false),
     start: vi.fn(),
-    stop: vi.fn()
-  }))
+    stop: vi.fn(),
+  })),
+}));
+vi.mock('../../lib/oci_voice', () => ({
+  useWorkletAudioPlayer: vi.fn(() => ({
+    play: vi.fn(),
+    stop: vi.fn(),
+  })),
+  useOciSpeechInput: vi.fn(() => ({
+    supported: true,
+    listening: false,
+    isListening: vi.fn(() => false),
+    start: vi.fn(),
+    stop: vi.fn(),
+  })),
+}));
+vi.mock('../../lib/useGeminiLive', () => ({
+  useGeminiLive: vi.fn(() => ({
+    liveState: 'idle',
+    errorMsg: null,
+    transcript: '',
+    toolCalls: [],
+    isMuted: false,
+    startSession: vi.fn(),
+    stopSession: vi.fn(),
+    toggleMute: vi.fn(),
+    isActive: false,
+  })),
 }));
 vi.mock('../timesheets/TimecardHistory', () => ({
-  default: () => <div data-testid="timecard-history" />
+  default: () => <div data-testid="timecard-history" />,
 }));
 describe('ChatView', () => {
   beforeEach(() => {
@@ -41,7 +74,9 @@ describe('ChatView', () => {
       onEvent({ delta: 'Hello' });
       onEvent({ done: true });
     });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     expect(screen.getByText('Test')).toBeInTheDocument();
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
@@ -49,7 +84,9 @@ describe('ChatView', () => {
     expect(screen.getByText('Hello')).toBeInTheDocument();
   });
   it('switches to history tab and back to chat', async () => {
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
@@ -61,7 +98,9 @@ describe('ChatView', () => {
     expect(screen.queryByTestId('timecard-history')).not.toBeInTheDocument();
   });
   it('toggles voice', async () => {
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
@@ -72,7 +111,13 @@ describe('ChatView', () => {
   });
   it('calls onLogout', async () => {
     const onLogout = vi.fn();
-    render(<ChatView username="Test" onLogout={onLogout} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView
+        username="Test"
+        onLogout={onLogout}
+        onSessionExpired={vi.fn()}
+      />
+    );
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
@@ -80,37 +125,36 @@ describe('ChatView', () => {
     expect(onLogout).toHaveBeenCalled();
   });
   it('sends user message and handles stream response', async () => {
-    let mockOnEvent: any;
     vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
-      mockOnEvent = onEvent;
+      if (history.some((m: any) => m.content === 'My message')) {
+        onEvent({ delta: 'Response' });
+        onEvent({ done: true });
+      }
     });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
-    vi.mocked(api.chatStream).mockClear();
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'My message' } });
     const sendBtn = screen.getByRole('button', { name: /send/i });
     fireEvent.click(sendBtn);
     expect(screen.getByText('My message')).toBeInTheDocument();
     await waitFor(() => {
-      expect(api.chatStream).toHaveBeenCalled();
-    });
-    act(() => {
-      mockOnEvent({ delta: 'Response' });
-      mockOnEvent({ done: true });
-    });
-    await waitFor(() => {
       expect(screen.getByText('Response')).toBeInTheDocument();
     });
   });
   it('handles stream error properly', async () => {
     let mockOnEvent: any;
-    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+    vi.mocked(api.chatStream).mockImplementation((history, onEvent) => {
       mockOnEvent = onEvent;
+      return new Promise<void>(() => {});
     });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
@@ -123,15 +167,25 @@ describe('ChatView', () => {
   });
   it('handles API rejection 401', async () => {
     const onSessionExpired = vi.fn();
-    vi.mocked(api.chatStream).mockRejectedValue(new api.ApiError(401, 'Unauthorized'));
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={onSessionExpired} />);
+    vi.mocked(api.chatStream).mockRejectedValue(
+      new api.ApiError(401, 'Unauthorized')
+    );
+    render(
+      <ChatView
+        username="Test"
+        onLogout={vi.fn()}
+        onSessionExpired={onSessionExpired}
+      />
+    );
     await waitFor(() => {
       expect(onSessionExpired).toHaveBeenCalled();
     });
   });
   it('handles general API rejection', async () => {
     vi.mocked(api.chatStream).mockRejectedValue(new Error('Network error'));
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(screen.getByText('Sorry — Network error')).toBeInTheDocument();
     });
@@ -142,8 +196,17 @@ describe('ChatView', () => {
       onEvent({ done: true });
     });
     const play = vi.fn();
-    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({ play, stop: vi.fn() } as any);
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({
+      play,
+      stop: vi.fn(),
+    } as any);
+    vi.mocked(ociVoiceLib.useWorkletAudioPlayer).mockReturnValue({
+      play,
+      stop: vi.fn(),
+    } as any);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     const voiceBtn = screen.getByText('Voice On');
     fireEvent.click(voiceBtn);
     await waitFor(() => {
@@ -153,10 +216,15 @@ describe('ChatView', () => {
   });
   it('extracts entries block and renders ReviewPanel', async () => {
     vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
-      onEvent({ delta: 'Here is your timecard:\n```json\n{"entries":[{"projectName":"Proj1", "taskName":"Task1", "hours":4}]}\n```' });
+      onEvent({
+        delta:
+          'Here is your timecard:\n```json\n{"entries":[{"projectName":"Proj1", "taskName":"Task1", "hours":4}]}\n```',
+      });
       onEvent({ done: true });
     });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(screen.getByText('Proj1')).toBeInTheDocument();
       expect(screen.getByText('4')).toBeInTheDocument();
@@ -164,10 +232,21 @@ describe('ChatView', () => {
   });
   it('handles missing assistant role when updating (branch coverage)', async () => {
     let mockOnEvent: any;
-    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => { mockOnEvent = onEvent; });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      mockOnEvent = onEvent;
+      onEvent({ delta: 'Init' });
+      onEvent({ done: true });
+    });
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
     vi.mocked(api.chatStream).mockClear();
+
+    vi.mocked(api.chatStream).mockImplementation((history, onEvent) => {
+      mockOnEvent = onEvent;
+      return new Promise<void>(() => {});
+    });
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'Msg' } });
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
@@ -180,20 +259,35 @@ describe('ChatView', () => {
   });
   it('handles general string error', async () => {
     vi.mocked(api.chatStream).mockRejectedValue('String Error');
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Sorry — Connection error.')).toBeInTheDocument());
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Sorry — Connection error.')).toBeInTheDocument()
+    );
   });
   it('handles barge-in interruption by stopping audio and active generation', async () => {
     let mockOnEvent: any;
-    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent, signal) => {
-      mockOnEvent = onEvent;
-      signal?.addEventListener('abort', () => {
-        // aborted
-      });
-    });
+    vi.mocked(api.chatStream).mockImplementation(
+      async (history, onEvent, signal) => {
+        mockOnEvent = onEvent;
+        signal?.addEventListener('abort', () => {
+          // aborted
+        });
+      }
+    );
     const stopAudio = vi.fn();
-    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({ play: vi.fn(), stop: stopAudio } as any);
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({
+      play: vi.fn(),
+      stop: stopAudio,
+    } as any);
+    vi.mocked(ociVoiceLib.useWorkletAudioPlayer).mockReturnValue({
+      play: vi.fn(),
+      stop: stopAudio,
+    } as any);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
 
     act(() => {
@@ -211,18 +305,22 @@ describe('ChatView', () => {
 
   it('stops mic when farewell is detected in assistant response', async () => {
     const stopMic = vi.fn();
-    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
+    const micMock = {
       supported: true,
       listening: true,
       isListening: vi.fn(() => true),
       start: vi.fn(),
-      stop: stopMic
-    });
+      stop: stopMic,
+    };
+    vi.mocked(voiceLib.useSpeechInput).mockReturnValue(micMock);
+    vi.mocked(ociVoiceLib.useOciSpeechInput).mockReturnValue(micMock);
     vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
       onEvent({ delta: 'Goodbye! Have a great day.' });
       onEvent({ done: true });
     });
-    render(<ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />);
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
     await waitFor(() => {
       expect(stopMic).toHaveBeenCalled();
     });

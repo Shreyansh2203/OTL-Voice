@@ -11,26 +11,34 @@ from oci.ai_speech import models as speech_models
 from .oci_gemini import _env, _retry_with_backoff, build_oci_config
 
 T = TypeVar("T")
+
+
 def _speech_endpoint(region: str) -> str:
     explicit = _env("OCI_SPEECH_ENDPOINT")
     if explicit:
         return explicit
     return f"https://speech.aiservice.{region}.oci.oraclecloud.com"
+
+
 def _rate_to_percent(rate: float) -> str:
     pct = round(max(0.2, min(3.0, rate)) * 100)
     return f"{pct}%"
+
+
 _CODE_FENCE = re.compile(r"```.*?```", re.DOTALL)
-_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")          
-_INLINE_CODE = re.compile(r"`([^`]+)`")                  
-_STRIKE = re.compile(r"~~([^~]+)~~")                     
-_HR = re.compile(r"^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", re.MULTILINE)  
-_HEADING = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)           
-_BLOCKQUOTE = re.compile(r"^\s{0,3}>\s?", re.MULTILINE)            
-_BULLET = re.compile(r"^\s{0,3}[-*+]\s+", re.MULTILINE)           
-_STAR_EMPH = re.compile(r"\*{1,3}([^*]+?)\*{1,3}")               
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_INLINE_CODE = re.compile(r"`([^`]+)`")
+_STRIKE = re.compile(r"~~([^~]+)~~")
+_HR = re.compile(r"^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", re.MULTILINE)
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+_BLOCKQUOTE = re.compile(r"^\s{0,3}>\s?", re.MULTILINE)
+_BULLET = re.compile(r"^\s{0,3}[-*+]\s+", re.MULTILINE)
+_STAR_EMPH = re.compile(r"\*{1,3}([^*]+?)\*{1,3}")
 _US_EMPH = re.compile(r"(?<!\w)_{1,3}([^_]+?)_{1,3}(?!\w)")
 _MULTISPACE = re.compile(r"[ \t]+")
 _MULTINEWLINE = re.compile(r"\n\s*\n+")
+
+
 def clean_for_speech(text: str) -> str:
     if not text:
         return ""
@@ -48,6 +56,8 @@ def clean_for_speech(text: str) -> str:
     t = _MULTISPACE.sub(" ", t)
     t = _MULTINEWLINE.sub("\n", t)
     return t.strip()
+
+
 class SpeechClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
@@ -67,6 +77,7 @@ class SpeechClient:
             retry_strategy=oci.retry.NoneRetryStrategy(),
             timeout=(10, read_timeout),
         )
+
     @property
     def mime(self) -> str:
         return {
@@ -74,6 +85,7 @@ class SpeechClient:
             "OGG": "audio/ogg",
             "PCM": "audio/wav",
         }.get(self.output_format, "audio/mp3")
+
     @property
     def signature(self) -> str:
         return ":".join(
@@ -85,7 +97,10 @@ class SpeechClient:
                 self.output_format,
             ]
         )
-    def _details(self, text: str, text_type: str) -> speech_models.SynthesizeSpeechDetails:
+
+    def _details(
+        self, text: str, text_type: str
+    ) -> speech_models.SynthesizeSpeechDetails:
         model_details = speech_models.TtsOracleTts2NaturalModelDetails(
             model_name=self.model_name,
             voice_id=self.voice_id,
@@ -106,6 +121,7 @@ class SpeechClient:
                 ),
             ),
         )
+
     def _call(self, details) -> bytes:
         def _do_call():
             response = self.client.synthesize_speech(details)
@@ -113,22 +129,31 @@ class SpeechClient:
             if hasattr(data, "content") and data.content is not None:
                 return data.content
             return data.raw.read()
+
         return _retry_with_backoff(_do_call, max_retries=3, base_delay=1.0)
+
     def synthesize(self, text: str, rate: float = 1.0) -> bytes:
         clean = clean_for_speech(text)
         if not clean:
             return b""
-        is_ssml = bool(re.search(r"<(?:break|emphasis|prosody)[^>]*>.*?</(?:break|emphasis|prosody)>|<(?:break|emphasis|prosody)[^>]*/>", clean, re.IGNORECASE))
+        is_ssml = bool(
+            re.search(
+                r"<(?:break|emphasis|prosody)[^>]*>.*?</(?:break|emphasis|prosody)>|<(?:break|emphasis|prosody)[^>]*/>",
+                clean,
+                re.IGNORECASE,
+            )
+        )
         if is_ssml:
             ssml_payload = f"<speak>{clean}</speak>"
             if abs(rate - 1.0) > 1e-3:
                 ssml_payload = f'<speak><prosody rate="{_rate_to_percent(rate)}">{clean}</prosody></speak>'
             try:
                 import xml.etree.ElementTree as ET
+
                 ET.fromstring(ssml_payload)
                 return self._call(self._details(ssml_payload, "SSML"))
             except oci.exceptions.ServiceError:
-                clean = re.sub(r'<[^>]+>', '', clean) 
+                clean = re.sub(r"<[^>]+>", "", clean)
         if abs(rate - 1.0) < 1e-3:
             return self._call(self._details(clean, "TEXT"))
         ssml = (
@@ -139,6 +164,8 @@ class SpeechClient:
             return self._call(self._details(ssml, "SSML"))
         except oci.exceptions.ServiceError:
             return self._call(self._details(clean, "TEXT"))
+
+
 import asyncio
 
 try:
@@ -148,11 +175,13 @@ try:
         RealtimeSpeechClient,
         RealtimeSpeechClientListener,
     )
+
     class _STTListener(RealtimeSpeechClientListener):
         def __init__(self, result_queue: asyncio.Queue):
             self.result_queue = result_queue
             self.done = asyncio.Event()
             self.connected = asyncio.Event()
+
         def on_result(self, result):
             transcriptions = result.get("transcriptions", [])
             if transcriptions:
@@ -161,25 +190,37 @@ try:
                 is_final = tx.get("isFinal", False)
                 if text and text not in [".", ",", "?", "!", "...", "-", "–"]:
                     try:
-                        self.result_queue.put_nowait({"text": text, "isFinal": is_final})
+                        self.result_queue.put_nowait(
+                            {"text": text, "isFinal": is_final}
+                        )
                     except asyncio.QueueFull:
                         print("OCI STT result_queue is full, dropping transcription.")
+
         def on_ack_message(self, ackmessage):
             pass
+
         def on_connect(self):
             self.connected.set()
+
         def on_connect_message(self, connectmessage):
             self.connected.set()
+
         def on_network_event(self, ackmessage):
             pass
+
         def on_error(self, error_message):
             self.done.set()
+
         def on_close(self, error_code, error_message):
             self.done.set()
 except ImportError:
+
     class _DummySTTListener:
         pass
+
     _STTListener = _DummySTTListener  # type: ignore
+
+
 class STTClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
@@ -187,8 +228,10 @@ class STTClient:
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
+
     def _authenticator(self):
         from oci.signer import Signer
+
         if "key_content" in self.config:
             return Signer(
                 tenancy=self.config["tenancy"],
@@ -196,7 +239,7 @@ class STTClient:
                 fingerprint=self.config["fingerprint"],
                 private_key_file_location=None,
                 private_key_content=self.config["key_content"],
-                pass_phrase=self.config.get("pass_phrase")
+                pass_phrase=self.config.get("pass_phrase"),
             )
         else:
             return Signer(
@@ -204,8 +247,9 @@ class STTClient:
                 user=self.config["user"],
                 fingerprint=self.config["fingerprint"],
                 private_key_file_location=self.config.get("key_file"),
-                pass_phrase=self.config.get("pass_phrase")
+                pass_phrase=self.config.get("pass_phrase"),
             )
+
     async def stream_session(self):
         try:
             params = RealtimeParameters()
@@ -217,7 +261,9 @@ class STTClient:
         params.partial_silence_threshold_in_ms = 0
         params.final_silence_threshold_in_ms = 2000
         params.punctuation = RealtimeParameters.PUNCTUATION_AUTO
-        params.stabilize_partial_results = RealtimeParameters.STABILIZE_PARTIAL_RESULTS_MEDIUM
+        params.stabilize_partial_results = (
+            RealtimeParameters.STABILIZE_PARTIAL_RESULTS_MEDIUM
+        )
         result_queue = asyncio.Queue(maxsize=100)
         listener = _STTListener(result_queue)
         url = f"wss://realtime.aiservice.{self.region}.oci.oraclecloud.com"
@@ -242,11 +288,11 @@ class STTClient:
                 t.cancel()
         except Exception:
             pass
-            
+
         if loop_task.done() and loop_task.exception():
             raise loop_task.exception()
-            
+
         if not listener.connected.is_set():
             raise RuntimeError("Failed to connect STT listener.")
-            
+
         return client, result_queue, listener.done, loop_task

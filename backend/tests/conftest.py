@@ -11,9 +11,9 @@ os.environ["OTL_BASE_URL"] = "https://mock.example.com"
 os.environ["OCI_CONFIG_PROFILE"] = "DEFAULT"
 os.environ["SESSION_SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["CSP_DEV_MODE"] = "true"
-os.environ["TEST_MODE"] = "true"  
-os.environ["SESSION_COOKIE_SECURE"] = "false"  
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+os.environ["TEST_MODE"] = "true"
+os.environ["SESSION_COOKIE_SECURE"] = "false"
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from backend.main import app
 
 
@@ -21,6 +21,8 @@ from backend.main import app
 def client():
     with TestClient(app) as client:
         yield client
+
+
 @pytest.fixture(autouse=True)
 def mock_otl_client():
     with (
@@ -31,7 +33,9 @@ def mock_otl_client():
         patch("backend.api.v1.health.otl_client", mock),
     ):
         mock.list_worker_assignments.return_value = []
-        mock.aget_worker = AsyncMock(return_value={"personNumber": "testuser", "fullName": "Test User"})
+        mock.aget_worker = AsyncMock(
+            return_value={"personNumber": "testuser", "fullName": "Test User"}
+        )
         mock.get_worker.return_value = {
             "personNumber": "testuser",
             "fullName": "Test User",
@@ -66,7 +70,6 @@ def mock_fusion_catalogue():
         yield mock
 
 
-
 @pytest.fixture(autouse=True)
 def mock_speech_client():
     with (
@@ -76,4 +79,4 @@ def mock_speech_client():
         mock_instance = mock.return_value
         mock_instance.synthesize.return_value = b"audio"
         mock_instance.mime = "audio/wav"
-        yield mock
+        yield mock

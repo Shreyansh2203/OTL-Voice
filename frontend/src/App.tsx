@@ -1,13 +1,19 @@
-import { useCallback, useState, useEffect } from "react";
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as api from "./api/client";
-import { LoginView } from "./features/auth";
-import { ChatView } from "./features/chat";
-import type { Identity } from "./types";
+import { useCallback, useState, useEffect } from 'react';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import * as api from './api/client';
+import { LoginView } from './features/auth';
+import { ChatView } from './features/chat';
+import type { Identity } from './types';
+
 function AppContent() {
   const qc = useQueryClient();
   const { data: identity, isLoading } = useQuery({
-    queryKey: ["session"],
+    queryKey: ['session'],
     queryFn: async () => {
       try {
         return await api.getSession();
@@ -15,26 +21,26 @@ function AppContent() {
         if (err instanceof api.ApiError && err.status === 401) {
           return null;
         }
-        throw err;
+        return null;
       }
     },
     retry: false,
     refetchOnWindowFocus: false,
   });
   const handleLogin = useCallback((user: Identity) => {
-    qc.setQueryData(["session"], user);
+    qc.setQueryData(['session'], user);
   }, [qc]);
   const handleLogout = useCallback(async () => {
     await api.logout().catch(() => undefined);
-    qc.setQueryData(["session"], null);
+    qc.setQueryData(['session'], null);
   }, [qc]);
   const handleSessionExpired = useCallback(() => {
-    qc.setQueryData(["session"], null);
+    qc.setQueryData(['session'], null);
   }, [qc]);
   useEffect(() => {
     if (!identity) return;
-    const baseInterval = 1000 * 60 * 15; 
-    const jitter = Math.random() * 1000 * 60 * 2; 
+    const baseInterval = 1000 * 60 * 15;
+    const jitter = Math.random() * 1000 * 60 * 2;
     const interval = setInterval(() => {
       api.refreshSession().catch(() => handleSessionExpired());
     }, baseInterval + jitter);
@@ -59,14 +65,17 @@ function AppContent() {
   );
 }
 export default function App() {
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false, 
-        refetchOnWindowFocus: false,
-      },
-    },
-  }));
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  );
   return (
     <QueryClientProvider client={queryClient}>
       <AppContent />

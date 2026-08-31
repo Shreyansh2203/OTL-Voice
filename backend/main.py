@@ -9,6 +9,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,7 +40,6 @@ from .services.otl_client import OtlConfigError, OtlError
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,10 @@ app.add_middleware(
 async def csrf_protection(request: Request, call_next):
     if os.getenv("TEST_MODE", "false").strip().lower() == "true":
         return await call_next(request)
-    if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path in ("/api/health", "/api/health/otl"):
+    if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path in (
+        "/api/health",
+        "/api/health/otl",
+    ):
         response = await call_next(request)
         if CSRF_COOKIE_NAME not in request.cookies:
             token = _generate_csrf_token()
@@ -168,7 +173,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "microphone=(self), camera=(), geolocation=()"
+    response.headers["Permissions-Policy"] = (
+        "microphone=(self), camera=(), geolocation=()"
+    )
     return response
 
 
@@ -248,12 +255,15 @@ def serve_spa(full_path: str) -> Response:
     if full_path == "api" or full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
     candidate = (_DIST / full_path).resolve()
-    if full_path and (_DIST == candidate or _DIST in candidate.parents) and candidate.is_file():
+    if (
+        full_path
+        and (_DIST == candidate or _DIST in candidate.parents)
+        and candidate.is_file()
+    ):
         revalidate = candidate.name in ("sw.js", "manifest.webmanifest")
         headers = {"Cache-Control": "no-cache"} if revalidate else None
         return FileResponse(candidate, headers=headers)
     return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})
-
 
 
 __all__ = [
@@ -273,4 +283,4 @@ __all__ = [
     "otl_client",
     "rate_limiter",
     "ws_tracker",
-]
+]

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import * as api from "../../api/client";
+import { useEffect, useState } from 'react';
+import * as api from '../../api/client';
 interface TimeAttribute {
   attributeName: string;
   attributeValue: string;
@@ -41,10 +41,10 @@ export default function TimecardHistory({
       .catch((err) => {
         if (!mounted) return;
         if (err.status === 401) {
-            onSessionExpired();
-            return;
+          onSessionExpired();
+          return;
         }
-        setError(err.message || "Failed to load timesheets");
+        setError(err.message || 'Failed to load timesheets');
         setLoading(false);
       });
     return () => {
@@ -52,7 +52,11 @@ export default function TimecardHistory({
     };
   }, [onSessionExpired]);
   if (loading) {
-    return <div className="card loading">Loading timesheets from Oracle Fusion...</div>;
+    return (
+      <div className="card loading">
+        Loading timesheets from Oracle Fusion...
+      </div>
+    );
   }
   if (error) {
     return <div className="card error">{error}</div>;
@@ -78,16 +82,18 @@ export default function TimecardHistory({
             {items.map((item: TimecardItem, idx: number) => {
               const event = item.timeRecordEvent?.[0] || item;
               const attrs = event.timeRecordEventAttribute || [];
-              const commentAttr = attrs.find((a: TimeAttribute) => a.attributeName === "Comment");
-              const comment = commentAttr ? commentAttr.attributeValue : "N/A";
-// Basic date parse from start time
-               let dateStr = "Unknown Date";
-               if (event.startTime) {
-                 const dateObj = new Date(event.startTime);
-                 if (!isNaN(dateObj.getTime())) {
-                   dateStr = dateObj.toLocaleDateString();
-                 }
-               }
+              const commentAttr = attrs.find(
+                (a: TimeAttribute) => a.attributeName === 'Comment'
+              );
+              const comment = commentAttr ? commentAttr.attributeValue : 'N/A';
+              // Basic date parse from start time
+              let dateStr = 'Unknown Date';
+              if (event.startTime) {
+                const dateObj = new Date(event.startTime);
+                if (!isNaN(dateObj.getTime())) {
+                  dateStr = dateObj.toLocaleDateString();
+                }
+              }
               const status = event.eventStatus || 'Submitted';
               const isApproved = status === 'APPROVED';
               return (
@@ -95,11 +101,15 @@ export default function TimecardHistory({
                   <td className="timecard-cell">{dateStr}</td>
                   <td className="timecard-cell">{comment}</td>
                   <td className="timecard-cell">
-                    <span className={`badge ${isApproved ? "badge-success" : "badge-warning"}`}>
+                    <span
+                      className={`badge ${isApproved ? 'badge-success' : 'badge-warning'}`}
+                    >
                       {status}
                     </span>
                   </td>
-                  <td className="timecard-cell timecard-cell-num">{event.measure}</td>
+                  <td className="timecard-cell timecard-cell-num">
+                    {event.measure}
+                  </td>
                 </tr>
               );
             })}

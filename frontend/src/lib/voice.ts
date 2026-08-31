@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface IWindowWithSpeech extends Window {
   SpeechRecognition?: any;
@@ -7,7 +7,7 @@ interface IWindowWithSpeech extends Window {
 
 export function useSpeechInput() {
   const [supported] = useState(() => {
-    if (typeof window === "undefined") return false;
+    if (typeof window === 'undefined') return false;
     const win = window as unknown as IWindowWithSpeech;
     return !!(win.SpeechRecognition || win.webkitSpeechRecognition);
   });
@@ -47,7 +47,7 @@ export function useSpeechInput() {
       continuous = true
     ) => {
       setErrorMsg(null);
-      if (!supported || typeof window === "undefined") return;
+      if (!supported || typeof window === 'undefined') return;
 
       // Stop any existing instance
       stop(true);
@@ -70,13 +70,16 @@ export function useSpeechInput() {
         recognition.continuous = continuous;
         recognition.interimResults = true;
         recognition.lang =
-          typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
+          typeof navigator !== 'undefined'
+            ? navigator.language || 'en-US'
+            : 'en-US';
         recognition.maxAlternatives = 1;
 
         let hasStarted = false;
-        let lastFinal = "";
+        let lastFinal = '';
 
         recognition.onspeechstart = () => {
+          if (!isListeningRef.current) return;
           if (!hasStarted) {
             hasStarted = true;
             callbacksRef.current.onSpeechStart?.();
@@ -84,6 +87,7 @@ export function useSpeechInput() {
         };
 
         recognition.onaudiostart = () => {
+          if (!isListeningRef.current) return;
           if (!hasStarted) {
             hasStarted = true;
             callbacksRef.current.onSpeechStart?.();
@@ -91,12 +95,12 @@ export function useSpeechInput() {
         };
 
         recognition.onresult = (event: any) => {
-          let interimTranscript = "";
-          let finalTranscript = "";
+          let interimTranscript = '';
+          let finalTranscript = '';
 
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
+          for (let i = 0; i < event.results.length; ++i) {
             const result = event.results[i];
-            const transcript = result[0]?.transcript || "";
+            const transcript = result[0]?.transcript || '';
             if (result.isFinal) {
               finalTranscript += transcript;
             } else {
@@ -104,7 +108,11 @@ export function useSpeechInput() {
             }
           }
 
-          if (!hasStarted && (interimTranscript.trim() || finalTranscript.trim())) {
+          if (
+            !hasStarted &&
+            isListeningRef.current &&
+            (interimTranscript.trim() || finalTranscript.trim())
+          ) {
             hasStarted = true;
             callbacksRef.current.onSpeechStart?.();
           }
@@ -119,27 +127,33 @@ export function useSpeechInput() {
             if (!continuous) {
               stop();
             }
-          } else if (interimTranscript.trim()) {
-            callbacksRef.current.onInterim?.(interimTranscript.trim());
+          }
+          if (interimTranscript.trim()) {
+            const combined = finalTranscript ? finalTranscript + ' ' + interimTranscript : interimTranscript;
+            callbacksRef.current.onInterim?.(combined.trim());
           }
         };
 
         recognition.onerror = (event: any) => {
           const err = event?.error;
-          if (err === "not-allowed" || err === "service-not-allowed") {
+          if (err === 'not-allowed' || err === 'service-not-allowed') {
             setErrorMsg(
-              "Microphone access blocked. Please allow mic in browser settings."
+              'Microphone access blocked. Please allow mic in browser settings.'
             );
             stop(true);
-          } else if (err === "no-speech") {
+          } else if (err === 'no-speech') {
             // Non-fatal, keep listening if continuous
-          } else if (err !== "aborted") {
-            console.warn("Web Speech API recognition error:", err);
+          } else if (err !== 'aborted') {
+            console.warn('Web Speech API recognition error:', err);
           }
         };
 
         recognition.onend = () => {
-          if (isListeningRef.current && continuous && recognitionRef.current === recognition) {
+          if (
+            isListeningRef.current &&
+            continuous &&
+            recognitionRef.current === recognition
+          ) {
             try {
               recognition.start();
               return;
@@ -159,10 +173,10 @@ export function useSpeechInput() {
       } catch (err: any) {
         setListening(false);
         isListeningRef.current = false;
-        let msg = "Microphone error: " + (err.message || String(err));
-        if (err.name === "NotAllowedError") {
+        let msg = 'Microphone error: ' + (err.message || String(err));
+        if (err.name === 'NotAllowedError') {
           msg =
-            "Microphone access blocked. Please allow mic in browser settings.";
+            'Microphone access blocked. Please allow mic in browser settings.';
         }
         setErrorMsg(msg);
       }
@@ -184,11 +198,12 @@ export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const resolveRef = useRef<
-    ((val: {
-      success: boolean;
-      autoplayBlocked?: boolean;
-      interrupted?: boolean;
-    }) => void) | null
+    | ((val: {
+        success: boolean;
+        autoplayBlocked?: boolean;
+        interrupted?: boolean;
+      }) => void)
+    | null
   >(null);
   const [playing, setPlaying] = useState(false);
 
@@ -247,7 +262,7 @@ export function useAudioPlayer() {
         audio.onerror = (e) => {
           setPlaying(false);
           const isAutoplayBlocked =
-            audio.error?.code === 4 || (e as any).name === "NotAllowedError";
+            audio.error?.code === 4 || (e as any).name === 'NotAllowedError';
           if (resolveRef.current === resolve) {
             resolveRef.current = null;
             resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
@@ -262,7 +277,7 @@ export function useAudioPlayer() {
           .catch((err) => {
             setPlaying(false);
             const isAutoplayBlocked =
-              err.name === "NotAllowedError" || err.name === "AbortError";
+              err.name === 'NotAllowedError' || err.name === 'AbortError';
             if (resolveRef.current === resolve) {
               resolveRef.current = null;
               resolve({ success: false, autoplayBlocked: isAutoplayBlocked });

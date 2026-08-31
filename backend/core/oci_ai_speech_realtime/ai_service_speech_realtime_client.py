@@ -1,4 +1,3 @@
-
 import abc
 import json
 import logging
@@ -23,6 +22,8 @@ from oci.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+
 class RealtimeSpeechClientListener(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -40,26 +41,35 @@ class RealtimeSpeechClientListener(metaclass=abc.ABCMeta):
             and hasattr(subclass, "on_network_event")
             and callable(subclass.on_network_event)
         )
+
     @abc.abstractmethod
     def on_network_event(self, message):
         pass
+
     @abc.abstractmethod
     def on_ack_message(self, ackmessage: RealtimeMessageAckAudio):
         pass
+
     @abc.abstractmethod
     def on_connect_message(self, connectmessage: RealtimeMessageConnect):
         pass
+
     @abc.abstractmethod
     def on_connect(self):
         pass
+
     @abc.abstractmethod
     def on_error(self, error: RealtimeMessageError):
         pass
+
     @abc.abstractmethod
     def on_result(self, result: RealtimeMessageResult):
         pass
+
     def on_close(self, error_code: int, error_message: str):
         pass
+
+
 class RealtimeSpeechClient:
     def __init__(
         self,
@@ -95,10 +105,11 @@ class RealtimeSpeechClient:
         self.connection = None
         self.uri = (
             self.service_endpoint
-            + f"{ self._parse_parameters(realtime_speech_parameters)}"
+            + f"{self._parse_parameters(realtime_speech_parameters)}"
         )
         self.compartment_id = compartment_id
         self.close_flag = False
+
     async def connect(self):
         logger.info(f"Connecting to: {self.uri}")
         async with websockets.connect(self.uri, ping_interval=None) as ws:
@@ -107,6 +118,7 @@ class RealtimeSpeechClient:
             self.listener.on_connect()
             await self._send_credentials(ws)
             await self._handle_messages(ws)
+
     async def _send_credentials(self, ws):
         parsed_url = urlparse(self.uri)
         headers = {"date": formatdate(usegmt=True), "host": parsed_url.hostname}
@@ -123,14 +135,17 @@ class RealtimeSpeechClient:
             "compartmentId": self.compartment_id,
         }
         await ws.send(json.dumps(authentication_message_dict))
+
     async def send_data(self, data):
         if self.connection is not None:
             await self.connection.send(data)
+
     async def request_final_result(self):
         if self.connection is not None:
             request_message = RealtimeMessageSendFinalResult()
             logger.info("Requesting final result.")
             await self.connection.send(str(request_message))
+
     def on_close(self, error_code, error_message):
         logger.error(
             f"Connection with server closed, error code: {error_code} and reason: {error_message}"
@@ -138,6 +153,7 @@ class RealtimeSpeechClient:
         self.listener.on_close(error_code, error_message)
         self.close_flag = True
         self.connection = None
+
     async def _handle_messages(self, ws):
         while not self.close_flag:
             try:
@@ -155,11 +171,13 @@ class RealtimeSpeechClient:
                 self.on_close(e.code, e.reason)
             except Exception as e:
                 logger.error(f"Error handling message: {e}")
+
     def close(self):
         logger.info("Client has initiated closure")
         self.listener.on_close(1000, "Closure Initiated by Client")
         self.close_flag = True
         self.connection = None
+
     def _parse_parameters(self, params: RealtimeParameters):
         parameterString = "/ws/transcribe/stream?"
         if params.is_ack_enabled is not None:
@@ -196,10 +214,7 @@ class RealtimeSpeechClient:
             parameterString += "languageCode=" + params.language_code + "&"
         if params.model_domain is not None:
             parameterString += "modelDomain=" + params.model_domain + "&"
-        if (
-            params.model_type is not None
-            and params.model_type != "ORACLE"
-        ):
+        if params.model_type is not None and params.model_type != "ORACLE":
             parameterString += "modelType=" + params.model_type + "&"
         if params.stabilize_partial_results is not None:
             parameterString += (
@@ -217,11 +232,13 @@ class RealtimeSpeechClient:
         if parameterString[-1] == "&":
             parameterString = parameterString[:-1]
         return parameterString
+
     def _get_service_endpoint(self, config):
         region = config.get("region")
         if not region:
             raise ValueError("Region not found in config")
         return f"wss://realtime.aiservice.{region}.oci.oraclecloud.com"
+
     def _validate_signer_and_endpoints(self, config, signer, service_endpoint):
         validate_config(config, signer=signer)
         if signer is not None:

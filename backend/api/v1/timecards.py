@@ -71,7 +71,9 @@ _STRICT_ASSIGNMENT_CACHE: bool | None = None
 def _strict_assignment() -> bool:
     global _STRICT_ASSIGNMENT_CACHE
     if _STRICT_ASSIGNMENT_CACHE is None:
-        _STRICT_ASSIGNMENT_CACHE = os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
+        _STRICT_ASSIGNMENT_CACHE = (
+            os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
+        )
     return _STRICT_ASSIGNMENT_CACHE
 
 
@@ -104,13 +106,20 @@ def _validate_timecard_entry(
                 if project_no and str(p.get("projectNo")) == str(project_no):
                     project_found = True
                     break
-                if not project_no and project_name and p.get("projectName") == project_name:
+                if (
+                    not project_no
+                    and project_name
+                    and p.get("projectName") == project_name
+                ):
                     project_found = True
                     break
             if project_found:
                 break
         if not project_found:
-            return False, f"Project {project_no or project_name} is not in your assigned projects"
+            return (
+                False,
+                f"Project {project_no or project_name} is not in your assigned projects",
+            )
     return True, None
 
 
@@ -129,18 +138,26 @@ def _resolve_entry(
                 project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
-            if not project_no and norm.get("projectName") and p.get("projectName") == norm.get("projectName"):
+            if (
+                not project_no
+                and norm.get("projectName")
+                and p.get("projectName") == norm.get("projectName")
+            ):
                 project = dict(p)
                 project["workOrder"] = order.get("workOrder")
                 break
         if project:
             break
-    resolved.update({
-        "projectId": project.get("projectId") if project else None,
-        "projectNo": project.get("projectNo") if project else project_no,
-        "workOrder": project.get("workOrder") if project else None,
-        "projectName": project.get("projectName") if project else norm.get("projectName"),
-    })
+    resolved.update(
+        {
+            "projectId": project.get("projectId") if project else None,
+            "projectNo": project.get("projectNo") if project else project_no,
+            "workOrder": project.get("workOrder") if project else None,
+            "projectName": project.get("projectName")
+            if project
+            else norm.get("projectName"),
+        }
+    )
     if not resolved.get("taskId") and resolved.get("taskDetails"):
         target_name = str(resolved["taskDetails"]).lower()
         if project:
@@ -182,7 +199,11 @@ async def submit_timecard(
         )
     assignments_for_validation = []
     if _strict_assignment():
-        assignments_for_validation = await fusion_catalogue.alist_assignments_for_worker(ctx.employee_id, ctx.full_name)
+        assignments_for_validation = (
+            await fusion_catalogue.alist_assignments_for_worker(
+                ctx.employee_id, ctx.full_name
+            )
+        )
     for i, entry in enumerate(entries):
         valid, error = _validate_timecard_entry(entry, assignments_for_validation)
         if not valid:
@@ -193,9 +214,13 @@ async def submit_timecard(
     assignments = assignments_for_validation
     resolved = [_resolve_entry(entry, ctx, assignments) for entry in entries]
     try:
-        results = await otl_client.acreate_many(otl_client.service_credential(), resolved)
+        results = await otl_client.acreate_many(
+            otl_client.service_credential(), resolved
+        )
     except Exception as exc:
-        logger.warning("Live OTL submit failed (%s), returning local simulated results", exc)
+        logger.warning(
+            "Live OTL submit failed (%s), returning local simulated results", exc
+        )
         results = [
             {
                 "index": idx,
@@ -217,7 +242,9 @@ async def submit_timecard(
 
 @router.get("/api/otl/timecards")
 async def list_timecards(
-    limit: int = Query(default=25, ge=1, le=100, description="Maximum records to fetch (1-100)"),
+    limit: int = Query(
+        default=25, ge=1, le=100, description="Maximum records to fetch (1-100)"
+    ),
     offset: int = Query(default=0, ge=0, description="Pagination offset (>=0)"),
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
@@ -234,40 +261,65 @@ async def list_timecards(
                 person_number=ctx.employee_id,
             )
         except Exception as exc:
-            logger.info("Could not fetch live timecards from Oracle (%s), returning empty list", exc)
+            logger.info(
+                "Could not fetch live timecards from Oracle (%s), returning empty list",
+                exc,
+            )
             timecards = {"items": []}
     for item in timecards.get("items", []):
         attrs = item.get("timeAttributes", [])
         if "timeRecordEvent" in item:
             for event in item.get("timeRecordEvent", []):
                 evt_attrs = event.get("timeRecordEventAttribute", [])
-                has_comment = any(a.get("attributeName") == "Comment" for a in evt_attrs)
+                has_comment = any(
+                    a.get("attributeName") == "Comment" for a in evt_attrs
+                )
                 if not has_comment:
-                    proj_attr = next((a for a in evt_attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+                    proj_attr = next(
+                        (
+                            a
+                            for a in evt_attrs
+                            if a.get("attributeName") == "PJC_PROJECT_ID"
+                        ),
+                        None,
+                    )
                     if proj_attr and proj_attr.get("attributeValue"):
-                        proj = fusion_catalogue.get_project_by_id(proj_attr.get("attributeValue"))
+                        proj = fusion_catalogue.get_project_by_id(
+                            proj_attr.get("attributeValue")
+                        )
                         if proj:
-                            evt_attrs.append({
-                                "attributeName": "Comment",
-                                "attributeValue": f"Project: {proj.get('project_name')}",
-                            })
+                            evt_attrs.append(
+                                {
+                                    "attributeName": "Comment",
+                                    "attributeValue": f"Project: {proj.get('project_name')}",
+                                }
+                            )
         else:
             item["timeRecordEventAttribute"] = attrs
             has_comment = any(a.get("attributeName") == "Comment" for a in attrs)
             if not has_comment:
-                proj_attr = next((a for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+                proj_attr = next(
+                    (a for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"),
+                    None,
+                )
                 if proj_attr and proj_attr.get("attributeValue"):
-                    proj = fusion_catalogue.get_project_by_id(proj_attr.get("attributeValue"))
+                    proj = fusion_catalogue.get_project_by_id(
+                        proj_attr.get("attributeValue")
+                    )
                     if proj:
-                        attrs.append({
-                            "attributeName": "Comment",
-                            "attributeValue": f"Project: {proj.get('project_name')}",
-                        })
+                        attrs.append(
+                            {
+                                "attributeName": "Comment",
+                                "attributeValue": f"Project: {proj.get('project_name')}",
+                            }
+                        )
             if item.get("comment") and not has_comment:
-                attrs.append({
-                    "attributeName": "Comment",
-                    "attributeValue": item.get("comment"),
-                })
+                attrs.append(
+                    {
+                        "attributeName": "Comment",
+                        "attributeValue": item.get("comment"),
+                    }
+                )
     return timecards
 
 
@@ -276,7 +328,9 @@ async def labour_assignments(
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
     try:
-        work_orders = await fusion_catalogue.alist_assignments_for_worker(ctx.employee_id, ctx.full_name)
+        work_orders = await fusion_catalogue.alist_assignments_for_worker(
+            ctx.employee_id, ctx.full_name
+        )
     except Exception:
         work_orders = []
     if not work_orders:
