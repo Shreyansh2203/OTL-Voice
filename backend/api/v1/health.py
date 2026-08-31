@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -32,7 +33,15 @@ def health() -> dict[str, str]:
 async def health_otl(
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
-    return await otl_client.avalidate(otl_client.service_credential())
+    try:
+        return await asyncio.wait_for(
+            otl_client.avalidate(otl_client.service_credential()), timeout=5.0
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Oracle Cloud OTL health check timed out after 5s",
+        )
 
 
 @router.post("/api/admin/refresh-catalogue")

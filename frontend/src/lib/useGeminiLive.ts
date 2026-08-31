@@ -23,6 +23,11 @@ export function useGeminiLive() {
   const playerNodeRef = useRef<AudioWorkletNode | null>(null);
   const isSessionActiveRef = useRef(false);
   const isMutedRef = useRef(false);
+  const liveStateRef = useRef<LiveVoiceState>('idle');
+
+  useEffect(() => {
+    liveStateRef.current = liveState;
+  }, [liveState]);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -204,7 +209,7 @@ export function useGeminiLive() {
         }
         const msg = e.data;
         if (msg && msg.buffer) {
-          if (msg.isVoiceActive && liveState === 'speaking') {
+          if (msg.isVoiceActive && liveStateRef.current === 'speaking') {
             // Client-side instant acoustic interruption
             playerNodeRef.current?.port.postMessage({ type: 'flush' });
             setLiveState('listening');
@@ -222,7 +227,7 @@ export function useGeminiLive() {
       setErrorMsg(`Could not start live voice session: ${msg}`);
       stopSession();
     }
-  }, [liveState, stopSession]);
+  }, [stopSession]);
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);

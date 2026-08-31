@@ -425,30 +425,33 @@ async def alist_timecard_entries(
 async def acreate_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    for index, entry in enumerate(entries):
+    async def _submit_single(index: int, entry: dict[str, Any]) -> dict[str, Any]:
         try:
             created = await acreate_timecard_entry(cred, entry)
-            results.append(
-                {
-                    "index": index,
-                    "ok": True,
-                    "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                    "recordNumber": created.get("timeRecordEventRequestId")
-                    or "UNKNOWN",
-                    "recordName": _default_record_name(entry),
-                }
-            )
+            return {
+                "index": index,
+                "ok": True,
+                "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                "recordName": _default_record_name(entry),
+            }
         except OtlError as exc:
-            results.append(
-                {
-                    "index": index,
-                    "ok": False,
-                    "status": exc.status_code,
-                    "error": exc.message,
-                }
-            )
-    return results
+            return {
+                "index": index,
+                "ok": False,
+                "status": exc.status_code,
+                "error": exc.message,
+            }
+        except Exception as exc:
+            return {
+                "index": index,
+                "ok": False,
+                "status": 500,
+                "error": str(exc),
+            }
+
+    tasks = [_submit_single(i, entry) for i, entry in enumerate(entries)]
+    return list(await asyncio.gather(*tasks))
 
 
 async def alist_worker_assignments(

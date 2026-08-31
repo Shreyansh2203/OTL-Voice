@@ -7,9 +7,9 @@ import secrets
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self, cast
 
-from fastapi import Cookie, HTTPException, status
+from fastapi import Cookie, HTTPException, Response, status
 
 from ..models import Employee
 
@@ -27,6 +27,44 @@ def _ttl_seconds() -> int:
 
 def cookie_secure() -> bool:
     return os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() != "false"
+
+
+def set_auth_cookies(
+    response: Response,
+    session_token: str,
+    csrf_token: str,
+    csrf_cookie_name: str = "csrf_token",
+) -> None:
+    samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
+    samesite_valid = (
+        samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
+    )
+    samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
+    if samesite == "none" and not cookie_secure():
+        raise RuntimeError(
+            "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true. "
+            "Either set SESSION_COOKIE_SECURE=true or use SESSION_COOKIE_SAMESITE=lax/strict."
+        )
+    max_age = _ttl_seconds()
+    is_secure = cookie_secure()
+    response.set_cookie(
+        key=_session_cookie_name(),
+        value=session_token,
+        httponly=True,
+        secure=is_secure,
+        samesite=samesite,
+        max_age=max_age,
+        path="/",
+    )
+    response.set_cookie(
+        key=csrf_cookie_name,
+        value=csrf_token,
+        httponly=False,
+        secure=is_secure,
+        samesite=samesite,
+        max_age=max_age,
+        path="/",
+    )
 
 
 import jwt
@@ -102,6 +140,7 @@ class _TokenBlocklist:
             except Exception:
                 self._use_redis = False
                 self._redis = None
+        return self._redis
 
     async def add(self, token: str) -> None:
         r = await self._ensure_redis()

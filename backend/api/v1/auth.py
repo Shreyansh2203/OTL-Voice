@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-import os
 import secrets
-from typing import Any, Literal, cast
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
@@ -93,34 +92,7 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
     )
     sid = auth.create_session(employee)
     csrf_token = _generate_csrf_token()
-    samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
-    samesite_valid = (
-        samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
-    )
-    samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
-    if samesite == "none" and not auth.cookie_secure():
-        raise RuntimeError(
-            "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true. "
-            "Either set SESSION_COOKIE_SECURE=true or use SESSION_COOKIE_SAMESITE=lax/strict."
-        )
-    response.set_cookie(
-        key=auth._session_cookie_name(),
-        value=sid,
-        httponly=True,
-        secure=auth.cookie_secure(),
-        samesite=samesite,
-        max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
-        path="/",
-    )
-    response.set_cookie(
-        key=CSRF_COOKIE_NAME,
-        value=csrf_token,
-        httponly=False,
-        secure=auth.cookie_secure(),
-        samesite=samesite,
-        max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
-        path="/",
-    )
+    auth.set_auth_cookies(response, sid, csrf_token, CSRF_COOKIE_NAME)
     return identity_dict(employee)
 
 
@@ -152,33 +124,6 @@ async def refresh_session(
         employee_id=ctx.employee_id,
     )
     new_token = auth.create_session(employee)
-    samesite_raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
-    samesite_valid = (
-        samesite_raw if samesite_raw in ("lax", "strict", "none") else "lax"
-    )
-    samesite = cast(Literal["lax", "strict", "none"], samesite_valid)
-    if samesite == "none" and not auth.cookie_secure():
-        raise RuntimeError(
-            "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true. "
-            "Either set SESSION_COOKIE_SECURE=true or use SESSION_COOKIE_SAMESITE=lax/strict."
-        )
-    response.set_cookie(
-        key=auth._session_cookie_name(),
-        value=new_token,
-        httponly=True,
-        secure=auth.cookie_secure(),
-        samesite=samesite,
-        max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
-        path="/",
-    )
     csrf_token = _generate_csrf_token()
-    response.set_cookie(
-        key=CSRF_COOKIE_NAME,
-        value=csrf_token,
-        httponly=False,
-        secure=auth.cookie_secure(),
-        samesite=samesite,
-        max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
-        path="/",
-    )
+    auth.set_auth_cookies(response, new_token, csrf_token, CSRF_COOKIE_NAME)
     return {"status": "refreshed"}

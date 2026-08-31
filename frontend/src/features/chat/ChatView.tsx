@@ -5,8 +5,10 @@ import { extractEntries, stripEntriesBlock } from "../../lib/entries";
 import { useAudioPlayer, useSpeechInput } from "../../lib/voice";
 import type { ChatMessage } from "../../types";
 import { SpeakerIcon } from "../../components/ui/icons";
+import { useGeminiLive } from "../../lib/useGeminiLive";
 import { ProjectAssignments, ReviewPanel, TimecardHistory } from "../timesheets";
 import Composer from "./Composer";
+import LiveVoiceModal from "./LiveVoiceModal";
 import MessageBubble from "./MessageBubble";
 
 const KICKOFF = "Please begin the session now.";
@@ -33,6 +35,7 @@ export default function ChatView({
   const [viewTab, setViewTab] = useState<"chat" | "history" | "projects">("chat");
   const player = useAudioPlayer();
   const mic = useSpeechInput();
+  const liveVoice = useGeminiLive();
   const voiceOnRef = useRef(voiceOn);
   useEffect(() => {
     voiceOnRef.current = voiceOn;
@@ -390,6 +393,17 @@ export default function ChatView({
              viewTab === "projects" ? "Project Assignments" : 
              "Timecard History"}
           </h2>
+          {viewTab === "chat" && (
+            <button
+              type="button"
+              className="btn-live-voice"
+              onClick={() => liveVoice.startSession()}
+              aria-label="Open Gemini Live multimodal voice session"
+            >
+              <span className="live-dot" />
+              <span>Gemini Live Voice</span>
+            </button>
+          )}
         </header>
         {viewTab === "history" ? (
           <div className="workspace-content scroll-y">
@@ -443,6 +457,16 @@ export default function ChatView({
             </div>
           </div>
         )}
+        <LiveVoiceModal
+          isOpen={liveVoice.isActive}
+          liveState={liveVoice.liveState}
+          errorMsg={liveVoice.errorMsg}
+          transcript={liveVoice.transcript}
+          toolCalls={liveVoice.toolCalls}
+          isMuted={liveVoice.isMuted}
+          onToggleMute={liveVoice.toggleMute}
+          onClose={liveVoice.stopSession}
+        />
       </main>
     </div>
   );

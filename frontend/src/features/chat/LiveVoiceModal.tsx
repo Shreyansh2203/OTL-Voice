@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import { MicIcon, StopIcon } from '../../components/ui/icons';
 import { LiveVoiceState, ToolExecutionEvent } from '../../lib/useGeminiLive';
 
@@ -23,6 +23,17 @@ export const LiveVoiceModal: FC<LiveVoiceModalProps> = ({
   onToggleMute,
   onClose,
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const getStatusLabel = () => {

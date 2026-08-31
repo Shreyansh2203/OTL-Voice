@@ -4,6 +4,7 @@ import asyncio
 import logging
 import mimetypes
 import os
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api.v1.auth import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, _generate_csrf_token
-from .api.v1.chat import _cors_origins, _speech_client
+from .api.v1.chat import _speech_client
 from .api.v1.router import api_v1_router
 from .api.v1.timecards import (
     _extract_entries,
@@ -26,6 +27,9 @@ from .api.v1.timecards import (
     _strict_assignment,
 )
 from .core import auth
+from .core.config import cors_origins
+
+_cors_origins = cors_origins
 from .core.limiter import (
     auth_rate_limiter,
     rate_limiter,
@@ -130,7 +134,11 @@ async def csrf_protection(request: Request, call_next):
         return await call_next(request)
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
     header_token = request.headers.get(CSRF_HEADER_NAME)
-    if not cookie_token or not header_token or cookie_token != header_token:
+    if (
+        not cookie_token
+        or not header_token
+        or not secrets.compare_digest(cookie_token, header_token)
+    ):
         return JSONResponse(
             status_code=403,
             content={"detail": "CSRF token missing or invalid"},
@@ -150,6 +158,7 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "worker-src 'self' blob:; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "font-src 'self'; "
@@ -162,6 +171,7 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self'; "
+            "worker-src 'self' blob:; "
             "style-src 'self'; "
             "img-src 'self' data:; "
             "font-src 'self'; "

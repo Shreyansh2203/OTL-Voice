@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import logging
 import os
@@ -187,7 +188,10 @@ class GeminiLiveSession:
                         args = call.get("args", {})
                         call_id = call.get("id")
                         try:
-                            result = await self.tool_executor(name, args)
+                            res = self.tool_executor(name, args)
+                            result = (
+                                await res if inspect.isawaitable(res) else res
+                            )
                             responses.append(
                                 {
                                     "id": call_id,

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ...core import auth
 from ...core.auth import SessionContext
+from ...core.config import is_dev_mode, is_test_mode
 from ...schemas.timecards import TimecardBody
 from ...services import fusion_catalogue, otl_client
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["timecards", "labour"])
 
-_FENCED_JSON = re.compile(r"```(?:json)?\s*([\{\[][\s\S]*?[\}\]])\s*```", re.MULTILINE)
+_FENCED_JSON = re.compile(r"```(?:json)?\s*([{\[][\s\S]*?[}\]])\s*```", re.MULTILINE)
 
 
 def _normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -218,19 +219,27 @@ async def submit_timecard(
             otl_client.service_credential(), resolved
         )
     except Exception as exc:
-        logger.warning(
-            "Live OTL submit failed (%s), returning local simulated results", exc
-        )
-        results = [
-            {
-                "index": idx,
-                "ok": True,
-                "id": f"LOCAL-REQ-{idx + 1}",
-                "recordNumber": f"REC-{idx + 1}",
-                "recordName": f"{ctx.employee_id}-WO-101125",
-            }
-            for idx in range(len(resolved))
-        ]
+        if is_dev_mode() or is_test_mode():
+            logger.warning(
+                "Live OTL submit failed (%s), returning local simulated results in dev mode",
+                exc,
+            )
+            results = [
+                {
+                    "index": idx,
+                    "ok": True,
+                    "id": f"LOCAL-REQ-{idx + 1}",
+                    "recordNumber": f"REC-{idx + 1}",
+                    "recordName": f"{ctx.employee_id}-WO-101125",
+                }
+                for idx in range(len(resolved))
+            ]
+        else:
+            logger.error("Live OTL submit failed: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to submit timecards to Oracle Cloud: {exc}",
+            )
     succeeded = sum(1 for r in results if r.get("ok"))
     return {
         "submitted": len(results),

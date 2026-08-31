@@ -69,4 +69,22 @@ describe('LiveVoiceModal', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Connection timeout.');
     expect(screen.getByText('Microphone Muted')).toBeInTheDocument();
   });
+
+  it('closes modal on Escape key press', () => {
+    const onClose = vi.fn();
+    render(
+      <LiveVoiceModal
+        isOpen={true}
+        liveState="listening"
+        errorMsg={null}
+        transcript=""
+        toolCalls={[]}
+        isMuted={false}
+        onToggleMute={vi.fn()}
+        onClose={onClose}
+      />
+    );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

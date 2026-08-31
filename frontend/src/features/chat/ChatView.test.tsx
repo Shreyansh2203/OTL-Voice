@@ -268,14 +268,12 @@ describe('ChatView', () => {
   });
   it('handles barge-in interruption by stopping audio and active generation', async () => {
     let mockOnEvent: any;
-    vi.mocked(api.chatStream).mockImplementation(
-      async (history, onEvent, signal) => {
-        mockOnEvent = onEvent;
-        signal?.addEventListener('abort', () => {
-          // aborted
-        });
-      }
-    );
+    vi.mocked(api.chatStream).mockImplementation((history, onEvent, signal) => {
+      mockOnEvent = onEvent;
+      return new Promise<void>((resolve) => {
+        signal?.addEventListener('abort', () => resolve());
+      });
+    });
     const stopAudio = vi.fn();
     vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({
       play: vi.fn(),
@@ -293,7 +291,9 @@ describe('ChatView', () => {
     act(() => {
       mockOnEvent({ delta: 'Assistant speaking text...' });
     });
-    expect(screen.getByText('Assistant speaking text...')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Assistant speaking text...')).toBeInTheDocument();
+    });
 
     // Trigger barge-in event
     act(() => {
@@ -330,5 +330,13 @@ describe('ChatView', () => {
     const messages = [{ role: 'user', content: 'hello' } as any];
     const next = updateLastAssistant(messages, 'test', false);
     expect(next).toEqual(messages);
+  });
+
+  it('renders Gemini Live Voice button in header', () => {
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    const liveBtn = screen.getByRole('button', { name: /gemini live/i });
+    expect(liveBtn).toBeInTheDocument();
   });
 });

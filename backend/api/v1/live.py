@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from ...core import auth
+from ...core.config import cors_origins
 from ...core.limiter import ws_tracker
 from ...services import chat, fusion_catalogue, otl_client
 from ...services.gemini_live import GeminiLiveSession
@@ -18,11 +18,7 @@ router = APIRouter(tags=["live_voice"])
 
 
 def _cors_origins() -> list[str]:
-    raw = os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:4173,http://localhost:8000,http://localhost,http://127.0.0.1:5173,http://127.0.0.1:4173,http://127.0.0.1:8000",
-    )
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    return cors_origins()
 
 
 @router.websocket("/api/voice/live")
