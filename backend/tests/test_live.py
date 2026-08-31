@@ -51,3 +51,59 @@ async def test_gemini_live_session_events():
 
     await session.close()
     assert session._closed
+
+
+def test_live_voice_endpoint_origin_blocked():
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+
+    with (
+        patch(
+            "backend.core.auth.resolve",
+            return_value=type(
+                "ctx",
+                (),
+                {"employee_id": "123", "username": "test", "full_name": "Test User"},
+            )(),
+        ),
+        patch("backend.api.v1.live.ws_tracker.acquire", return_value=True),
+        patch("backend.api.v1.live.ws_tracker.release"),
+        patch(
+            "backend.api.v1.live._cors_origins",
+            return_value=["http://localhost:5173", "http://localhost:4173"],
+        ),
+    ):
+        with TestClient(app) as client:
+            try:
+                with client.websocket_connect(
+                    "/api/voice/live", headers={"Origin": "http://evil.com"}
+                ):
+                    pass
+                assert False, "Expected WebSocketDisconnect"
+            except Exception as e:
+                assert hasattr(e, "code") and e.code == 1008
+
+
+def test_live_voice_endpoint_unauthorized():
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+
+    with (
+        patch("backend.core.auth.resolve", return_value=None),
+        patch(
+            "backend.api.v1.live._cors_origins",
+            return_value=["http://localhost:5173"],
+        ),
+    ):
+        with TestClient(app) as client:
+            try:
+                with client.websocket_connect(
+                    "/api/voice/live", headers={"Origin": "http://localhost:5173"}
+                ):
+                    pass
+                assert False, "Expected WebSocketDisconnect"
+            except Exception as e:
+                assert hasattr(e, "code") and e.code == 1008
+

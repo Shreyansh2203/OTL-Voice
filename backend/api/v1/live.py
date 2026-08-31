@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
@@ -16,10 +17,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["live_voice"])
 
 
+def _cors_origins() -> list[str]:
+    raw = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:4173,http://localhost:8000,http://localhost,http://127.0.0.1:5173,http://127.0.0.1:4173,http://127.0.0.1:8000",
+    )
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 @router.websocket("/api/voice/live")
 async def live_voice_stream(websocket: WebSocket):
     """Bidirectional WebSocket endpoint for direct Audio-in to Audio-out Gemini Live session."""
     client_ip = websocket.client.host if websocket.client else "unknown"
+    origin = websocket.headers.get("origin") or websocket.headers.get("sec-websocket-origin")
+    allowed_origins = _cors_origins()
+    if origin and allowed_origins and origin not in allowed_origins:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed"
+        )
+        return
 
     otl_session = (
         websocket.cookies.get(auth._session_cookie_name())
