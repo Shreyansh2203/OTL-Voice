@@ -116,6 +116,7 @@ async def csrf_protection(request: Request, call_next):
     if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path in (
         "/api/health",
         "/api/health/otl",
+        "/api/auth/logout",
     ):
         response = await call_next(request)
         if CSRF_COOKIE_NAME not in request.cookies:

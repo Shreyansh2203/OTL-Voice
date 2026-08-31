@@ -147,20 +147,12 @@ describe('ChatView', () => {
     });
   });
   it('handles stream error properly', async () => {
-    let mockOnEvent: any;
-    vi.mocked(api.chatStream).mockImplementation((history, onEvent) => {
-      mockOnEvent = onEvent;
-      return new Promise<void>(() => {});
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      onEvent({ error: 'Failed!' });
     });
     render(
       <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
-    await waitFor(() => {
-      expect(api.chatStream).toHaveBeenCalled();
-    });
-    act(() => {
-      mockOnEvent({ error: 'Failed!' });
-    });
     await waitFor(() => {
       expect(screen.getByText('Sorry — Failed!')).toBeInTheDocument();
     });
@@ -332,11 +324,13 @@ describe('ChatView', () => {
     expect(next).toEqual(messages);
   });
 
-  it('renders Gemini Live Voice button in header', () => {
+  it('renders Gemini Live Voice button in header', async () => {
     render(
       <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
-    const liveBtn = screen.getByRole('button', { name: /gemini live/i });
-    expect(liveBtn).toBeInTheDocument();
+    await waitFor(() => {
+      const liveBtn = screen.getByRole('button', { name: /gemini live/i });
+      expect(liveBtn).toBeInTheDocument();
+    });
   });
 });
