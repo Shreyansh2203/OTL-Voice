@@ -48,19 +48,7 @@ vi.mock('../../lib/oci_voice', () => ({
     stop: vi.fn(),
   })),
 }));
-vi.mock('../../lib/useGeminiLive', () => ({
-  useGeminiLive: vi.fn(() => ({
-    liveState: 'idle',
-    errorMsg: null,
-    transcript: '',
-    toolCalls: [],
-    isMuted: false,
-    startSession: vi.fn(),
-    stopSession: vi.fn(),
-    toggleMute: vi.fn(),
-    isActive: false,
-  })),
-}));
+
 vi.mock('../timesheets/TimecardHistory', () => ({
   default: () => <div data-testid="timecard-history" />,
 }));
@@ -324,13 +312,4 @@ describe('ChatView', () => {
     expect(next).toEqual(messages);
   });
 
-  it('renders Gemini Live Voice button in header', async () => {
-    render(
-      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
-    );
-    await waitFor(() => {
-      const liveBtn = screen.getByRole('button', { name: /gemini live/i });
-      expect(liveBtn).toBeInTheDocument();
-    });
-  });
 });
