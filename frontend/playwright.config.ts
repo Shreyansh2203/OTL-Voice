@@ -30,7 +30,20 @@ export default defineConfig({
     {
       name: 'chromium',
       use: {
-    contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Chrome'] },
+        contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Chrome']
+      },
+    },
+    {
+      name: 'firefox',
+      use: {
+        contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Firefox']
+      },
+    },
+    {
+      name: 'webkit',
+      use: {
+        contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Safari']
+      },
     },
   ],
 

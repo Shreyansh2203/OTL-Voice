@@ -106,3 +106,58 @@ jobs:
 
     - name: Build Container Image
       run: docker build -f Containerfile -t otl-voice-test .
+
+  e2e:
+    name: E2E Tests (Playwright)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Install Python dependencies
+      run: uv sync --all-groups
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci --ignore-scripts
+
+    - name: Install Playwright Browsers
+      working-directory: ./frontend
+      run: npx playwright install --with-deps
+
+    - name: Start Backend and Run E2E Tests
+      working-directory: ./frontend
+      run: |
+        # Start backend in the background
+        cd .. && uv run uvicorn backend.main:app &
+        # Wait for backend to be ready
+        sleep 5
+        # Run playwright
+        cd frontend && npx playwright test
+
+    - name: Upload Playwright Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: frontend/playwright-report/
+        retention-days: 14

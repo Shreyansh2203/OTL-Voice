@@ -1,0 +1,62 @@
+---
+- name: Provision OTL-Voice Production Server
+  hosts: all
+  become: yes
+  vars:
+    project_dir: /opt/otl-voice
+    image_name: ghcr.io/shreyansh2203/otl-voice:latest
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - nginx
+          - docker.io
+          - python3-docker
+        state: present
+
+    - name: Create project directory
+      file:
+        path: "{{ project_dir }}/nginx"
+        state: directory
+
+    - name: Copy Nginx configuration
+      copy:
+        src: ../nginx/otl.conf
+        dest: /etc/nginx/sites-available/otl
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/otl
+        dest: /etc/nginx/sites-enabled/otl
+        state: link
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Pull latest Docker image
+      docker_image:
+        name: "{{ image_name }}"
+        source: pull
+
+    - name: Run OTL-Voice container
+      docker_container:
+        name: otl_app
+        image: "{{ image_name }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "8000:8000"
+        env_file: "{{ project_dir }}/.env"
