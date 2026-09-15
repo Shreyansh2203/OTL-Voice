@@ -25,7 +25,7 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1"
   },
-  "devDependencies": {
+  "pnpm": { "onlyBuiltDependencies": ["@sentry/cli", "esbuild"] }, "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
@@ -54,3 +54,4 @@
     "vitest": "^4.1.10"
   }
 }
+
