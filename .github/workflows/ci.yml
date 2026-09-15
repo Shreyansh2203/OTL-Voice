@@ -74,7 +74,7 @@ jobs:
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
-      run: pnpm install --ignore-scripts
+      run: pnpm install
 
     - name: Run TypeScript Check
       working-directory: ./frontend
@@ -144,7 +144,7 @@ jobs:
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
-      run: pnpm install --ignore-scripts
+      run: pnpm install
 
     - name: Install Playwright Browsers
       working-directory: ./frontend
@@ -170,5 +170,6 @@ jobs:
         name: playwright-report
         path: frontend/playwright-report/
         retention-days: 14
+
 
 

@@ -8,7 +8,7 @@ FROM node:22-slim AS frontend
 WORKDIR /fe
 # Install deps first for better layer caching
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm run build            # -> /fe/dist
 
@@ -61,4 +61,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 CMD ["uvicorn", "backend.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips=*"]
+
 
