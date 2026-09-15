@@ -36,13 +36,13 @@ export default defineConfig({
     {
       name: 'firefox',
       use: {
-        contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Firefox']
+        ...devices['Desktop Firefox']
       },
     },
     {
       name: 'webkit',
       use: {
-        contextOptions: { permissions: ['microphone'] }, ...devices['Desktop Safari']
+        ...devices['Desktop Safari']
       },
     },
   ],
