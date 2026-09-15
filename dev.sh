@@ -28,4 +28,4 @@ echo ""
 # Use npx concurrently to run both in the same terminal
 npx --yes concurrently -c "blue,magenta" -n "BACKEND,FRONTEND" \
   "uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload" \
-  "cd frontend && npm run dev"
+  "cd frontend && pnpm run dev"

@@ -1,0 +1,12 @@
+# Global owner
+* @Shreyansh2203
+
+# Backend specifics
+/backend/ @Shreyansh2203
+
+# Frontend specifics
+/frontend/ @Shreyansh2203
+
+# Infrastructure
+/deploy/ @Shreyansh2203
+/.github/workflows/ @Shreyansh2203

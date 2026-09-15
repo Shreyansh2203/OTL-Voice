@@ -12,7 +12,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo.
 echo Running Frontend Unit Tests (vitest)...
 cd frontend
-call npm run test:unit
+call pnpm run test:unit
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Frontend unit tests failed!
     exit /b %ERRORLEVEL%

@@ -8,9 +8,9 @@ FROM node:22-slim AS frontend
 WORKDIR /fe
 # Install deps first for better layer caching (lockfile optional).
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts || npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+RUN npm install -g pnpm && pnpm install --frozen-lockfile --no-audit --no-fund --legacy-peer-deps --ignore-scripts || npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
 COPY frontend/ ./
-RUN npm run build            # -> /fe/dist
+RUN pnpm run build            # -> /fe/dist
 
 # ---------- Stage 2: backend runtime ----------
 FROM python:3.12-slim
@@ -61,3 +61,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 CMD ["uvicorn", "backend.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips=*"]
+
