@@ -35,7 +35,7 @@ jobs:
         enable-cache: true
 
     - name: Install Python dependencies
-      run: uv sync --all-groups
+      run: uv lock && uv sync --all-groups
 
     - name: Run Ruff (Python Linting)
       run: uv run ruff check .
@@ -71,7 +71,7 @@ jobs:
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
-      run: npm ci --ignore-scripts
+      run: npm install --ignore-scripts
 
     - name: Run TypeScript Check
       working-directory: ./frontend
@@ -127,7 +127,7 @@ jobs:
         enable-cache: true
 
     - name: Install Python dependencies
-      run: uv sync --all-groups
+      run: uv lock && uv sync --all-groups
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -138,7 +138,7 @@ jobs:
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
-      run: npm ci --ignore-scripts
+      run: npm install --ignore-scripts
 
     - name: Install Playwright Browsers
       working-directory: ./frontend
