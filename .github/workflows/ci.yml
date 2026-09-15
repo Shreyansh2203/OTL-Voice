@@ -95,3 +95,14 @@ jobs:
         name: frontend-dist
         path: frontend/dist/
         retention-days: 7
+
+  container:
+    name: Container Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Container Image
+      run: docker build -f Containerfile -t otl-voice-test .
