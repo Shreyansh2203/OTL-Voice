@@ -47,3 +47,10 @@ export async function playMicStop() {
   await playTone(554, 'sine', 100);
   await playTone(440, 'sine', 150);
 }
+// A very soft, single short tone marking the moment the assistant starts
+// "thinking" — fills the dead air between the user finishing and the first
+// audio chunk arriving, the same way Assistant/Alexa use a brief earcon
+// instead of silence.
+export async function playThinkingCue() {
+  await playTone(660, 'sine', 70);
+}

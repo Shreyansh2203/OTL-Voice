@@ -756,12 +756,32 @@ tr:hover td { background: var(--color-bg-tertiary); }
   font-size: 13px;
 }
 
+.voice-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-variation-settings: 'wght' var(--font-weight-ui);
+  color: var(--color-text-tertiary);
+  animation: voice-status-in var(--duration-normal) var(--ease-default);
+}
+@keyframes voice-status-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Prompt Bar */
 .prompt-bar-container {
   display: flex;
   padding: 0;
   background: transparent;
   border: none;
+}
+.prompt-bar-container .prompt-bar {
+  transition: border-color var(--duration-normal) var(--ease-default),
+              box-shadow var(--duration-normal) var(--ease-default);
 }
 .prompt-bar-container.listening .prompt-bar {
   border-color: var(--color-accent-primary);
@@ -947,6 +967,93 @@ tr:hover td { background: var(--color-bg-tertiary); }
   0% { box-shadow: 0 0 0 0 rgba(224, 30, 90, 0.4); }
   70% { box-shadow: 0 0 0 6px rgba(224, 30, 90, 0); }
   100% { box-shadow: 0 0 0 0 rgba(224, 30, 90, 0); }
+}
+
+/* ── 15b. Voice Orb ──────────────────────────────────────────────────────── */
+.voice-orb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.voice-orb-core {
+  position: absolute;
+  inset: 22%;
+  border-radius: var(--radius-circle);
+  background: var(--color-text-tertiary);
+  transition: background-color var(--duration-normal) var(--ease-default),
+              transform var(--duration-normal) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.voice-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-circle);
+  background: var(--color-text-tertiary);
+  opacity: 0.18;
+  transition: transform 90ms linear, background-color var(--duration-normal) var(--ease-default);
+}
+
+/* Idle: a slow, calm breathing pulse — signals "ready", not "busy" */
+.voice-orb--idle .voice-orb-core { animation: orb-breathe 3.2s ease-in-out infinite; }
+.voice-orb--idle .voice-orb-ring { animation: orb-breathe-ring 3.2s ease-in-out infinite; }
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(0.85); }
+  50% { transform: scale(1); }
+}
+@keyframes orb-breathe-ring {
+  0%, 100% { transform: scale(1); opacity: 0.1; }
+  50% { transform: scale(1.15); opacity: 0.22; }
+}
+
+/* Listening: brand-colored, amplitude-reactive (ring scale set inline via JS) */
+.voice-orb--listening .voice-orb-core,
+.voice-orb--listening .voice-orb-ring {
+  background: var(--color-accent-primary);
+}
+.voice-orb--listening .voice-orb-core { transform: scale(1.1); }
+.voice-orb--listening .voice-orb-ring { opacity: 0.25; }
+
+/* Thinking: gentle orbit, signals active processing without urgency */
+.voice-orb--thinking .voice-orb-core,
+.voice-orb--thinking .voice-orb-ring {
+  background: var(--color-accent-primary);
+}
+.voice-orb--thinking .voice-orb-core {
+  animation: orb-think 1.1s ease-in-out infinite;
+}
+.voice-orb--thinking .voice-orb-ring {
+  opacity: 0.2;
+  animation: orb-think-ring 1.1s ease-in-out infinite;
+}
+@keyframes orb-think {
+  0%, 100% { transform: scale(0.8); }
+  50% { transform: scale(1.05); }
+}
+@keyframes orb-think-ring {
+  0%, 100% { transform: scale(0.95) rotate(0deg); }
+  50% { transform: scale(1.25) rotate(180deg); }
+}
+
+/* Speaking: rhythmic pulse in the success/teal tone used elsewhere for "speaking" */
+.voice-orb--speaking .voice-orb-core,
+.voice-orb--speaking .voice-orb-ring {
+  background: var(--color-status-success);
+}
+.voice-orb--speaking .voice-orb-core {
+  animation: orb-speak 0.85s ease-in-out infinite;
+}
+.voice-orb--speaking .voice-orb-ring {
+  opacity: 0.22;
+  animation: orb-speak-ring 0.85s ease-in-out infinite;
+}
+@keyframes orb-speak {
+  0%, 100% { transform: scale(0.9); }
+  50% { transform: scale(1.15); }
+}
+@keyframes orb-speak-ring {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.35); }
 }
 
 /* ── 16. Accessibility ───────────────────────────────────────────────────── */

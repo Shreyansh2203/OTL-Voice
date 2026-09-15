@@ -1,6 +1,8 @@
 import { KeyboardEvent, useState, useRef, useEffect } from "react";
 import { MicIcon, SendIcon, StopIcon } from "../../components/ui/icons";
+import VoiceOrb from "../../components/ui/VoiceOrb";
 import { playMicStart, playMicStop } from "../../lib/audio";
+import { useMicLevel } from "../../lib/useMicLevel";
 export interface ComposerProps {
   disabled: boolean;
   onSend: (text: string, isVoice?: boolean) => void;
@@ -35,6 +37,14 @@ export default function Composer({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
+  const micLevel = useMicLevel();
+
+  // A sentence that already sounds complete needs less confirmation silence
+  // than one that trails off mid-thought — mirrors how a human listener
+  // waits less after "...see you tomorrow." than after "...and then, um".
+  const SILENCE_MS_COMPLETE = 900;
+  const SILENCE_MS_TRAILING = 1800;
+  const TERMINAL_PUNCTUATION = /[.?!]\s*$/;
 
   const updateText = (value: string) => {
     textRef.current = value;
@@ -57,7 +67,9 @@ export default function Composer({
       micSessionRef.current += 1;
       micActiveRef.current = false;
       clearSilenceTimer();
+      micLevel.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -69,6 +81,7 @@ export default function Composer({
     micActiveRef.current = false;
     clearSilenceTimer();
     onStopMicRef.current?.();
+    micLevel.stop();
     void playMicStop();
   };
 
@@ -116,6 +129,7 @@ export default function Composer({
     const playerStopEvent = new CustomEvent("otl:barge-in");
     window.dispatchEvent(playerStopEvent);
     void playMicStart();
+    void micLevel.start();
 
     const baseDraft = textRef.current.trim();
     let acceptedDraft = baseDraft;
@@ -123,8 +137,14 @@ export default function Composer({
     micActiveRef.current = true;
     const isCurrent = () => micSessionRef.current === session && micActiveRef.current;
 
+    // Adaptive end-of-speech wait: short once the sentence already sounds
+    // finished, longer if the person trailed off mid-thought. This is a
+    // closer approximation of how a person actually waits during a
+    // conversation than a single fixed timeout.
     const resetSilenceTimer = () => {
       clearSilenceTimer();
+      const draft = textRef.current.trim();
+      const wait = TERMINAL_PUNCTUATION.test(draft) ? SILENCE_MS_COMPLETE : SILENCE_MS_TRAILING;
       silenceTimerRef.current = setTimeout(() => {
         if (!isCurrent()) return;
         const toSend = textRef.current.trim();
@@ -135,7 +155,7 @@ export default function Composer({
             updateText("");
           }
         }
-      }, 2000);
+      }, wait);
     };
 
     onStartMicRef.current?.(
@@ -189,11 +209,25 @@ export default function Composer({
     return "Type or speak your reply…";
   };
 
+  const getStatusLabel = () => {
+    if (voiceState === "speaking") return "Speaking";
+    if (voiceState === "thinking") return "Thinking";
+    if (listening) return "Listening";
+    return null;
+  };
+  const statusLabel = getStatusLabel();
+
   return (
     <div className="composer-wrapper">
       {errorMsg && (
         <div className="error small" role="status" style={{ marginBottom: 8, padding: "6px 12px" }}>
           {errorMsg}
+        </div>
+      )}
+      {statusLabel && (
+        <div className="voice-status-row" role="status" aria-live="polite">
+          <VoiceOrb state={voiceState} level={micLevel.level} size={12} />
+          <span>{statusLabel}</span>
         </div>
       )}
       <div

@@ -10,7 +10,6 @@ import ChatView from './ChatView';
 import { updateLastAssistant } from '../../lib/chat';
 import * as api from '../../api/client';
 import * as voiceLib from '../../lib/voice';
-import * as ociVoiceLib from '../../lib/oci_voice';
 vi.mock('../../api/client', () => ({
   chatStream: vi.fn(),
   tts: vi.fn(),
@@ -28,19 +27,6 @@ vi.mock('../../lib/voice', () => ({
     stop: vi.fn(),
   })),
   useSpeechInput: vi.fn(() => ({
-    supported: true,
-    listening: false,
-    isListening: vi.fn(() => false),
-    start: vi.fn(),
-    stop: vi.fn(),
-  })),
-}));
-vi.mock('../../lib/oci_voice', () => ({
-  useWorkletAudioPlayer: vi.fn(() => ({
-    play: vi.fn(),
-    stop: vi.fn(),
-  })),
-  useOciSpeechInput: vi.fn(() => ({
     supported: true,
     listening: false,
     isListening: vi.fn(() => false),
@@ -180,10 +166,6 @@ describe('ChatView', () => {
       play,
       stop: vi.fn(),
     } as any);
-    vi.mocked(ociVoiceLib.useWorkletAudioPlayer).mockReturnValue({
-      play,
-      stop: vi.fn(),
-    } as any);
     render(
       <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
@@ -259,10 +241,6 @@ describe('ChatView', () => {
       play: vi.fn(),
       stop: stopAudio,
     } as any);
-    vi.mocked(ociVoiceLib.useWorkletAudioPlayer).mockReturnValue({
-      play: vi.fn(),
-      stop: stopAudio,
-    } as any);
     render(
       <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
@@ -293,7 +271,6 @@ describe('ChatView', () => {
       stop: stopMic,
     };
     vi.mocked(voiceLib.useSpeechInput).mockReturnValue(micMock);
-    vi.mocked(ociVoiceLib.useOciSpeechInput).mockReturnValue(micMock);
     vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
       onEvent({ delta: 'Goodbye! Have a great day.' });
       onEvent({ done: true });

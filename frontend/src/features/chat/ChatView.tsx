@@ -3,6 +3,7 @@ import * as api from "../../api/client";
 import { updateLastAssistant } from "../../lib/chat";
 import { extractEntries, stripEntriesBlock } from "../../lib/entries";
 import { useAudioPlayer, useSpeechInput } from "../../lib/voice";
+import { playThinkingCue } from "../../lib/audio";
 import type { ChatMessage } from "../../types";
 import { SpeakerIcon } from "../../components/ui/icons";
 import { ProjectAssignments, ReviewPanel, TimecardHistory } from "../timesheets";
@@ -107,6 +108,9 @@ export default function ChatView({
       const thisToken = ++interruptTokenRef.current;
       setSending(true);
       setVoiceState("thinking");
+      if (wasLastInputVoiceRef.current) {
+        void playThinkingCue();
+      }
       player.stop();
 
       const controller = new AbortController();
