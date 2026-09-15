@@ -7,7 +7,7 @@
 FROM node:22-slim AS frontend
 WORKDIR /fe
 # Install deps first for better layer caching
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm run build            # -> /fe/dist
