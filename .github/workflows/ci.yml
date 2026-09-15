@@ -147,8 +147,11 @@ jobs:
     - name: Start Backend and Run E2E Tests
       working-directory: ./frontend
       run: |
+        # Create .env from example
+        cd .. && cp .env.example .env
         # Start backend in the background
-        cd .. && uv run uvicorn backend.main:app &
+        export TEST_MODE=true
+        uv run uvicorn backend.main:app &
         # Wait for backend to be ready
         sleep 5
         # Run playwright
