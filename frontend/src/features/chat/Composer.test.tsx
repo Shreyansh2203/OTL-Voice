@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Composer from './Composer';
 vi.mock('../../lib/audio', () => ({
   playMicStart: vi.fn().mockResolvedValue(undefined),
@@ -9,6 +9,7 @@ describe('Composer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+  afterEach(() => vi.useRealTimers());
   it('calls onSend and clears input when sending a message', () => {
     const mockSend = vi.fn();
     render(<Composer disabled={false} onSend={mockSend} supported={true} />);
@@ -73,6 +74,7 @@ describe('Composer', () => {
         onSend={mockSend}
         supported={true}
         listening={false}
+        handsFree={true}
         onStartMic={start}
       />
     );
@@ -122,7 +124,7 @@ describe('Composer', () => {
     );
     expect(
       screen.getByPlaceholderText(
-        /Assistant speaking… \(speak anytime to interrupt\)/i
+        /Assistant speaking… Tap the mic to interrupt/i
       )
     ).toBeInTheDocument();
 
@@ -135,7 +137,7 @@ describe('Composer', () => {
       />
     );
     expect(
-      screen.getByPlaceholderText(/Thinking… \(speak anytime\)/i)
+      screen.getByPlaceholderText(/Thinking… Tap the mic to interrupt/i)
     ).toBeInTheDocument();
 
     rerender(
@@ -159,5 +161,93 @@ describe('Composer', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
     fireEvent.keyDown(textarea, { key: 'a', shiftKey: false });
     expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('stops after a final phrase and leaves it for review by default', () => {
+    vi.useFakeTimers();
+    let final: (text: string) => void = () => {};
+    const send = vi.fn();
+    const stop = vi.fn();
+    render(<Composer disabled={false} supported onSend={send} onStopMic={stop}
+      onStartMic={(onFinal) => { final = onFinal; }} />);
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => final('Two hours on Alpha'));
+    act(() => vi.advanceTimersByTime(2500));
+    expect(stop).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('Two hours on Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(send).toHaveBeenCalledWith('Two hours on Alpha', false);
+  });
+
+  it('ignores late dictation after Send and after editing the draft', () => {
+    let final: (text: string) => void = () => {};
+    let interim: (text: string) => void = () => {};
+    const send = vi.fn();
+    render(<Composer disabled={false} supported onSend={send}
+      onStartMic={(onFinal, onInterim) => { final = onFinal; interim = onInterim!; }} />);
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => interim('Two hours'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    act(() => final('Two hours background words'));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(send).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => interim('Three hours'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Four hours' } });
+    act(() => final('Three hours random words'));
+    expect(screen.getByRole('textbox')).toHaveValue('Four hours');
+  });
+
+  it('removes a withdrawn interim guess and cancels hands-free sending', () => {
+    vi.useFakeTimers();
+    let final: (text: string) => void = () => {};
+    let interim: (text: string) => void = () => {};
+    const send = vi.fn();
+    render(<Composer disabled={false} supported handsFree onSend={send}
+      onStartMic={(onFinal, onInterim) => { final = onFinal; interim = onInterim!; }} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Draft' } });
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => interim('random noise'));
+    act(() => interim(''));
+    expect(screen.getByRole('textbox')).toHaveValue('Draft');
+    act(() => final('Two hours'));
+    act(() => interim('Two hours random noise'));
+    act(() => interim(''));
+    act(() => vi.advanceTimersByTime(2500));
+    expect(screen.getByRole('textbox')).toHaveValue('Draft Two hours');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('manual Stop preserves a draft and ignores further microphone callbacks', () => {
+    vi.useFakeTimers();
+    let final: (text: string) => void = () => {};
+    const send = vi.fn();
+    const stop = vi.fn();
+    render(<Composer disabled={false} supported handsFree onSend={send} onStopMic={stop}
+      onStartMic={(onFinal) => { final = onFinal; }} />);
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => final('Two hours'));
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => final('Unwanted words'));
+    act(() => vi.advanceTimersByTime(2500));
+    expect(stop).toHaveBeenCalledOnce();
+    expect(screen.getByRole('textbox')).toHaveValue('Two hours');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending automatic send when hands-free is disabled', () => {
+    vi.useFakeTimers();
+    let final: (text: string) => void = () => {};
+    const send = vi.fn();
+    const props = { disabled: false, supported: true, onSend: send,
+      onStartMic: (onFinal: (text: string) => void) => { final = onFinal; } };
+    const { rerender } = render(<Composer {...props} handsFree />);
+    fireEvent.click(screen.getByTitle('Speak'));
+    act(() => final('Two hours'));
+    rerender(<Composer {...props} handsFree={false} />);
+    act(() => vi.advanceTimersByTime(2500));
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('Two hours');
   });
 });

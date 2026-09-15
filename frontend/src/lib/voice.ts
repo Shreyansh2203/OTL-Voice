@@ -23,6 +23,7 @@ export function useSpeechInput() {
 
   const stop = useCallback((cancel = false) => {
     isListeningRef.current = false;
+    callbacksRef.current = {};
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
       recognitionRef.current = null;
@@ -77,17 +78,14 @@ export function useSpeechInput() {
 
         let hasStarted = false;
         let lastFinal = '';
+        let lastInterim = '';
+        let completedFinal = '';
+        const rejectedFinals = new Map<number, string>();
+        const isCurrentRecognition = () =>
+          isListeningRef.current && recognitionRef.current === recognition;
 
         recognition.onspeechstart = () => {
-          if (!isListeningRef.current) return;
-          if (!hasStarted) {
-            hasStarted = true;
-            callbacksRef.current.onSpeechStart?.();
-          }
-        };
-
-        recognition.onaudiostart = () => {
-          if (!isListeningRef.current) return;
+          if (!isCurrentRecognition()) return;
           if (!hasStarted) {
             hasStarted = true;
             callbacksRef.current.onSpeechStart?.();
@@ -95,46 +93,91 @@ export function useSpeechInput() {
         };
 
         recognition.onresult = (event: any) => {
-          let interimTranscript = '';
-          let finalTranscript = '';
+          if (!isCurrentRecognition()) return;
+          const interimParts: string[] = [];
+          const finalParts: string[] = [];
+          let hasNewRejectedFinal = false;
 
           for (let i = 0; i < event.results.length; ++i) {
             const result = event.results[i];
-            const transcript = result[0]?.transcript || '';
+            const transcript = (result[0]?.transcript || '').trim();
+            if (!transcript) continue;
             if (result.isFinal) {
-              finalTranscript += transcript;
+              const confidence = result[0]?.confidence;
+              // Some browsers omit confidence or report zero when it is
+              // unavailable. Only reject an explicit, positive low score.
+              if (
+                Number.isFinite(confidence) &&
+                confidence > 0 &&
+                confidence < 0.5
+              ) {
+                if (rejectedFinals.get(i) !== transcript) {
+                  hasNewRejectedFinal = true;
+                  rejectedFinals.set(i, transcript);
+                }
+                continue;
+              }
+              finalParts.push(transcript);
             } else {
-              interimTranscript += transcript;
+              interimParts.push(transcript);
             }
           }
+          const finalTranscript = [completedFinal, ...finalParts]
+            .filter(Boolean)
+            .join(' ');
+          const interimTranscript = interimParts.join(' ');
+          const hasNewFinal =
+            !!finalTranscript && finalTranscript !== lastFinal;
+          const hasNewInterim =
+            !!interimTranscript && interimTranscript !== lastInterim;
+          const interimCleared = !!lastInterim && !interimTranscript;
+          lastInterim = interimTranscript;
 
-          if (
-            !hasStarted &&
-            isListeningRef.current &&
-            (interimTranscript.trim() || finalTranscript.trim())
-          ) {
+          if (hasNewRejectedFinal) {
+            // Clear the provisional draft and cancel any prior send timer.
+            // Do not turn an earlier accepted fragment into a new final here.
+            lastFinal = finalTranscript;
+            hasStarted = false;
+            setErrorMsg(
+              "I couldn't hear that clearly. Please repeat or type your reply."
+            );
+            callbacksRef.current.onInterim?.('');
+            return;
+          }
+
+          // A cumulative result can contain only previously finalized words.
+          // That is not evidence of a new utterance or an interruption.
+          if (!hasStarted && (hasNewFinal || hasNewInterim)) {
             hasStarted = true;
             callbacksRef.current.onSpeechStart?.();
+            if (!isCurrentRecognition()) return;
           }
 
-          if (finalTranscript.trim()) {
-            const cleanFinal = finalTranscript.trim();
-            if (cleanFinal !== lastFinal) {
-              lastFinal = cleanFinal;
-              hasStarted = false;
-              callbacksRef.current.onFinal?.(cleanFinal);
-            }
+          if (interimCleared) {
+            callbacksRef.current.onInterim?.('');
+            if (!isCurrentRecognition()) return;
+          }
+
+          if (hasNewFinal) {
+            lastFinal = finalTranscript;
+            hasStarted = !!interimTranscript;
+            setErrorMsg(null);
+            callbacksRef.current.onFinal?.(finalTranscript);
+            if (!isCurrentRecognition()) return;
             if (!continuous) {
               stop();
+              return;
             }
           }
-          if (interimTranscript.trim()) {
-            const combined = finalTranscript ? finalTranscript + ' ' + interimTranscript : interimTranscript;
-            callbacksRef.current.onInterim?.(combined.trim());
+          if (interimTranscript && (hasNewFinal || hasNewInterim)) {
+            callbacksRef.current.onInterim?.(
+              [finalTranscript, interimTranscript].filter(Boolean).join(' ')
+            );
           }
         };
 
         recognition.onerror = (event: any) => {
+          if (!isCurrentRecognition()) return;
           const err = event?.error;
           if (err === 'not-allowed' || err === 'service-not-allowed') {
             setErrorMsg(
@@ -149,12 +192,15 @@ export function useSpeechInput() {
         };
 
         recognition.onend = () => {
-          if (
-            isListeningRef.current &&
-            continuous &&
-            recognitionRef.current === recognition
-          ) {
+          if (!isCurrentRecognition()) return;
+          if (continuous) {
             try {
+              // Browser restarts reset their results array; retain finalized
+              // words from earlier cycles of this same dictation session.
+              completedFinal = lastFinal;
+              lastInterim = '';
+              rejectedFinals.clear();
+              hasStarted = false;
               recognition.start();
               return;
             } catch {

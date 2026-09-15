@@ -14,6 +14,7 @@ export interface ComposerProps {
   onStopMic?: () => void;
   errorMsg?: string | null;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
+  handsFree?: boolean;
   onRegisterTrigger?: (trigger: () => void) => void;
 }
 
@@ -26,11 +27,19 @@ export default function Composer({
   onStopMic,
   errorMsg = null,
   voiceState = "idle",
+  handsFree = false,
   onRegisterTrigger,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const textRef = useRef("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micSessionRef = useRef(0);
+  const micActiveRef = useRef(false);
+
+  const updateText = (value: string) => {
+    textRef.current = value;
+    setText(value);
+  };
 
   useEffect(() => {
     textRef.current = text;
@@ -44,18 +53,34 @@ export default function Composer({
   };
 
   useEffect(() => {
-    return () => clearSilenceTimer();
+    return () => {
+      micSessionRef.current += 1;
+      micActiveRef.current = false;
+      clearSilenceTimer();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!handsFree || errorMsg || !listening) clearSilenceTimer();
+  }, [handsFree, errorMsg, listening]);
+
+  const finishMic = () => {
+    micSessionRef.current += 1;
+    micActiveRef.current = false;
+    clearSilenceTimer();
+    onStopMicRef.current?.();
+    void playMicStop();
+  };
 
   function send() {
     clearSilenceTimer();
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
-    if (listening) {
-      onStopMic?.();
+    if (listening || micActiveRef.current) {
+      finishMic();
     }
     onSend(trimmed, false);
-    setText("");
+    updateText("");
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -71,6 +96,7 @@ export default function Composer({
   const onStartMicRef = useRef(onStartMic);
   const onStopMicRef = useRef(onStopMic);
   const onSendRef = useRef(onSend);
+  const handsFreeRef = useRef(handsFree);
 
   useEffect(() => {
     listeningRef.current = listening;
@@ -78,18 +104,12 @@ export default function Composer({
     onStartMicRef.current = onStartMic;
     onStopMicRef.current = onStopMic;
     onSendRef.current = onSend;
+    handsFreeRef.current = handsFree;
   });
 
   const toggleMic = () => {
-    if (listeningRef.current) {
-      clearSilenceTimer();
-      void playMicStop();
-      onStopMicRef.current?.();
-      const current = text.trim();
-      if (current && !disabledRef.current) {
-        onSendRef.current(current, true);
-        setText("");
-      }
+    if (listeningRef.current || micActiveRef.current) {
+      finishMic();
       return;
     }
 
@@ -98,35 +118,42 @@ export default function Composer({
     void playMicStart();
 
     const baseDraft = textRef.current.trim();
+    let acceptedDraft = baseDraft;
+    const session = ++micSessionRef.current;
+    micActiveRef.current = true;
+    const isCurrent = () => micSessionRef.current === session && micActiveRef.current;
 
     const resetSilenceTimer = () => {
       clearSilenceTimer();
       silenceTimerRef.current = setTimeout(() => {
+        if (!isCurrent()) return;
         const toSend = textRef.current.trim();
         if (toSend && !disabledRef.current) {
-          void playMicStop();
-          onStopMicRef.current?.();
-          onSendRef.current(toSend, true);
-          setText("");
+          finishMic();
+          if (handsFreeRef.current) {
+            onSendRef.current(toSend, true);
+            updateText("");
+          }
         }
       }, 2000);
     };
 
     onStartMicRef.current?.(
       (finalTranscript) => {
-        if (!finalTranscript) return;
+        if (!isCurrent() || !finalTranscript) return;
         const fullSpoken = (baseDraft ? baseDraft + " " + finalTranscript : finalTranscript).trim();
-        setText(fullSpoken);
+        acceptedDraft = fullSpoken;
+        updateText(fullSpoken);
         resetSilenceTimer();
       },
       (interimTranscript) => {
+        if (!isCurrent()) return;
         const preview = (baseDraft ? baseDraft + " " + (interimTranscript || "") : (interimTranscript || "")).trim();
-        if (preview) {
-          setText(preview);
-        }
+        updateText(interimTranscript ? preview : acceptedDraft);
         clearSilenceTimer();
       },
       () => {
+        if (!isCurrent()) return;
         const evt = new CustomEvent("otl:barge-in");
         window.dispatchEvent(evt);
       }
@@ -145,15 +172,16 @@ export default function Composer({
           toggleMicRef.current();
         }
       });
+      return () => onRegisterTrigger(() => {});
     }
   }, [onRegisterTrigger]);
 
   const getPlaceholder = () => {
     if (voiceState === "speaking") {
-      return "Assistant speaking… (speak anytime to interrupt)";
+      return "Assistant speaking… Tap the mic to interrupt.";
     }
     if (voiceState === "thinking") {
-      return "Thinking… (speak anytime)";
+      return "Thinking… Tap the mic to interrupt.";
     }
     if (listening) {
       return "Listening… Speak naturally or type…";
@@ -164,7 +192,7 @@ export default function Composer({
   return (
     <div className="composer-wrapper">
       {errorMsg && (
-        <div className="error small" style={{ marginBottom: 8, padding: "6px 12px" }}>
+        <div className="error small" role="status" style={{ marginBottom: 8, padding: "6px 12px" }}>
           {errorMsg}
         </div>
       )}
@@ -187,7 +215,10 @@ export default function Composer({
           )}
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              if (listening || micActiveRef.current) finishMic();
+              updateText(e.target.value);
+            }}
             onKeyDown={onKeyDown}
             placeholder={getPlaceholder()}
             rows={1}
@@ -207,4 +238,4 @@ export default function Composer({
       </div>
     </div>
   );
-}
+}
