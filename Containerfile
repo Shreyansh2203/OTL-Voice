@@ -6,9 +6,9 @@
 # ---------- Stage 1: build the PWA ----------
 FROM node:22-slim AS frontend
 WORKDIR /fe
-# Install deps first for better layer caching (lockfile optional).
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile --no-audit --no-fund --legacy-peer-deps --ignore-scripts || npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+# Install deps first for better layer caching
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts
 COPY frontend/ ./
 RUN pnpm run build            # -> /fe/dist
 
