@@ -70,7 +70,7 @@ jobs:
       with:
         node-version: '22'
         cache: 'pnpm'
-        cache-dependency-path: frontend/pnpm-lock.yaml
+        cache-dependency-path: pnpm-lock.yaml
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
@@ -140,7 +140,7 @@ jobs:
       with:
         node-version: '22'
         cache: 'pnpm'
-        cache-dependency-path: frontend/pnpm-lock.yaml
+        cache-dependency-path: pnpm-lock.yaml
 
     - name: Install Frontend Dependencies
       working-directory: ./frontend
@@ -153,8 +153,8 @@ jobs:
     - name: Start Backend and Run E2E Tests
       working-directory: ./frontend
       run: |
-        # Create .env from example
-        cd .. && cp .env.example .env
+        # Create empty .env since it's required by backend setup
+        cd .. && touch .env
         # Start backend in the background
         export TEST_MODE=true
         uv run uvicorn backend.main:app &
