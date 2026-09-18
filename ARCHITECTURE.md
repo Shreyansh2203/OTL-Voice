@@ -28,3 +28,5 @@ graph TD
 - `/backend`: Contains the FastAPI application. Core domain logic in `/backend/services`. Tests located in `/backend/tests`.
 - `/deploy`: Contains infrastructure-as-code (Ansible playbooks) and Docker Compose definitions for environment parity.
 - `/.github`: Contains GitHub Actions workflows for CI/CD, dependency management (Dependabot), and repository templates.
+- `dev_runner.py` & `start_app.bat`: Native Python Orchestrator for local development, running both frontend and backend processes simultaneously without Docker.
+- `start.bat` & `start.sh`: Docker-based entrypoints for containerized deployment.

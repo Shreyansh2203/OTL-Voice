@@ -219,27 +219,11 @@ async def submit_timecard(
             otl_client.service_credential(), resolved
         )
     except Exception as exc:
-        if is_dev_mode() or is_test_mode():
-            logger.warning(
-                "Live OTL submit failed (%s), returning local simulated results in dev mode",
-                exc,
-            )
-            results = [
-                {
-                    "index": idx,
-                    "ok": True,
-                    "id": f"LOCAL-REQ-{idx + 1}",
-                    "recordNumber": f"REC-{idx + 1}",
-                    "recordName": f"{ctx.employee_id}-WO-101125",
-                }
-                for idx in range(len(resolved))
-            ]
-        else:
-            logger.error("Live OTL submit failed: %s", exc)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to submit timecards to Oracle Cloud: {exc}",
-            )
+        logger.error("Live OTL submit failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to submit timecards to Oracle Cloud: {exc}",
+        )
     succeeded = sum(1 for r in results if r.get("ok"))
     return {
         "submitted": len(results),
@@ -257,24 +241,19 @@ async def list_timecards(
     offset: int = Query(default=0, ge=0, description="Pagination offset (>=0)"),
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
-    test_mode = os.getenv("TEST_MODE", "false").strip().lower() == "true"
-    timecards: dict[str, Any]
-    if test_mode and ctx.full_name.startswith("Test User"):
+    try:
+        timecards = await otl_client.alist_timecard_entries(
+            otl_client.service_credential(),
+            limit=limit,
+            offset=offset,
+            person_number=ctx.employee_id,
+        )
+    except Exception as exc:
+        logger.info(
+            "Could not fetch live timecards from Oracle (%s), returning empty list",
+            exc,
+        )
         timecards = {"items": []}
-    else:
-        try:
-            timecards = await otl_client.alist_timecard_entries(
-                otl_client.service_credential(),
-                limit=limit,
-                offset=offset,
-                person_number=ctx.employee_id,
-            )
-        except Exception as exc:
-            logger.info(
-                "Could not fetch live timecards from Oracle (%s), returning empty list",
-                exc,
-            )
-            timecards = {"items": []}
     for item in timecards.get("items", []):
         attrs = item.get("timeAttributes", [])
         if "timeRecordEvent" in item:
@@ -342,25 +321,7 @@ async def labour_assignments(
         )
     except Exception:
         work_orders = []
-    if not work_orders:
-        work_orders = [
-            {
-                "workOrder": "WO-101125",
-                "description": "General Construction & Maintenance",
-                "projects": [
-                    {
-                        "projectId": "300000041112336",
-                        "projectNo": 101125,
-                        "projectName": "ORA_Construction_0120",
-                        "tasks": [
-                            {"taskId": 1, "taskDetails": "Geo_Technical Testing"},
-                            {"taskId": "1.1", "taskDetails": "Setting Bore holes"},
-                            {"taskId": 2, "taskDetails": "Structural Engineering"},
-                        ],
-                    }
-                ],
-            }
-        ]
+    pass
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,

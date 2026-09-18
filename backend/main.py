@@ -96,17 +96,41 @@ app = FastAPI(
 
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):
+    MAX_SIZE = 10 * 1024 * 1024
     content_length = request.headers.get("content-length")
     if content_length:
         try:
-            if int(content_length) > 10 * 1024 * 1024:
+            if int(content_length) > MAX_SIZE:
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "Request body too large. Maximum size is 10MB."},
                 )
         except ValueError:
             pass
-    return await call_next(request)
+
+    receive = request.receive
+    received = 0
+
+    async def wrapped_receive():
+        nonlocal received
+        message = await receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > MAX_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Request body too large. Maximum size is 10MB.",
+                )
+        return message
+
+    request._receive = wrapped_receive
+
+    try:
+        return await call_next(request)
+    except HTTPException as e:
+        if e.status_code == 413:
+            return JSONResponse(status_code=413, content={"detail": str(e.detail)})
+        raise
 
 
 app.add_middleware(
@@ -125,7 +149,6 @@ async def csrf_protection(request: Request, call_next):
     if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path in (
         "/api/health",
         "/api/health/otl",
-        "/api/auth/logout",
     ):
         response = await call_next(request)
         if CSRF_COOKIE_NAME not in request.cookies:
@@ -205,6 +228,7 @@ async def rate_limit(request: Request, call_next):
         return await call_next(request)
     if request.url.path in ("/api/health", "/api/health/otl"):
         return await call_next(request)
+
     client_ip = request.client.host if request.client else "unknown"
     trusted_proxy_ips = [
         ip.strip()
@@ -213,10 +237,15 @@ async def rate_limit(request: Request, call_next):
     ]
     client_host = request.client.host if request.client else ""
     trust_proxy = "*" in trusted_proxy_ips or client_host in trusted_proxy_ips
+
     if trust_proxy:
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
+            ips = [ip.strip() for ip in forwarded_for.split(",")]
+            for ip in reversed(ips):
+                if ip not in trusted_proxy_ips and ip != "*":
+                    client_ip = ip
+                    break
         elif real_ip := request.headers.get("X-Real-IP"):
             client_ip = real_ip.strip()
         elif forwarded := request.headers.get("Forwarded"):
@@ -225,6 +254,7 @@ async def rate_limit(request: Request, call_next):
                 if part.startswith("for="):
                     client_ip = part[4:].strip('"')
                     break
+
     if request.url.path.startswith("/api/auth/"):
         if not await auth_rate_limiter.is_allowed(client_ip):
             return JSONResponse(

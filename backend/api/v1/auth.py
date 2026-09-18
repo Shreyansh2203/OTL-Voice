@@ -33,56 +33,44 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Person Number is required.",
         )
+
+    # TODO: In a production environment, you MUST validate body.password against your IdP (e.g. LDAP, Entra ID, Okta).
+    # Currently, this validates that the user exists in Oracle HCM via the service account.
+
     worker_data: dict[str, Any] | None = None
     cred = None
     try:
         cred = otl_client.service_credential()
     except OtlConfigError:
-        cred = None
+        pass
 
-    if cred is not None:
-        if person_number == "208":
-            worker_data = {
-                "personNumber": "208",
-                "fullName": "Jessy Brown",
-            }
-        else:
-            try:
-                worker_data = await otl_client.aget_worker(cred, person_number)
-            except OtlError as e:
-                if e.status_code in (401, 403):
-                    logger.warning(
-                        "Oracle service account rejected (HTTP %d), falling back to local profile",
-                        e.status_code,
-                    )
-                    worker_data = {
-                        "personNumber": person_number,
-                        "fullName": "Jessy Brown"
-                        if person_number == "208"
-                        else f"User {person_number}",
-                    }
-                else:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Failed to connect to Oracle Fusion. Please try again later.",
-                    )
-            except Exception:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to connect to Oracle Fusion. Please try again later.",
-                )
-    else:
-        worker_data = {
-            "personNumber": person_number,
-            "fullName": "Jessy Brown"
-            if person_number == "208"
-            else f"User {person_number}",
-        }
+    if cred is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Oracle Fusion integration is not configured.",
+        )
+
+    try:
+        worker_data = await otl_client.aget_worker(cred, person_number)
+    except OtlError as e:
+        logger.error(
+            "Oracle service account rejected or worker lookup failed (HTTP %d)",
+            e.status_code,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials or user not found.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to connect to Oracle Fusion. Please try again later.",
+        )
 
     if not worker_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Person Number '{person_number}' was not found in Oracle Fusion.",
+            detail=f"Person Number '{person_number}' was not found.",
         )
 
     employee = Employee(
@@ -105,7 +93,6 @@ def session(ctx: SessionContext = Depends(auth.current_session)) -> dict[str, An
 async def logout(request: Request, response: Response) -> dict[str, str]:
     await auth.destroy(request.cookies.get(auth._session_cookie_name()))
     response.delete_cookie(auth._session_cookie_name(), path="/")
-    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
     return {"status": "signed out"}
 
 

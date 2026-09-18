@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Reports live microphone amplitude (0-1) for UI feedback (the voice orb)
@@ -55,7 +55,9 @@ export function useMicLevel() {
         if (!activeRef.current && streamRef.current) return; // stopped while awaiting
         streamRef.current = stream;
         ownsStreamRef.current = owns;
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const ctx = new (
+          window.AudioContext || (window as any).webkitAudioContext
+        )();
         ctxRef.current = ctx;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -67,7 +69,8 @@ export function useMicLevel() {
         activeRef.current = true;
 
         const tick = () => {
-          if (!activeRef.current || !analyserRef.current || !dataRef.current) return;
+          if (!activeRef.current || !analyserRef.current || !dataRef.current)
+            return;
           analyserRef.current.getByteTimeDomainData(dataRef.current);
           let sumSq = 0;
           for (let i = 0; i < dataRef.current.length; i++) {

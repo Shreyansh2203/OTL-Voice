@@ -8,7 +8,7 @@ import oci
 from oci.ai_speech import AIServiceSpeechClient
 from oci.ai_speech import models as speech_models
 
-from .oci_gemini import _env, _retry_with_backoff, build_oci_config
+from .oci_genai import _env, _retry_with_backoff, build_oci_config
 
 T = TypeVar("T")
 
@@ -61,7 +61,7 @@ def clean_for_speech(text: str) -> str:
 class SpeechClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
-        self.region = self.config.get("region") or _env("OCI_REGION")
+        self.region = _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
@@ -101,11 +101,17 @@ class SpeechClient:
     def _details(
         self, text: str, text_type: str
     ) -> speech_models.SynthesizeSpeechDetails:
-        model_details = speech_models.TtsOracleTts2NaturalModelDetails(
-            model_name=self.model_name,
-            voice_id=self.voice_id,
-            language_code=self.language_code,
-        )
+        if self.model_name == "TTS_1_STANDARD":
+            model_details = speech_models.TtsOracleTts1StandardModelDetails(
+                model_name=self.model_name,
+                voice_id=self.voice_id,
+            )
+        else:
+            model_details = speech_models.TtsOracleTts2NaturalModelDetails(
+                model_name=self.model_name,
+                voice_id=self.voice_id,
+                language_code=self.language_code,
+            )
         return speech_models.SynthesizeSpeechDetails(
             text=text,
             is_stream_enabled=False,
@@ -224,7 +230,7 @@ except ImportError:
 class STTClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
-        self.region = self.config.get("region") or _env("OCI_REGION")
+        self.region = _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")

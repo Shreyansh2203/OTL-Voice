@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.services.oci_gemini import (
-    GeminiChatClient,
+from backend.services.oci_genai import (
+    GenAIChatClient,
     _env,
     _normalize_pem,
     _service_endpoint,
@@ -83,7 +83,7 @@ def test_build_oci_config_missing_key():
         build_oci_config()
 
 
-@patch("backend.services.oci_gemini.oci.config.from_file")
+@patch("backend.services.oci_genai.oci.config.from_file")
 @patch.dict(os.environ, {}, clear=True)
 def test_build_oci_config_fallback(mock_from_file):
     mock_from_file.return_value = {"region": "fallback"}
@@ -101,7 +101,7 @@ def test_service_endpoint():
     del os.environ["OCI_SERVICE_ENDPOINT"]
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -115,19 +115,19 @@ def test_service_endpoint():
     clear=True,
 )
 def test_client_initialization(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     assert client.compartment_id == "compartment1"
 
 
-@patch("backend.services.oci_gemini.oci.config.from_file")
+@patch("backend.services.oci_genai.oci.config.from_file")
 @patch.dict(os.environ, {}, clear=True)
 def test_client_init_missing_compartment(mock_from_file):
     mock_from_file.return_value = {"region": "us-ashburn-1"}
     with pytest.raises(RuntimeError, match="OCI_COMPARTMENT_ID"):
-        GeminiChatClient()
+        GenAIChatClient()
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -141,7 +141,7 @@ def test_client_init_missing_compartment(mock_from_file):
     clear=True,
 )
 def test_complete_and_extract(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
     mock_resp.data.chat_response.choices = [
         MagicMock(message=MagicMock(content=[MagicMock(text="response text")]))
@@ -151,7 +151,7 @@ def test_complete_and_extract(mock_client):
     assert res == "response text"
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -165,7 +165,7 @@ def test_complete_and_extract(mock_client):
     clear=True,
 )
 def test_complete_fallback_json(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
     del mock_resp.data.chat_response
     mock_resp.data.__str__.return_value = json.dumps(
@@ -176,7 +176,7 @@ def test_complete_fallback_json(mock_client):
     assert res == "fallback text 2"
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -190,7 +190,7 @@ def test_complete_fallback_json(mock_client):
     clear=True,
 )
 def test_complete_fallback_empty(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
     del mock_resp.data.chat_response
     mock_resp.data.__str__.return_value = "invalid json"
@@ -198,7 +198,7 @@ def test_complete_fallback_empty(mock_client):
     assert client.complete("sys", []) == ""
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -212,7 +212,7 @@ def test_complete_fallback_empty(mock_client):
     clear=True,
 )
 def test_stream_success(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
     mock_event1 = MagicMock(
         data=json.dumps({"message": {"content": [{"text": "stream"}]}})
@@ -224,7 +224,7 @@ def test_stream_success(mock_client):
     assert res == ["stream"]
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -238,14 +238,14 @@ def test_stream_success(mock_client):
     clear=True,
 )
 def test_stream_fallback(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     client.client.chat.side_effect = Exception("stream fail")
     client.complete = MagicMock(return_value="fallback complete")
     res = list(client.stream("sys", []))
     assert res == ["fallback complete"]
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -259,7 +259,7 @@ def test_stream_fallback(mock_client):
     clear=True,
 )
 def test_stream_partial_error(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
 
     def raise_err():
@@ -268,14 +268,11 @@ def test_stream_partial_error(mock_client):
 
     mock_resp.data.events.return_value = raise_err()
     client.client.chat.return_value = mock_resp
-    res = list(client.stream("sys", []))
-    assert len(res) == 2
-    assert res[0] == "part1"
-    err = json.loads(res[1])
-    assert "error after some data" in err["error"]
+    with pytest.raises(Exception, match="error after some data"):
+        list(client.stream("sys", []))
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -289,7 +286,7 @@ def test_stream_partial_error(mock_client):
     clear=True,
 )
 def test_stream_empty_events(mock_client):
-    client = GeminiChatClient()
+    client = GenAIChatClient()
     mock_resp = MagicMock()
     mock_resp.data.events.return_value = [
         MagicMock(data=""),
@@ -302,18 +299,18 @@ def test_stream_empty_events(mock_client):
 
 
 def test_extract_delta():
-    assert GeminiChatClient._extract_delta(json.dumps({"text": "raw"})) == "raw"
+    assert GenAIChatClient._extract_delta(json.dumps({"text": "raw"})) == "raw"
     assert (
-        GeminiChatClient._extract_delta(
+        GenAIChatClient._extract_delta(
             json.dumps({"message": {"content": [{"other": "val"}]}})
         )
         == ""
     )
-    assert GeminiChatClient._extract_delta(json.dumps({"other": "val"})) == ""
-    assert GeminiChatClient._extract_delta("invalid") == ""
+    assert GenAIChatClient._extract_delta(json.dumps({"other": "val"})) == ""
+    assert GenAIChatClient._extract_delta("invalid") == ""
 
 
-@patch("backend.services.oci_gemini.GenerativeAiInferenceClient")
+@patch("backend.services.oci_genai.GenerativeAiInferenceClient")
 @patch.dict(
     os.environ,
     {
@@ -327,6 +324,6 @@ def test_extract_delta():
     clear=True,
 )
 def test_ping(mock_client):
-    with patch.object(GeminiChatClient, "complete", return_value="OK"):
-        client = GeminiChatClient()
+    with patch.object(GenAIChatClient, "complete", return_value="OK"):
+        client = GenAIChatClient()
         assert client.ping() == "OK"

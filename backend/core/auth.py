@@ -143,35 +143,28 @@ class _TokenBlocklist:
         return self._redis
 
     async def add(self, token: str) -> None:
+        try:
+            payload = jwt.decode(
+                token,
+                _jwt_secret(),
+                algorithms=[JWT_ALGORITHM],
+                options={"verify_signature": True},
+            )
+            exp = float(payload.get("exp", time.time() + _ttl_seconds()))
+        except jwt.PyJWTError:
+            return
+
+        ttl = int(max(1, exp - time.time()))
+
         r = await self._ensure_redis()
         if r:
             try:
-                try:
-                    payload = jwt.decode(
-                        token,
-                        _jwt_secret(),
-                        algorithms=[JWT_ALGORITHM],
-                        options={"verify_signature": False},
-                    )
-                    exp = float(payload.get("exp", time.time() + _ttl_seconds()))
-                except jwt.PyJWTError:
-                    exp = float(time.time() + _ttl_seconds())
-                ttl = max(1, exp - int(time.time()))
                 await r.setex(f"revoked:{token}", ttl, "1")
                 return
             except Exception:
                 pass
+
         async with self._local_lock:
-            try:
-                payload = jwt.decode(
-                    token,
-                    _jwt_secret(),
-                    algorithms=[JWT_ALGORITHM],
-                    options={"verify_signature": False},
-                )
-                exp = float(payload.get("exp", time.time() + _ttl_seconds()))
-            except jwt.PyJWTError:
-                exp = float(time.time() + _ttl_seconds())
             current = time.time()
             expired = [t for t, e in self._local_revoked.items() if e < current]
             for t in expired:

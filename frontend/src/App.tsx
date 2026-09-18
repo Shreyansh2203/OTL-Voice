@@ -27,9 +27,12 @@ function AppContent() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const handleLogin = useCallback((user: Identity) => {
-    qc.setQueryData(['session'], user);
-  }, [qc]);
+  const handleLogin = useCallback(
+    (user: Identity) => {
+      qc.setQueryData(['session'], user);
+    },
+    [qc]
+  );
   const handleLogout = useCallback(async () => {
     await api.logout().catch(() => undefined);
     qc.setQueryData(['session'], null);

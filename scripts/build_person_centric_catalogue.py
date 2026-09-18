@@ -9,6 +9,7 @@ catalogue_path = data_dir / "fusion_master_catalogue.json"
 if not catalogue_path.is_file():
     print(f"[ERROR] {catalogue_path} not found. Run export_fusion_master.py first.")
     import sys
+
     sys.exit(1)
 with open(catalogue_path, "r", encoding="utf-8") as f:
     master_data = json.load(f)
@@ -42,15 +43,17 @@ for tc in timecards:
         if rep_id:
             if rep_id not in timecards_by_emp:
                 timecards_by_emp[rep_id] = []
-            timecards_by_emp[rep_id].append({
-                "request_id": tc.get("request_id"),
-                "process_mode": tc.get("process_mode"),
-                "hours": ev.get("measure_hours"),
-                "comment": ev.get("comment"),
-                "start_time": ev.get("start_time"),
-                "stop_time": ev.get("stop_time"),
-                "payroll_type": ev.get("payroll_type"),
-            })
+            timecards_by_emp[rep_id].append(
+                {
+                    "request_id": tc.get("request_id"),
+                    "process_mode": tc.get("process_mode"),
+                    "hours": ev.get("measure_hours"),
+                    "comment": ev.get("comment"),
+                    "start_time": ev.get("start_time"),
+                    "stop_time": ev.get("stop_time"),
+                    "payroll_type": ev.get("payroll_type"),
+                }
+            )
 person_master_list = []
 flat_rows = []
 for emp in employees:
@@ -66,38 +69,50 @@ for emp in employees:
         if p_num and p_num not in seen_proj_nums:
             seen_proj_nums.add(p_num)
             p_obj = projects_by_num.get(p_num, {})
-            assigned_projects.append({
-                "project_number": p_num,
-                "project_name": a.get("project_name") or p_obj.get("project_name") or "",
-                "role": a.get("project_role") or "Team Member",
-                "manager": p_obj.get("manager") or "",
-                "status": p_obj.get("status") or "Active",
-                "tasks": [
-                    {
-                        "task_number": t.get("task_number"),
-                        "task_name": t.get("task_name"),
-                        "task_id": t.get("task_id")
-                    } for t in tasks_by_proj.get(p_num, [])
-                ]
-            })
+            assigned_projects.append(
+                {
+                    "project_number": p_num,
+                    "project_name": a.get("project_name")
+                    or p_obj.get("project_name")
+                    or "",
+                    "role": a.get("project_role") or "Team Member",
+                    "manager": p_obj.get("manager") or "",
+                    "status": p_obj.get("status") or "Active",
+                    "tasks": [
+                        {
+                            "task_number": t.get("task_number"),
+                            "task_name": t.get("task_name"),
+                            "task_id": t.get("task_id"),
+                        }
+                        for t in tasks_by_proj.get(p_num, [])
+                    ],
+                }
+            )
     for p_num, p_obj in projects_by_num.items():
         mgr = (p_obj.get("manager") or "").strip().lower()
-        if mgr and (mgr in full_name.lower() or full_name.lower() in mgr) and p_num not in seen_proj_nums:
+        if (
+            mgr
+            and (mgr in full_name.lower() or full_name.lower() in mgr)
+            and p_num not in seen_proj_nums
+        ):
             seen_proj_nums.add(p_num)
-            assigned_projects.append({
-                "project_number": p_num,
-                "project_name": p_obj.get("project_name") or "",
-                "role": "Project Manager",
-                "manager": p_obj.get("manager") or full_name,
-                "status": p_obj.get("status") or "Active",
-                "tasks": [
-                    {
-                        "task_number": t.get("task_number"),
-                        "task_name": t.get("task_name"),
-                        "task_id": t.get("task_id")
-                    } for t in tasks_by_proj.get(p_num, [])
-                ]
-            })
+            assigned_projects.append(
+                {
+                    "project_number": p_num,
+                    "project_name": p_obj.get("project_name") or "",
+                    "role": "Project Manager",
+                    "manager": p_obj.get("manager") or full_name,
+                    "status": p_obj.get("status") or "Active",
+                    "tasks": [
+                        {
+                            "task_number": t.get("task_number"),
+                            "task_name": t.get("task_name"),
+                            "task_id": t.get("task_id"),
+                        }
+                        for t in tasks_by_proj.get(p_num, [])
+                    ],
+                }
+            )
     emp_timecards = timecards_by_emp.get(emp_no, [])
     person_entry = {
         "employee_number": emp_no,
@@ -112,27 +127,56 @@ for emp in employees:
     person_master_list.append(person_entry)
     if assigned_projects:
         for p in assigned_projects:
-            tasks_str = "; ".join([f"#{t['task_number']} {t['task_name']}" for t in p["tasks"]]) if p["tasks"] else "No tasks assigned"
-            tc_summary = f"{len(emp_timecards)} timecard(s)" if emp_timecards else "None"
-            flat_rows.append([
-                emp_no, person_id, full_name, created_by,
-                p["project_number"], p["project_name"], p["role"], p["status"],
-                tasks_str, tc_summary
-            ])
+            tasks_str = (
+                "; ".join([f"#{t['task_number']} {t['task_name']}" for t in p["tasks"]])
+                if p["tasks"]
+                else "No tasks assigned"
+            )
+            tc_summary = (
+                f"{len(emp_timecards)} timecard(s)" if emp_timecards else "None"
+            )
+            flat_rows.append(
+                [
+                    emp_no,
+                    person_id,
+                    full_name,
+                    created_by,
+                    p["project_number"],
+                    p["project_name"],
+                    p["role"],
+                    p["status"],
+                    tasks_str,
+                    tc_summary,
+                ]
+            )
     else:
         tc_summary = f"{len(emp_timecards)} timecard(s)" if emp_timecards else "None"
-        flat_rows.append([
-            emp_no, person_id, full_name, created_by,
-            "Not Assigned", "N/A", "N/A", "N/A",
-            "N/A", tc_summary
-        ])
+        flat_rows.append(
+            [
+                emp_no,
+                person_id,
+                full_name,
+                created_by,
+                "Not Assigned",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                tc_summary,
+            ]
+        )
 json_out = data_dir / "fusion_person_master.json"
 with open(json_out, "w", encoding="utf-8") as f:
-    json.dump({
-        "metadata": master_data.get("metadata", {}),
-        "total_persons": len(person_master_list),
-        "persons": person_master_list
-    }, f, indent=2, ensure_ascii=False)
+    json.dump(
+        {
+            "metadata": master_data.get("metadata", {}),
+            "total_persons": len(person_master_list),
+            "persons": person_master_list,
+        },
+        f,
+        indent=2,
+        ensure_ascii=False,
+    )
 xlsx_out = data_dir / "fusion_person_master.xlsx"
 wb = openpyxl.Workbook()
 ws = wb.active
@@ -141,9 +185,16 @@ header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
 center_align = Alignment(horizontal="center", vertical="center")
 headers = [
-    "Employee #", "Person ID", "Full Name", "Created By",
-    "Assigned Project #", "Project Name", "Project Role", "Project Status",
-    "Available Tasks", "Timecard Submissions"
+    "Employee #",
+    "Person ID",
+    "Full Name",
+    "Created By",
+    "Assigned Project #",
+    "Project Name",
+    "Project Role",
+    "Project Status",
+    "Available Tasks",
+    "Timecard Submissions",
 ]
 ws.append(headers)
 for col_num in range(1, len(headers) + 1):
@@ -154,7 +205,7 @@ for col_num in range(1, len(headers) + 1):
 for r in flat_rows:
     ws.append(r)
 for col in ws.columns:
-    max_len = max(len(str(cell.value or '')) for cell in col)
+    max_len = max(len(str(cell.value or "")) for cell in col)
     col_letter = openpyxl.utils.get_column_letter(col[0].column)
     ws.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 50)
 wb.save(xlsx_out)

@@ -1,4 +1,4 @@
-export type Role = "user" | "assistant";
+export type Role = 'user' | 'assistant';
 export interface Identity {
   username: string;
   employeeId: string;
@@ -25,7 +25,7 @@ export interface AssignmentsResponse {
 }
 export interface ToolCall {
   name: string;
-  status: "running" | "completed" | "failed";
+  status: 'running' | 'completed' | 'failed';
 }
 export interface ChatMessage {
   role: Role;
@@ -69,4 +69,4 @@ export interface ChatEvent {
 }
 export interface TimecardsResponse {
   items: any[];
-}
+}

@@ -36,11 +36,12 @@ def test_render_assignments_empty():
     assert "no project assignments" in output
 
 
-@patch("backend.services.chat.GeminiChatClient")
+@patch("backend.services.chat.GenAIChatClient")
 def test_client(mock_client):
-    client1 = _client()
+    mock_client.return_value = MagicMock()
+    client = _client()
     _client()
-    assert client1 is not None
+    assert client is not None
     assert mock_client.call_count == 2
 
 

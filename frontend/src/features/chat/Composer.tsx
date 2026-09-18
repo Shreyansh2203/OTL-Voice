@@ -143,6 +143,7 @@ export default function Composer({
     // conversation than a single fixed timeout.
     const resetSilenceTimer = () => {
       clearSilenceTimer();
+
       const draft = textRef.current.trim();
       const wait = TERMINAL_PUNCTUATION.test(draft) ? SILENCE_MS_COMPLETE : SILENCE_MS_TRAILING;
       silenceTimerRef.current = setTimeout(() => {
@@ -150,7 +151,9 @@ export default function Composer({
         const toSend = textRef.current.trim();
         if (toSend && !disabledRef.current) {
           finishMic();
-          if (handsFreeRef.current) {
+          // Always auto-send if hands-free mode is enabled (which it is by default in ChatView)
+          // or if the mic was started via auto-trigger.
+          if (handsFreeRef.current || isAutoTriggerRef.current) {
             onSendRef.current(toSend, true);
             updateText("");
           }

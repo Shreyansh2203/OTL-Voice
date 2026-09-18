@@ -6,13 +6,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .oci_gemini import GeminiChatClient
+from .oci_genai import GenAIChatClient
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "prompt.txt"
 
 
-def _client() -> GeminiChatClient:
-    return GeminiChatClient()
+def _client() -> GenAIChatClient:
+    return GenAIChatClient()
 
 
 def _safe_err(msg: str | Exception) -> str:

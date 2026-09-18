@@ -1,7 +1,7 @@
 [project]
 name = "timesheet-repo"
 version = "0.1.0"
-description = "Voice-enabled AI timesheet assistant for Oracle Time and Labor (OTL) powered by OCI GenAI and OCI Speech."
+description = "Voice-enabled AI timesheet assistant for Oracle Time and Labor (OTL) powered by OpenAI Realtime WebRTC."
 readme = "README.md"
 authors = [
     { name = "Shreyansh Srivastava", email = "main.doga@gmail.com" }
@@ -11,7 +11,7 @@ dependencies = [
     "av>=18.1.0",
     "fastapi>=0.111",
     "httpx>=0.27",
-    "oci>=2.140",
+    "oci>=2.186.0",
     "pyjwt>=2.13.0",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.9",
@@ -48,8 +48,7 @@ ignore_missing_imports = true
 source = ["backend"]
 omit = [
     "backend/tests/*",
-    "backend/core/oci_ai_speech_realtime/*",
-]
+    ]
 
 [tool.coverage.report]
 show_missing = true
@@ -59,4 +58,6 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
+
+
 

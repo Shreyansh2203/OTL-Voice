@@ -87,6 +87,7 @@ def tts(
         client = _speech_client()
         audio = client.synthesize(body.text, rate=body.rate)
     except Exception as exc:
+        logger.error("TTS synthesis failed", exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Speech synthesis unavailable: {exc}",

@@ -1,16 +1,19 @@
 """End-to-end validation of the catalogue-backed flow."""
+
 import httpx
 
 BASE = "http://localhost"
 test_cases = [
-    ("10464", "Mahesh Babu S"),   
-    ("90407", "prathmesh nayadkar"),  
+    ("10464", "Mahesh Babu S"),
+    ("90407", "prathmesh nayadkar"),
 ]
 for emp_no, expected_name in test_cases:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TESTING Employee #{emp_no} ({expected_name})")
-    print(f"{'='*60}")
-    r = httpx.post(f"{BASE}/api/auth/login", json={"username": emp_no, "password": ""}, timeout=15)
+    print(f"{'=' * 60}")
+    r = httpx.post(
+        f"{BASE}/api/auth/login", json={"username": emp_no, "password": ""}, timeout=15
+    )
     print(f"\n[1] LOGIN: Status {r.status_code}")
     if r.status_code != 200:
         print(f"    FAILED: {r.text}")
@@ -43,6 +46,6 @@ for emp_no, expected_name in test_cases:
     print(f"    Found {len(items)} timecard records")
     r = client.post(f"{BASE}/api/auth/logout")
     print(f"\n[5] LOGOUT: Status {r.status_code}")
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print("ALL TESTS COMPLETE")
-print(f"{'='*60}")
+print(f"{'=' * 60}")

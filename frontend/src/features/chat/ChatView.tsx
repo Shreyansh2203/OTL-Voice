@@ -435,6 +435,7 @@ export default function ChatView({
                   onStopMic={stopMicSession}
                   errorMsg={mic.errorMsg}
                   voiceState={voiceState}
+                  handsFree={true}
                   onRegisterTrigger={(trigger) => {
                     composerMicTriggerRef.current = trigger;
                   }}

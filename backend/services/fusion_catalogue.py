@@ -374,21 +374,7 @@ def _do_load_catalogue() -> None:
         logger.exception("Failed to load Fusion catalogue")
     finally:
         client.close()
-        if load_succeeded:
-            _set_loading_false(conn, lock_path)
-        else:
-            # Keep is_loading=true so operators know catalogue is stale
-            try:
-                conn.execute(
-                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')"
-                )
-                conn.commit()
-            except Exception:
-                pass
-        try:
-            os.unlink(lock_path)
-        except Exception:
-            pass
+        _set_loading_false(conn, lock_path)
 
 
 def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
@@ -445,12 +431,6 @@ def _save_catalogue(
 def load_catalogue() -> None:
     if os.getenv("TEST_MODE", "false").strip().lower() == "true":
         logger.info("TEST_MODE is true. Skipping live Fusion catalogue load.")
-        return
-    conn = _get_db()
-    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
-    row = cur.fetchone()
-    if row and row[0] == "true":
-        logger.warning("Catalogue load already in progress, not starting another")
         return
     threading.Thread(target=_do_load_catalogue, daemon=True).start()
 
@@ -525,26 +505,8 @@ def list_assignments_for_worker(
     row = cur.fetchone()
     is_loaded = row and row[0] == "true"
     if not is_loaded:
-        cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
-        row = cur.fetchone()
-        is_loading = row and row[0] == "true"
-        if is_loading:
-            logger.info("Catalogue is loading, waiting for completion...")
-            import time
-
-            max_wait = 10.0
-            waited = 0.0
-            while waited < max_wait:
-                cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
-                row = cur.fetchone()
-                if row and row[0] == "true":
-                    is_loaded = True
-                    break
-                time.sleep(0.2)
-                waited += 0.2
-        if not is_loaded:
-            logger.warning("Catalogue not loaded - returning empty assignments")
-            return []
+        logger.warning("Catalogue not loaded - returning empty assignments")
+        return []
     assigned = _find_person_projects(employee_number, full_name)
     if not assigned:
         return []
@@ -559,24 +521,8 @@ async def alist_assignments_for_worker(
     row = cur.fetchone()
     is_loaded = row and row[0] == "true"
     if not is_loaded:
-        cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
-        row = cur.fetchone()
-        is_loading = row and row[0] == "true"
-        if is_loading:
-            logger.info("Catalogue is loading, waiting for completion...")
-            max_wait = 10.0
-            waited = 0.0
-            while waited < max_wait:
-                cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
-                row = cur.fetchone()
-                if row and row[0] == "true":
-                    is_loaded = True
-                    break
-                await asyncio.sleep(0.2)
-                waited += 0.2
-        if not is_loaded:
-            logger.warning("Catalogue not loaded - returning empty assignments")
-            return []
+        logger.warning("Catalogue not loaded - returning empty assignments")
+        return []
     assigned = _find_person_projects(employee_number, full_name)
     if not assigned:
         return []

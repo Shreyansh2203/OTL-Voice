@@ -107,14 +107,17 @@ def _service_endpoint(region: str) -> str:
     if explicit:
         return explicit
     return f"https://inference.generativeai.{region}.oci.oraclecloud.com"
-class GeminiChatClient:
+class GenAIChatClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
-        self.region = self.config.get("region") or _env("OCI_REGION")
+        # Override the region specifically for GenAI so cross-region calls work (e.g. us-ashburn-1)
+        self.region = _env("OCI_GENAI_REGION") or self.config.get("region") or _env("OCI_REGION", "us-ashburn-1")
+        self.config["region"] = self.region
+        
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
-        self.model_id = _env("CHAT_MODEL_ID", "google.gemini-2.5-flash")
+        self.model_id = _env("CHAT_MODEL_ID", "meta.llama-3-70b-instruct")
         self.temperature = float(_env("CHAT_TEMPERATURE", "0.3"))
         self.top_p = float(_env("CHAT_TOP_P", "0.95"))
         self.max_tokens = int(_env("CHAT_MAX_TOKENS", "2048"))
@@ -229,8 +232,7 @@ class GeminiChatClient:
                 yield self.complete(system_prompt, history)
                 return
             logger.error("Streaming failed after producing partial output: %s", exc)
-            yield json.dumps({"error": str(exc)})
-            return
+            raise
         if not produced_any:
             yield self.complete(system_prompt, history)
     @staticmethod

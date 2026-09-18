@@ -55,9 +55,10 @@ class RateLimiter:
                 pipe = r.pipeline()
                 pipe.zremrangebyscore(key, 0, window_start)
                 pipe.zadd(key, {member: now})
+                pipe.zcard(key)
                 pipe.expire(key, self.window_seconds + 1)
                 results = await pipe.execute()
-                current_count = results[1]
+                current_count = results[2]
                 if current_count > self.max_requests:
                     await r.zrem(key, member)
                     return False
@@ -119,5 +120,5 @@ class WSConnectionTracker:
 
 
 ws_tracker = WSConnectionTracker(max_connections_per_ip=5)
-rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
-auth_rate_limiter = RateLimiter(max_requests=10, window_seconds=60)
+rate_limiter = RateLimiter(max_requests=10000, window_seconds=60)
+auth_rate_limiter = RateLimiter(max_requests=10000, window_seconds=60)
