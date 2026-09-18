@@ -268,7 +268,6 @@ def _do_load_catalogue() -> None:
         return
     logger.info("Loading Fusion catalogue from live APIs...")
     start = time.time()
-    load_succeeded = False
     try:
         from . import otl_client
 
