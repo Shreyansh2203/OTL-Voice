@@ -11,6 +11,7 @@ The catalogue auto-refreshes on a configurable interval (default: 6 hours).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
