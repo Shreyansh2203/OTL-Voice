@@ -1,10 +1,14 @@
 import os
+
 os.environ['TEST_MODE'] = 'true'
 os.environ['SESSION_COOKIE_SECURE'] = 'false'
 
 import sys
+
 from fastapi.testclient import TestClient
+
 from backend.main import app
+
 
 def run_test():
     print("--- STARTING END-TO-END TEST ---\n")

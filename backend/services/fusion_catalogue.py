@@ -11,7 +11,6 @@ The catalogue auto-refreshes on a configurable interval (default: 6 hours).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -362,7 +361,7 @@ def _do_load_catalogue() -> None:
         logger.info("Building project index...")
         person_index = _build_index(enriched, assignments_data=assignments)
         _save_catalogue(conn, enriched, person_index)
-        load_succeeded = True
+        
         elapsed = time.time() - start
         logger.info(
             "Fusion catalogue ready: %d projects, %d persons indexed (%.1fs)",

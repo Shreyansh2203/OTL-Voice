@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ...core import auth
 from ...core.auth import SessionContext
-from ...core.config import is_dev_mode, is_test_mode
 from ...schemas.timecards import TimecardBody
 from ...services import fusion_catalogue, otl_client
 
@@ -321,7 +320,6 @@ async def labour_assignments(
         )
     except Exception:
         work_orders = []
-    pass
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,

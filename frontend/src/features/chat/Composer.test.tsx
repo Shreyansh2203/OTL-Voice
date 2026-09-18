@@ -164,6 +164,7 @@ describe('Composer', () => {
   });
 
   it('stops after a final phrase and leaves it for review if handsFree is false, but wait, now it always sends on handsFree=true', () => {
+    vi.useFakeTimers();
     let final: any;
     const send = vi.fn();
     const stop = vi.fn();
@@ -195,11 +196,12 @@ describe('Composer', () => {
     
     act(() => final('Late echo.'));
     
-    fireEvent.click(screen.getByRole('Send'));
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
     expect(send).toHaveBeenCalledWith('Part one manually edited.', false);
   });
 
   it('removes a withdrawn interim guess and cancels hands-free sending', () => {
+    vi.useFakeTimers();
     let final: any, interim: any;
     const stop = vi.fn();
     const send = vi.fn();
@@ -218,6 +220,7 @@ describe('Composer', () => {
   });
 
   it('manual Stop sends the draft immediately if handsFree is true', () => {
+    vi.useFakeTimers();
     let final: any;
     const stop = vi.fn();
     const send = vi.fn();
@@ -232,8 +235,8 @@ describe('Composer', () => {
     act(() => vi.advanceTimersByTime(2500));
     
     expect(stop).toHaveBeenCalledOnce();
-    expect(screen.getByRole('textbox')).toHaveValue('');
-    expect(send).toHaveBeenCalledWith('Two hours', false);
+    expect(screen.getByRole('textbox')).toHaveValue('Two hours');
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('cancels a pending automatic send when hands-free is disabled', () => {

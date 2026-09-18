@@ -152,8 +152,7 @@ export default function Composer({
         if (toSend && !disabledRef.current) {
           finishMic();
           // Always auto-send if hands-free mode is enabled (which it is by default in ChatView)
-          // or if the mic was started via auto-trigger.
-          if (handsFreeRef.current || isAutoTriggerRef.current) {
+          if (handsFreeRef.current) {
             onSendRef.current(toSend, true);
             updateText("");
           }

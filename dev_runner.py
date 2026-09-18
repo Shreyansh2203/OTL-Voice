@@ -1,7 +1,7 @@
-import subprocess
-import threading
-import sys
 import os
+import subprocess
+import sys
+import threading
 
 # Windows-specific flag to isolate processes from the main terminal's Ctrl+C signals
 # This prevents Uvicorn's hot-reload from crashing the entire script.
