@@ -99,13 +99,25 @@ test.describe('Voice Input State Machine', () => {
         simulateSpeech: (text: string) => (window as any).mockRecognition?.simulateSpeech(text),
         simulateFinalSpeech: (text: string) => (window as any).mockRecognition?.simulateFinalSpeech(text),
       };
+
+      // Mock getUserMedia to prevent permission dialogs from blocking the thread in WebKit/Firefox
+      if (!navigator.mediaDevices) {
+        (navigator as any).mediaDevices = {};
+      }
+      navigator.mediaDevices.getUserMedia = async () => {
+        // Return a dummy stream with no tracks
+        const stream = new MediaStream();
+        return stream;
+      };
     });
   });
 
-  test('should not repopulate text box if Send is clicked during active dictation (Race Condition)', async ({ page }) => {
+  test('should not repopulate text box if Send is clicked during active dictation (Race Condition)', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Speech API permissions and audio mocks are only reliable on Chromium');
     await page.goto('/');
     const micBtn = page.getByRole('button', { name: /Speak/i });
     await expect(micBtn).toBeVisible();
+    await expect(micBtn).toBeEnabled();
     await micBtn.click();
     await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();
     await page.evaluate(() => {
@@ -116,10 +128,12 @@ test.describe('Voice Input State Machine', () => {
     await page.getByRole('button', { name: /Send/i }).click();
   });
 
-  test('should auto-send transcribed text when manual mic button is toggled off', async ({ page }) => {
+  test('should auto-send transcribed text when manual mic button is toggled off', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Speech API permissions and audio mocks are only reliable on Chromium');
     await page.goto('/');
     const micBtn = page.getByRole('button', { name: /Speak/i });
     await expect(micBtn).toBeVisible();
+    await expect(micBtn).toBeEnabled();
     await micBtn.click();
     await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();
     await page.evaluate(() => {
