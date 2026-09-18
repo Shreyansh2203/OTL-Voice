@@ -50,8 +50,8 @@ def _extract_entries(assistant_message: str) -> list[dict[str, Any]]:
                 entries = data.get("entries")
                 if isinstance(entries, list):
                     return [_normalize_entry(e) for e in entries if isinstance(e, dict)]
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Assistant generated malformed JSON: {e}")
     try:
         data = json.loads(assistant_message.strip())
         if isinstance(data, list):
@@ -191,7 +191,13 @@ def _options_hint(assignments: list[dict[str, Any]]) -> str:
 async def submit_timecard(
     body: TimecardBody, ctx: SessionContext = Depends(auth.current_session)
 ) -> dict[str, Any]:
-    entries = body.entries or _extract_entries(body.assistantMessage or "")
+    try:
+        entries = body.entries or _extract_entries(body.assistantMessage or "")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
     if not entries:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

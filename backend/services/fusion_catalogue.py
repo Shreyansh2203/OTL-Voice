@@ -514,17 +514,7 @@ def list_assignments_for_worker(
 async def alist_assignments_for_worker(
     employee_number: str, full_name: str = ""
 ) -> list[dict[str, Any]]:
-    conn = _get_db()
-    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
-    row = cur.fetchone()
-    is_loaded = row and row[0] == "true"
-    if not is_loaded:
-        logger.warning("Catalogue not loaded - returning empty assignments")
-        return []
-    assigned = _find_person_projects(employee_number, full_name)
-    if not assigned:
-        return []
-    return _transform_assignments(assigned)
+    return await asyncio.to_thread(list_assignments_for_worker, employee_number, full_name)
 
 
 def catalogue_age_seconds() -> float | None:

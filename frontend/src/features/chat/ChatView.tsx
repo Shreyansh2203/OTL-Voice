@@ -204,7 +204,7 @@ export default function ChatView({
                 enqueueChunk(sentence);
               }
             } else if (ev.error) {
-              finalText = acc || `Sorry — ${ev.error}`;
+              finalText = acc ? `${acc}\n\n[Error: ${ev.error}]` : `Sorry — ${ev.error}`;
               setMessages((prev) => updateLastAssistant(prev, finalText, false));
             } else if (ev.done) {
               finalText = acc;

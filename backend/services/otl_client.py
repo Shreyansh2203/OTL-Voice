@@ -425,33 +425,34 @@ async def alist_timecard_entries(
 async def acreate_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    async def _submit_single(index: int, entry: dict[str, Any]) -> dict[str, Any]:
-        try:
-            created = await acreate_timecard_entry(cred, entry)
-            return {
-                "index": index,
-                "ok": True,
-                "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
-                "recordName": _default_record_name(entry),
-            }
-        except OtlError as exc:
-            return {
-                "index": index,
-                "ok": False,
-                "status": exc.status_code,
-                "error": exc.message,
-            }
-        except Exception as exc:
-            return {
-                "index": index,
-                "ok": False,
-                "status": 500,
-                "error": str(exc),
-            }
+    async with _async_client(cred) as client:
+        async def _submit_single(index: int, entry: dict[str, Any]) -> dict[str, Any]:
+            try:
+                created = await acreate_timecard_entry(cred, entry, client=client)
+                return {
+                    "index": index,
+                    "ok": True,
+                    "id": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordNumber": created.get("timeRecordEventRequestId") or "UNKNOWN",
+                    "recordName": _default_record_name(entry),
+                }
+            except OtlError as exc:
+                return {
+                    "index": index,
+                    "ok": False,
+                    "status": exc.status_code,
+                    "error": exc.message,
+                }
+            except Exception as exc:
+                return {
+                    "index": index,
+                    "ok": False,
+                    "status": 500,
+                    "error": str(exc),
+                }
 
-    tasks = [_submit_single(i, entry) for i, entry in enumerate(entries)]
-    return list(await asyncio.gather(*tasks))
+        tasks = [_submit_single(i, entry) for i, entry in enumerate(entries)]
+        return list(await asyncio.gather(*tasks))
 
 
 async def alist_worker_assignments(
@@ -463,9 +464,12 @@ async def alist_worker_assignments(
 
 
 async def acreate_timecard_entry(
-    cred: OtlCredential, entry: dict[str, Any]
+    cred: OtlCredential, entry: dict[str, Any], client: httpx.AsyncClient | None = None
 ) -> dict[str, Any]:
-    async with _async_client(cred) as client:
+    if client is not None:
         resp = await client.post(base_url(), json=map_entry_to_otl(entry))
+    else:
+        async with _async_client(cred) as c:
+            resp = await c.post(base_url(), json=map_entry_to_otl(entry))
     _raise_for_status(resp)
     return resp.json()
