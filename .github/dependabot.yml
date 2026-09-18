@@ -1,14 +1,22 @@
 version: 2
 updates:
-  - package-ecosystem: 'npm'
-    directory: '/frontend'
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
-      interval: 'weekly'
-  - package-ecosystem: 'uv'
-    directory: '/'
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps):"
+
+  - package-ecosystem: "pip"
+    directory: "/"
     schedule:
-      interval: 'weekly'
-  - package-ecosystem: 'github-actions'
-    directory: '/'
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps):"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: 'weekly'
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps):"
