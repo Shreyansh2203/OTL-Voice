@@ -8,9 +8,19 @@ import type {
   TimecardEntry,
   TimecardsResponse,
 } from '../types';
-const API = '/api';
+const API = import.meta.env.VITE_API_URL || '/api';
 const CSRF_COOKIE_NAME = 'csrf_token';
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+export function getWsApiUrl(path: string): string {
+  if (API.startsWith('http')) {
+    return API.replace(/^http/, 'ws') + path;
+  }
+  const loc = window.location;
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${loc.host}${API}${path}`;
+}
+
 function getCsrfToken(): string | null {
   const match = document.cookie.match(
     new RegExp(`(^| )${CSRF_COOKIE_NAME}=([^;]+)`)
@@ -42,6 +52,7 @@ async function fetchWithRetry(
   backoff = 300
 ): Promise<Response> {
   try {
+    options.headers = { ...defaultHeaders(), ...options.headers };
     const response = await fetch(url, options);
     const method = options.method?.toUpperCase() || 'GET';
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
@@ -65,6 +76,10 @@ export function defaultHeaders(): Record<string, string> {
   const csrfToken = getCsrfToken();
   if (csrfToken) {
     headers[CSRF_HEADER_NAME] = csrfToken;
+  }
+  const sessionToken = localStorage.getItem('otl_session');
+  if (sessionToken) {
+    headers['Authorization'] = `Bearer ${sessionToken}`;
   }
   return headers;
 }
@@ -91,7 +106,11 @@ export async function login(
     jsonInit('POST', { username, password })
   );
   if (!res.ok) throw await parseError(res);
-  return res.json();
+  const data = await res.json();
+  if (data.sessionToken) {
+    localStorage.setItem('otl_session', data.sessionToken);
+  }
+  return data;
 }
 export async function getSession(): Promise<Identity | null> {
   const res = await fetchWithRetry(`${API}/auth/session`, {
@@ -110,6 +129,8 @@ export async function logout(): Promise<void> {
     await fetch(`${API}/auth/logout`, jsonInit('POST'));
   } catch {
     // Silently ignore network/CSRF errors on sign out so UI session teardown proceeds
+  } finally {
+    localStorage.removeItem('otl_session');
   }
 }
 export async function chatStream(

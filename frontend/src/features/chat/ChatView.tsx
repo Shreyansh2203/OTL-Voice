@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import * as api from "../../api/client";
 import { updateLastAssistant } from "../../lib/chat";
 import { extractEntries, stripEntriesBlock } from "../../lib/entries";
 import { useAudioPlayer, useSpeechInput } from "../../lib/voice";
 import { playThinkingCue } from "../../lib/audio";
 import type { ChatMessage } from "../../types";
-import { SpeakerIcon } from "../../components/ui/icons";
+import {
+  SpeakerIcon,
+  FolderIcon,
+  HistoryIcon,
+  MessageSquareIcon,
+} from "../../components/ui/icons";
 import { ProjectAssignments, ReviewPanel, TimecardHistory } from "../timesheets";
 import Composer from "./Composer";
 import MessageBubble from "./MessageBubble";
+import ShinyText from "../../components/ui/ShinyText";
 
 const KICKOFF = "Please begin the session now.";
 
@@ -336,7 +343,7 @@ export default function ChatView({
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="brand-logo">
-            <img src="/favicon.svg" alt="" width={22} height={22} />
+            <img src="/favicon.svg" alt="" width={24} height={24} />
           </div>
           <span className="brand-title">OTL Timesheet</span>
         </div>
@@ -348,7 +355,8 @@ export default function ChatView({
             aria-label="Navigate to Assistant chat"
             aria-current={viewTab === "chat" ? "page" : undefined}
           >
-            Assistant
+            <MessageSquareIcon size={16} />
+            <span>Assistant</span>
           </button>
           <button
             className={`nav-item ${viewTab === "projects" ? "active" : ""}`}
@@ -356,7 +364,8 @@ export default function ChatView({
             aria-label="Navigate to Project Assignments"
             aria-current={viewTab === "projects" ? "page" : undefined}
           >
-            Projects
+            <FolderIcon size={16} />
+            <span>Projects</span>
           </button>
           <button
             className={`nav-item ${viewTab === "history" ? "active" : ""}`}
@@ -364,7 +373,8 @@ export default function ChatView({
             aria-label="Navigate to Timecard History"
             aria-current={viewTab === "history" ? "page" : undefined}
           >
-            History
+            <HistoryIcon size={16} />
+            <span>History</span>
           </button>
         </nav>
         <div className="sidebar-footer">
@@ -387,13 +397,19 @@ export default function ChatView({
           </div>
         </div>
       </aside>
-      <main className="workspace">
-        <header className="workspace-header">
-          <h2>
+      <main className="workspace" style={{ position: 'relative' }}>
+        <header className="workspace-header" style={{ zIndex: 1, position: 'relative', background: 'rgba(18, 15, 23, 0.65)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <h2 style={{ color: 'white' }}>
             {viewTab === "chat" ? "Assistant" : 
              viewTab === "projects" ? "Project Assignments" : 
              "Timecard History"}
           </h2>
+          <div className="workspace-header-meta" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+            <span className="status-heartbeat">
+              <span className="status-heartbeat-dot" />
+              <ShinyText text="Oracle Fusion Connected" disabled={false} speed={3} className="shiny-heartbeat" />
+            </span>
+          </div>
         </header>
         {viewTab === "history" ? (
           <div className="workspace-content scroll-y">
@@ -408,11 +424,18 @@ export default function ChatView({
             </div>
           </div>
         ) : (
-          <div className="workspace-content chat-layout">
-            <div className="transcript scroll-y">
+          <div className="workspace-content chat-layout" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="transcript scroll-y" style={{ background: 'transparent' }}>
               <div className="transcript-inner">
                 {visible.map((m, i) => (
-                  <MessageBubble key={`${m.role}-${i}-${m.content.slice(0, 20)}`} message={m} />
+                  <motion.div
+                    key={`${m.role}-${i}-${m.content.slice(0, 20)}`}
+                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.3, delay: 0.05 }}
+                  >
+                    <MessageBubble message={m} />
+                  </motion.div>
                 ))}
                 {entries && (
                   <ReviewPanel 
@@ -424,7 +447,7 @@ export default function ChatView({
                 <div ref={scrollAnchor} className="scroll-anchor" />
               </div>
             </div>
-            <div className="dock">
+            <div className="dock" style={{ background: 'transparent', borderTop: '1px solid rgba(255, 255, 255, 0.1)', zIndex: 1, position: 'relative' }}>
               <div className="dock-inner">
                 <Composer 
                   disabled={sending && !mic.listening || viewTab !== "chat"} 

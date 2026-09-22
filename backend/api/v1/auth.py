@@ -81,7 +81,9 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
     sid = auth.create_session(employee)
     csrf_token = _generate_csrf_token()
     auth.set_auth_cookies(response, sid, csrf_token, CSRF_COOKIE_NAME)
-    return identity_dict(employee)
+    res = identity_dict(employee)
+    res["sessionToken"] = sid
+    return res
 
 
 @router.get("/session")

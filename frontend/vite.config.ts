@@ -68,6 +68,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/unit/setup.ts'],
     globals: true,
-    include: ['**/*.test.{ts,tsx}']
+    include: ['**/*.test.{ts,tsx}'],
+    pool: 'threads'
   }
 });

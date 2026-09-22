@@ -1,4 +1,5 @@
 import { KeyboardEvent, useState, useRef, useEffect } from "react";
+import ShinyText from "../../components/ui/ShinyText";
 import { MicIcon, SendIcon, StopIcon } from "../../components/ui/icons";
 import VoiceOrb from "../../components/ui/VoiceOrb";
 import { playMicStart, playMicStop } from "../../lib/audio";
@@ -229,7 +230,7 @@ export default function Composer({
       {statusLabel && (
         <div className="voice-status-row" role="status" aria-live="polite">
           <VoiceOrb state={voiceState} level={micLevel.level} size={12} />
-          <span>{statusLabel}</span>
+          <ShinyText text={statusLabel} disabled={false} speed={2} className="status-label-shiny" />
         </div>
       )}
       <div

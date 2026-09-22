@@ -15,7 +15,25 @@ export default function ReviewPanel({
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const totalHours = entries.reduce(
+  const [adjustments, setAdjustments] = useState<Record<number, number>>({});
+
+  const adjustHours = (index: number, delta: number) => {
+    setAdjustments((prev) => {
+      const cur =
+        prev[index] !== undefined
+          ? prev[index]
+          : Number(entries[index]?.hours) || 0;
+      const next = Math.max(0.5, Math.round((cur + delta) * 10) / 10);
+      return { ...prev, [index]: next };
+    });
+  };
+
+  const activeEntries = entries.map((e, i) => ({
+    ...e,
+    hours: adjustments[i] !== undefined ? adjustments[i] : e.hours,
+  }));
+
+  const totalHours = activeEntries.reduce(
     (sum, e) => sum + (Number(e.hours) || 0),
     0
   );
@@ -24,7 +42,7 @@ export default function ReviewPanel({
     setBusy(true);
     setError(null);
     try {
-      setResult(await api.submitTimecard(entries));
+      setResult(await api.submitTimecard(activeEntries));
     } catch (err) {
       if (err instanceof api.ApiError && err.status === 401) {
         onSessionExpired();
@@ -34,7 +52,7 @@ export default function ReviewPanel({
     } finally {
       setBusy(false);
     }
-  }, [entries, onSessionExpired]);
+  }, [activeEntries, onSessionExpired]);
   const hasAutoSubmitted = useRef(false);
   const isSubmittingRef = useRef(false);
   const prevEntriesRef = useRef<TimecardEntry[]>([]);
@@ -82,7 +100,7 @@ export default function ReviewPanel({
           <h3>{!result ? 'Approve Timesheet' : 'Timesheet Submitted'}</h3>
         </div>
         <span className="approval-meta">
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'} &bull;{' '}
+          {activeEntries.length} {activeEntries.length === 1 ? 'entry' : 'entries'} &bull;{' '}
           {totalHours}h total
         </span>
       </div>
@@ -98,7 +116,7 @@ export default function ReviewPanel({
             </tr>
           </thead>
           <tbody>
-            {entries.map((e, i) => (
+            {activeEntries.map((e, i) => (
               <tr
                 key={
                   e.projectNo
@@ -121,7 +139,33 @@ export default function ReviewPanel({
                 </td>
                 <td>{e.workOrder || '—'}</td>
                 <td>{e.taskDetails || '—'}</td>
-                <td className="num">{e.hours ?? '—'}</td>
+                <td className="num">
+                  <div className="hour-stepper" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    {!result && (
+                      <button
+                        type="button"
+                        className="hour-stepper-btn"
+                        onClick={() => adjustHours(i, -0.5)}
+                        disabled={busy}
+                        aria-label="Decrease hours"
+                      >
+                        -
+                      </button>
+                    )}
+                    <span className="hour-stepper-val">{e.hours ?? '—'}</span>
+                    {!result && (
+                      <button
+                        type="button"
+                        className="hour-stepper-btn"
+                        onClick={() => adjustHours(i, 0.5)}
+                        disabled={busy}
+                        aria-label="Increase hours"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import ClassVar, Literal, Self, cast
 
-from fastapi import Cookie, HTTPException, Response, status
+from fastapi import Cookie, HTTPException, Request, Response, status
 
 from ..models import Employee
 
@@ -241,9 +241,16 @@ async def destroy(sid: str | None) -> None:
 
 
 async def current_session(
+    request: Request,
     otl_session: str | None = Cookie(default=None, alias=_session_cookie_name()),
 ) -> SessionContext:
-    ctx = await resolve(otl_session)
+    token = otl_session
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            
+    ctx = await resolve(token)
     if not ctx:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -33,9 +33,17 @@
   --color-status-error-bg: #fce8ef;
 
   /* ── Color: Borders ── */
-  --color-border-subtle:  #e5edf5;
-  --color-border-strong:  #d4dee9;
+  --color-border-subtle:  #e2e8f0;
+  --color-border-strong:  #cbd5e1;
   --color-border-focus:   var(--color-accent-primary);
+
+  /* ── Luxury Glass & Specular ── */
+  --glass-bg:             rgba(255, 255, 255, 0.85);
+  --glass-border:         rgba(226, 232, 240, 0.85);
+  --glass-shadow:         inset 0 1px 0 0 rgba(255, 255, 255, 0.95), 0 10px 25px -5px rgba(0, 55, 112, 0.07);
+  --specular-highlight:   inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+  --color-accent-gradient: linear-gradient(135deg, #533afd 0%, #4338ca 100%);
+  --color-emerald-glow:   rgba(0, 135, 102, 0.2);
 
   /* ── Legacy aliases (components still reference these) ── */
   --brand:            var(--color-accent-primary);
@@ -54,10 +62,10 @@
   --danger:           var(--color-status-error);
 
   /* ── Typography ── */
-  --font-display: 'Inter Variable', 'Inter', system-ui, sans-serif;
-  --font-body:    'Inter Variable', 'Inter', system-ui, sans-serif;
-  --font-mono:    'Source Code Pro', 'SF Mono', Consolas, monospace;
-  --font-features: "ss01"; /* Humanist alternate */
+  --font-display: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body:    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Source Code Pro', 'SF Mono', Consolas, monospace;
+  --font-features: "ss01", "cv02", "cv03", "cv04", "cv11"; /* Humanist alternate */
 
   /* ── Typography: Weights ── */
   --font-weight-display: 300; /* Lightness as luxury */
@@ -107,7 +115,7 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--color-bg-secondary);
+  background: transparent;
   color: var(--color-text-primary);
   font-family: var(--font-body);
   font-feature-settings: var(--font-features);
@@ -146,7 +154,7 @@ a:hover { color: var(--color-accent-hover); }
   display: grid;
   place-items: center;
   padding: var(--space-5);
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 .spinner {
@@ -341,34 +349,45 @@ button {
 /* ── 8. App Shell (Enterprise Sidebar Dashboard) ─────────────────────────── */
 .app-layout {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 250px 1fr;
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 .sidebar {
-  background: #0d253d;
+  background: rgba(9, 14, 26, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: #ffffff;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #061b31;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 100;
 }
 
 .sidebar-header {
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 var(--space-5);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.brand-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .brand-title {
   font-variation-settings: 'wght' var(--font-weight-strong);
-  font-size: 15px;
-  letter-spacing: 0.02em;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sidebar-nav {
@@ -379,20 +398,20 @@ button {
   flex: 1;
 }
 .nav-group-title {
-  color: rgba(255,255,255,0.7);
-  font-size: 11px;
+  color: #64748b;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   font-variation-settings: 'wght' var(--font-weight-strong);
-  margin: var(--space-3) 0 var(--space-2) 8px;
+  margin: var(--space-3) 0 var(--space-2) 10px;
 }
 .nav-item {
   background: transparent;
-  color: rgba(255,255,255,0.7);
-  border: none;
-  border-radius: var(--radius-button);
+  color: #94a3b8;
+  border: 1px solid transparent;
+  border-radius: 8px;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: 13.5px;
   text-align: left;
   display: flex;
   align-items: center;
@@ -400,20 +419,31 @@ button {
   transition: all var(--duration-fast) var(--ease-default);
 }
 .nav-item:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
 }
 .nav-item.active {
-  background: var(--color-accent-primary);
+  background: rgba(83, 58, 253, 0.16);
   color: #ffffff;
+  border-color: rgba(83, 58, 253, 0.35);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
+}
+.nav-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
 }
 
 .sidebar-footer {
   padding: var(--space-4) var(--space-3);
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .user-profile {
@@ -465,18 +495,31 @@ button {
 }
 
 .workspace-header {
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
-  padding: 0 var(--space-6);
-  background: var(--color-bg-primary);
+  justify-content: space-between;
+  padding: env(safe-area-inset-top, 0) var(--space-6) 0 var(--space-6);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--color-border-subtle);
   flex-shrink: 0;
+  z-index: 10;
 }
 .workspace-header h2 {
   margin: 0;
-  font-size: 18px;
-  font-variation-settings: 'wght' var(--font-weight-ui);
+  font-size: 16px;
+  font-variation-settings: 'wght' var(--font-weight-strong);
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
+}
+.workspace-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 .workspace-content {
@@ -657,7 +700,7 @@ tr:hover td { background: var(--color-bg-tertiary); }
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -776,6 +819,7 @@ tr:hover td { background: var(--color-bg-tertiary); }
 .prompt-bar-container {
   display: flex;
   padding: 0;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
   background: transparent;
   border: none;
 }
@@ -1194,3 +1238,64 @@ tr:hover td { background: var(--color-bg-tertiary); }
 .google-mic-footer .nav-item svg {
   margin-bottom: 4px;
 }
+
+/* ==========================================================================
+   17. Precision Enterprise Utilities (Linear / Stripe Standard)
+   ========================================================================== */
+
+/* ── Interactive Hour Stepper ── */
+.hour-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg-primary);
+}
+.hour-stepper-btn {
+  background: transparent;
+  border: none;
+  padding: 3px 8px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-default);
+}
+.hour-stepper-btn:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+.hour-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.hour-stepper-val {
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-variation-settings: 'wght' var(--font-weight-strong);
+  color: var(--color-text-primary);
+  border-left: 1px solid var(--color-border-subtle);
+  border-right: 1px solid var(--color-border-subtle);
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ── Connection Heartbeat ── */
+.status-heartbeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-status-success);
+  font-variation-settings: 'wght' var(--font-weight-ui);
+}
+.status-heartbeat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-circle);
+  background: var(--color-status-success);
+}
+
+.h1-replacement { font-size: 1.25rem; font-weight: 600; margin: 0; color: var(--color-text-primary); }

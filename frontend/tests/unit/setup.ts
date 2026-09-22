@@ -31,4 +31,17 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock
 });
 
+// Mock IntersectionObserver
+class MockIntersectionObserver {
+  observe = () => null;
+  unobserve = () => null;
+  disconnect = () => null;
+}
+Object.defineProperty(window, 'IntersectionObserver', {
+  writable: true,
+  configurable: true,
+  value: MockIntersectionObserver
+});
+
+(window as any).__IS_VITEST__ = true;
 (window as any).mockMic = true;

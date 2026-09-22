@@ -8,6 +8,8 @@ import {
 import * as api from './api/client';
 import { LoginView } from './features/auth';
 import { ChatView } from './features/chat';
+import NeuralTunnel from './components/ui/NeuralTunnel';
+import GhostCursor from './components/GhostCursor/GhostCursor';
 import type { Identity } from './types';
 
 function AppContent() {
@@ -81,6 +83,12 @@ export default function App() {
   );
   return (
     <QueryClientProvider client={queryClient}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
+        <NeuralTunnel speed={1.2} />
+      </div>
+      <GhostCursor 
+        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}
+      />
       <AppContent />
     </QueryClientProvider>
   );

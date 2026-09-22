@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OTL Timesheet</string>
+    <string name="title_activity_main">OTL Timesheet</string>
+    <string name="package_name">com.acsesolutions.otlvoice</string>
+    <string name="custom_url_scheme">com.acsesolutions.otlvoice</string>
+</resources>

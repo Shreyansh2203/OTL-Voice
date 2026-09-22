@@ -1,6 +1,9 @@
 import { FormEvent, useState } from 'react';
 import * as api from '../../api/client';
 import type { Identity } from '../../types';
+import SpotlightCard from '../../components/ui/SpotlightCard';
+import BlurText from '../../components/ui/BlurText';
+
 export default function LoginView({
   onLogin,
 }: {
@@ -22,15 +25,16 @@ export default function LoginView({
     }
   }
   return (
-    <div className="centered">
-      <form className="card login" onSubmit={submit}>
-        <div className="brand">
-          <img src="/favicon.svg" alt="" width={44} height={44} />
-          <div>
-            <h1>OTL Timesheet Assistant</h1>
-            <p className="muted">Sign in with your employee credentials.</p>
+    <div className="centered" style={{ position: 'relative', overflow: 'hidden' }}>
+      <SpotlightCard className="login" spotlightColor="rgba(255, 255, 255, 0.15)">
+        <form className="card" onSubmit={submit} style={{ zIndex: 1, position: 'relative', border: 'none', background: 'transparent', boxShadow: 'none' }}>
+          <div className="brand">
+            <img src="/favicon.svg" alt="" width={44} height={44} />
+            <div>
+              <BlurText text="OTL Timesheet Assistant" delay={40} className="h1-replacement" animateBy="words" />
+              <p className="muted">Sign in with your employee credentials.</p>
+            </div>
           </div>
-        </div>
         <label>
           <span>Person Number</span>
           <input
@@ -55,7 +59,8 @@ export default function LoginView({
           Your Person Number is checked securely against Oracle Fusion Cloud.
           The browser only keeps a session cookie.
         </p>
-      </form>
+        </form>
+      </SpotlightCard>
     </div>
   );
 }

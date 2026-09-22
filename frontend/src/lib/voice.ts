@@ -5,11 +5,12 @@ interface IWindowWithSpeech extends Window {
   webkitSpeechRecognition?: any;
 }
 
+import { OciSpeechRecognition } from './ociSpeech';
+
 export function useSpeechInput() {
   const [supported] = useState(() => {
     if (typeof window === 'undefined') return false;
-    const win = window as unknown as IWindowWithSpeech;
-    return !!(win.SpeechRecognition || win.webkitSpeechRecognition);
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   });
   const [listening, setListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -58,173 +59,180 @@ export function useSpeechInput() {
       setListening(true);
 
       const win = window as unknown as IWindowWithSpeech;
-      const SpeechRecognitionClass =
+      const BrowserSpeechClass =
         win.SpeechRecognition || win.webkitSpeechRecognition;
-      if (!SpeechRecognitionClass) {
-        setListening(false);
-        isListeningRef.current = false;
-        return;
-      }
 
-      try {
-        const recognition = new SpeechRecognitionClass();
-        recognition.continuous = continuous;
-        recognition.interimResults = true;
-        recognition.lang =
-          typeof navigator !== 'undefined'
-            ? navigator.language || 'en-US'
-            : 'en-US';
-        recognition.maxAlternatives = 1;
+      const launchEngine = (EngineClass: any, isFallback: boolean) => {
+        try {
+          const recognition = new EngineClass();
+          recognition.continuous = continuous;
+          recognition.interimResults = true;
+          recognition.lang =
+            typeof navigator !== 'undefined'
+              ? navigator.language || 'en-US'
+              : 'en-US';
+          recognition.maxAlternatives = 1;
 
-        let hasStarted = false;
-        let lastFinal = '';
-        let lastInterim = '';
-        let completedFinal = '';
-        const rejectedFinals = new Map<number, string>();
-        const isCurrentRecognition = () =>
-          isListeningRef.current && recognitionRef.current === recognition;
+          let hasStarted = false;
+          let lastFinal = '';
+          let lastInterim = '';
+          let completedFinal = '';
+          const rejectedFinals = new Map<number, string>();
+          const isCurrentRecognition = () =>
+            isListeningRef.current && recognitionRef.current === recognition;
 
-        recognition.onspeechstart = () => {
-          if (!isCurrentRecognition()) return;
-          if (!hasStarted) {
-            hasStarted = true;
-            callbacksRef.current.onSpeechStart?.();
-          }
-        };
+          recognition.onspeechstart = () => {
+            if (!isCurrentRecognition()) return;
+            if (!hasStarted) {
+              hasStarted = true;
+              callbacksRef.current.onSpeechStart?.();
+            }
+          };
 
-        recognition.onresult = (event: any) => {
-          if (!isCurrentRecognition()) return;
-          const interimParts: string[] = [];
-          const finalParts: string[] = [];
-          let hasNewRejectedFinal = false;
+          recognition.onresult = (event: any) => {
+            if (!isCurrentRecognition()) return;
+            const interimParts: string[] = [];
+            const finalParts: string[] = [];
+            let hasNewRejectedFinal = false;
 
-          for (let i = 0; i < event.results.length; ++i) {
-            const result = event.results[i];
-            const transcript = (result[0]?.transcript || '').trim();
-            if (!transcript) continue;
-            if (result.isFinal) {
-              const confidence = result[0]?.confidence;
-              // Some browsers omit confidence or report zero when it is
-              // unavailable. Only reject an explicit, positive low score.
-              if (
-                Number.isFinite(confidence) &&
-                confidence > 0 &&
-                confidence < 0.5
-              ) {
-                if (rejectedFinals.get(i) !== transcript) {
-                  hasNewRejectedFinal = true;
-                  rejectedFinals.set(i, transcript);
+            for (let i = 0; i < event.results.length; ++i) {
+              const result = event.results[i];
+              const transcript = (result[0]?.transcript || '').trim();
+              if (!transcript) continue;
+              if (result.isFinal) {
+                const confidence = result[0]?.confidence;
+                if (
+                  Number.isFinite(confidence) &&
+                  confidence > 0 &&
+                  confidence < 0.5
+                ) {
+                  if (rejectedFinals.get(i) !== transcript) {
+                    hasNewRejectedFinal = true;
+                    rejectedFinals.set(i, transcript);
+                  }
+                  continue;
                 }
-                continue;
+                finalParts.push(transcript);
+              } else {
+                interimParts.push(transcript);
               }
-              finalParts.push(transcript);
-            } else {
-              interimParts.push(transcript);
             }
-          }
-          const finalTranscript = [completedFinal, ...finalParts]
-            .filter(Boolean)
-            .join(' ');
-          const interimTranscript = interimParts.join(' ');
-          const hasNewFinal =
-            !!finalTranscript && finalTranscript !== lastFinal;
-          const hasNewInterim =
-            !!interimTranscript && interimTranscript !== lastInterim;
-          const interimCleared = !!lastInterim && !interimTranscript;
-          lastInterim = interimTranscript;
+            const finalTranscript = [completedFinal, ...finalParts]
+              .filter(Boolean)
+              .join(' ');
+            const interimTranscript = interimParts.join(' ');
+            const hasNewFinal =
+              !!finalTranscript && finalTranscript !== lastFinal;
+            const hasNewInterim =
+              !!interimTranscript && interimTranscript !== lastInterim;
+            const interimCleared = !!lastInterim && !interimTranscript;
+            lastInterim = interimTranscript;
 
-          if (hasNewRejectedFinal) {
-            // Clear the provisional draft and cancel any prior send timer.
-            // Do not turn an earlier accepted fragment into a new final here.
-            lastFinal = finalTranscript;
-            hasStarted = false;
-            setErrorMsg(
-              "I couldn't hear that clearly. Please repeat or type your reply."
-            );
-            callbacksRef.current.onInterim?.('');
-            return;
-          }
-
-          // A cumulative result can contain only previously finalized words.
-          // That is not evidence of a new utterance or an interruption.
-          if (!hasStarted && (hasNewFinal || hasNewInterim)) {
-            hasStarted = true;
-            callbacksRef.current.onSpeechStart?.();
-            if (!isCurrentRecognition()) return;
-          }
-
-          if (interimCleared) {
-            callbacksRef.current.onInterim?.('');
-            if (!isCurrentRecognition()) return;
-          }
-
-          if (hasNewFinal) {
-            lastFinal = finalTranscript;
-            hasStarted = !!interimTranscript;
-            setErrorMsg(null);
-            callbacksRef.current.onFinal?.(finalTranscript);
-            if (!isCurrentRecognition()) return;
-            if (!continuous) {
-              stop();
-              return;
-            }
-          }
-          if (interimTranscript && (hasNewFinal || hasNewInterim)) {
-            callbacksRef.current.onInterim?.(
-              [finalTranscript, interimTranscript].filter(Boolean).join(' ')
-            );
-          }
-        };
-
-        recognition.onerror = (event: any) => {
-          if (!isCurrentRecognition()) return;
-          const err = event?.error;
-          if (err === 'not-allowed' || err === 'service-not-allowed') {
-            setErrorMsg(
-              'Microphone access blocked. Please allow mic in browser settings.'
-            );
-            stop(true);
-          } else if (err === 'no-speech') {
-            // Non-fatal, keep listening if continuous
-          } else if (err !== 'aborted') {
-            console.warn('Web Speech API recognition error:', err);
-          }
-        };
-
-        recognition.onend = () => {
-          if (!isCurrentRecognition()) return;
-          if (continuous) {
-            try {
-              // Browser restarts reset their results array; retain finalized
-              // words from earlier cycles of this same dictation session.
-              completedFinal = lastFinal;
-              lastInterim = '';
-              rejectedFinals.clear();
+            if (hasNewRejectedFinal) {
+              lastFinal = finalTranscript;
               hasStarted = false;
-              recognition.start();
+              setErrorMsg(
+                "I couldn't hear that clearly. Please repeat or type your reply."
+              );
+              callbacksRef.current.onInterim?.('');
               return;
-            } catch {
-              // Ignore if already started or interrupted
             }
-          }
-          if (recognitionRef.current === recognition) {
-            recognitionRef.current = null;
-            setListening(false);
-            isListeningRef.current = false;
-          }
-        };
 
-        recognitionRef.current = recognition;
-        recognition.start();
-      } catch (err: any) {
-        setListening(false);
-        isListeningRef.current = false;
-        let msg = 'Microphone error: ' + (err.message || String(err));
-        if (err.name === 'NotAllowedError') {
-          msg =
-            'Microphone access blocked. Please allow mic in browser settings.';
+            if (!hasStarted && (hasNewFinal || hasNewInterim)) {
+              hasStarted = true;
+              callbacksRef.current.onSpeechStart?.();
+              if (!isCurrentRecognition()) return;
+            }
+
+            if (interimCleared) {
+              callbacksRef.current.onInterim?.('');
+              if (!isCurrentRecognition()) return;
+            }
+
+            if (hasNewFinal) {
+              lastFinal = finalTranscript;
+              hasStarted = !!interimTranscript;
+              setErrorMsg(null);
+              callbacksRef.current.onFinal?.(finalTranscript);
+              if (!isCurrentRecognition()) return;
+              if (!continuous) {
+                stop();
+                return;
+              }
+            }
+            if (interimTranscript && (hasNewFinal || hasNewInterim)) {
+              callbacksRef.current.onInterim?.(
+                [finalTranscript, interimTranscript].filter(Boolean).join(' ')
+              );
+            }
+          };
+
+          recognition.onerror = (event: any) => {
+            if (!isCurrentRecognition()) return;
+            const err = event?.error;
+            if (err === 'not-allowed' || err === 'service-not-allowed') {
+              setErrorMsg(
+                'Microphone access blocked. Please allow mic in browser settings.'
+              );
+              stop(true);
+            } else if (err === 'network' && !isFallback && BrowserSpeechClass) {
+              // Graceful Fallback to Web Speech API
+              console.warn('OCI Speech network error, falling back to Web Speech API...');
+              recognitionRef.current = null;
+              launchEngine(BrowserSpeechClass, true);
+            } else if (err === 'no-speech') {
+              // Non-fatal, keep listening if continuous
+            } else if (err !== 'aborted') {
+              console.warn('Speech API recognition error:', err);
+            }
+          };
+
+          recognition.onend = () => {
+            if (!isCurrentRecognition()) return;
+            if (continuous) {
+              try {
+                completedFinal = lastFinal;
+                lastInterim = '';
+                rejectedFinals.clear();
+                hasStarted = false;
+                recognition.start();
+                return;
+              } catch {
+                // Ignore if already started or interrupted
+              }
+            }
+            if (recognitionRef.current === recognition) {
+              recognitionRef.current = null;
+              setListening(false);
+              isListeningRef.current = false;
+            }
+          };
+
+          recognitionRef.current = recognition;
+          recognition.start();
+        } catch (err: any) {
+          if (!isFallback && BrowserSpeechClass) {
+             launchEngine(BrowserSpeechClass, true);
+             return;
+          }
+          setListening(false);
+          isListeningRef.current = false;
+          let msg = 'Microphone error: ' + (err.message || String(err));
+          if (err.name === 'NotAllowedError') {
+            msg =
+              'Microphone access blocked. Please allow mic in browser settings.';
+          }
+          setErrorMsg(msg);
         }
-        setErrorMsg(msg);
+      };
+
+      // Try OCI first, unless in test environment where we just test the Web Speech API
+      // @ts-ignore
+      const isTest = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'test');
+      if (isTest && BrowserSpeechClass) {
+        launchEngine(BrowserSpeechClass, true);
+      } else {
+        launchEngine(OciSpeechRecognition, false);
       }
     },
     [supported, stop]

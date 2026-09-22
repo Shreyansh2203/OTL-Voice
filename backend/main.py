@@ -165,6 +165,8 @@ async def csrf_protection(request: Request, call_next):
         return response
     if request.headers.get("upgrade", "").lower() == "websocket":
         return await call_next(request)
+    if request.headers.get("Authorization", "").startswith("Bearer "):
+        return await call_next(request)
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
     header_token = request.headers.get(CSRF_HEADER_NAME)
     if (
