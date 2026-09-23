@@ -27,6 +27,7 @@ type GhostCursorProps = {
   fadeDelayMs?: number;
   fadeDurationMs?: number;
   zIndex?: number;
+  'aria-hidden'?: boolean;
 };
 
 function isWebGLSupported(): boolean {
@@ -214,7 +215,8 @@ const GhostCursor: React.FC<GhostCursorProps> = ({
 
   fadeDelayMs,
   fadeDurationMs,
-  zIndex = 10
+  zIndex = 10,
+  'aria-hidden': ariaHidden = true,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -624,7 +626,7 @@ const GhostCursor: React.FC<GhostCursorProps> = ({
 
   const mergedStyle = useMemo<React.CSSProperties>(() => ({ zIndex, ...style }), [zIndex, style]);
 
-  return <div ref={containerRef} className={`ghost-cursor ${className ?? ''}`} style={mergedStyle} />;
+  return <div ref={containerRef} className={`ghost-cursor ${className ?? ''}`} style={mergedStyle} aria-hidden={ariaHidden} />;
 };
 
 export default GhostCursor;

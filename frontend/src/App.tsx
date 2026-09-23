@@ -85,8 +85,8 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <div style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
-          <ErrorBoundary fallback={<div style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)' }} />}>
+        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
+          <ErrorBoundary fallback={<div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)' }} />}>
             <NeuralTunnel speed={1.2} />
           </ErrorBoundary>
         </div>
