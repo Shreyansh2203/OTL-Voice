@@ -39,10 +39,13 @@ def test_render_assignments_empty():
 @patch("backend.services.chat.GenAIChatClient")
 def test_client(mock_client):
     mock_client.return_value = MagicMock()
+    _client.cache_clear()
     client = _client()
-    _client()
+    client2 = _client()
     assert client is not None
-    assert mock_client.call_count == 2
+    assert client is client2
+    assert mock_client.call_count == 1
+    _client.cache_clear()
 
 
 @patch("backend.services.chat.PROMPT_PATH")

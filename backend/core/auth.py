@@ -7,7 +7,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import ClassVar, Literal, Self, cast
+from typing import Any, ClassVar, Literal, Self, cast
 
 from fastapi import Cookie, HTTPException, Request, Response, status
 
@@ -99,6 +99,10 @@ class _TokenBlocklist:
     _init_lock: ClassVar[Lock] = Lock()
     _local_revoked: dict[str, float]
     _local_lock: asyncio.Lock
+    _redis: Any
+    _use_redis: bool
+    _last_reconnect: float
+    _backoff: float
 
     def __new__(cls) -> Self:
         if cls._instance is None:
@@ -106,26 +110,35 @@ class _TokenBlocklist:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
                     cls._instance._redis = None
-                    cls._instance._use_redis = False
+                    cls._instance._use_redis = bool(os.getenv("REDIS_URL"))
                     cls._instance._local_revoked = {}
                     cls._instance._local_lock = asyncio.Lock()
+                    cls._instance._last_reconnect = 0.0
+                    cls._instance._backoff = 1.0
         from typing import cast
 
         return cast(Self, cls._instance)
 
     def _get_redis(self):
-        if not self._use_redis:
+        redis_url = os.getenv("REDIS_URL")
+        if not redis_url:
+            self._use_redis = False
             return None
+        now = time.time()
         if self._redis is None:
+            if now - getattr(self, "_last_reconnect", 0.0) < getattr(self, "_backoff", 1.0):
+                return None
+            self._last_reconnect = now
             try:
                 import redis.asyncio as redis
 
-                redis_url = os.getenv("REDIS_URL")
-                if redis_url:
-                    self._redis = redis.from_url(redis_url, decode_responses=True)
+                self._redis = redis.from_url(redis_url, decode_responses=True)
+                self._use_redis = True
+                self._backoff = 1.0
             except Exception:
                 self._use_redis = False
                 self._redis = None
+                self._backoff = min(60.0, getattr(self, "_backoff", 1.0) * 2)
                 logger.warning(
                     "Redis unavailable for token blocklist, falling back to in-memory mode"
                 )
@@ -133,14 +146,24 @@ class _TokenBlocklist:
 
     async def _ensure_redis(self):
         r = self._get_redis()
-        if r:
+        if r is not None:
             try:
                 await r.ping()
                 self._use_redis = True
+                self._backoff = 1.0
+                return self._redis
             except Exception:
                 self._use_redis = False
+                if self._redis:
+                    try:
+                        await self._redis.close()
+                    except Exception:
+                        pass
                 self._redis = None
-        return self._redis
+                self._backoff = min(60.0, getattr(self, "_backoff", 1.0) * 2)
+                self._last_reconnect = time.time()
+                logger.warning("Redis ping failed for token blocklist, falling back to in-memory mode")
+        return None
 
     async def add(self, token: str) -> None:
         try:
@@ -162,7 +185,9 @@ class _TokenBlocklist:
                 await r.setex(f"revoked:{token}", ttl, "1")
                 return
             except Exception:
-                pass
+                self._use_redis = False
+                self._redis = None
+                self._last_reconnect = time.time()
 
         async with self._local_lock:
             current = time.time()
@@ -177,7 +202,9 @@ class _TokenBlocklist:
             try:
                 return await r.exists(f"revoked:{token}") > 0
             except Exception:
-                pass
+                self._use_redis = False
+                self._redis = None
+                self._last_reconnect = time.time()
         async with self._local_lock:
             current = time.time()
             expired = [t for t, exp in self._local_revoked.items() if exp < current]
@@ -241,15 +268,15 @@ async def destroy(sid: str | None) -> None:
 
 
 async def current_session(
-    request: Request,
+    request: Request = cast(Any, None),
     otl_session: str | None = Cookie(default=None, alias=_session_cookie_name()),
 ) -> SessionContext:
     token = otl_session
-    if not token:
+    if not token and request is not None:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            
+
     ctx = await resolve(token)
     if not ctx:
         raise HTTPException(

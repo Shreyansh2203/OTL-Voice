@@ -1,1 +1,0 @@
-fetch('https://pro.reactbits.dev/docs/components/neural-tunnel').then(r=>r.text()).then(t=>{ const matches = [...new Set(t.match(/\/_next\/static\/chunks\/[^"\'\s]+\.js/g))]; console.log(matches.join('\n')); }).catch(console.error);

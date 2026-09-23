@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import * as api from '../../api/client';
 interface TimeAttribute {
   attributeName: string;
@@ -97,7 +98,13 @@ export default function TimecardHistory({
               const status = event.eventStatus || 'Submitted';
               const isApproved = status === 'APPROVED';
               return (
-                <tr key={idx} className="timecard-row">
+                <motion.tr 
+                  key={idx} 
+                  className="timecard-row"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: idx * 0.05 }}
+                >
                   <td className="timecard-cell">{dateStr}</td>
                   <td className="timecard-cell">{comment}</td>
                   <td className="timecard-cell">
@@ -110,7 +117,7 @@ export default function TimecardHistory({
                   <td className="timecard-cell timecard-cell-num">
                     {event.measure}
                   </td>
-                </tr>
+                </motion.tr>
               );
             })}
           </tbody>

@@ -1,3 +1,5 @@
+import React from 'react';
+
 export type VoiceOrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export interface VoiceOrbProps {
@@ -5,6 +7,7 @@ export interface VoiceOrbProps {
   /** Live mic amplitude 0-1, only meaningful while listening. */
   level?: number;
   size?: number;
+  ringRef?: React.Ref<HTMLSpanElement>;
 }
 
 /**
@@ -16,6 +19,7 @@ export default function VoiceOrb({
   state,
   level = 0,
   size = 14,
+  ringRef,
 }: VoiceOrbProps) {
   // Ring scale reacts to live amplitude only in the listening state so the
   // orb visibly "hears" the user, rather than just showing a generic pulse.
@@ -28,6 +32,7 @@ export default function VoiceOrb({
       aria-hidden="true"
     >
       <span
+        ref={ringRef}
         className="voice-orb-ring"
         style={{ transform: `scale(${ringScale})` }}
       />

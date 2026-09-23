@@ -10,6 +10,7 @@ import { LoginView } from './features/auth';
 import { ChatView } from './features/chat';
 import NeuralTunnel from './components/ui/NeuralTunnel';
 import GhostCursor from './components/GhostCursor/GhostCursor';
+import ErrorBoundary from './components/ErrorBoundary';
 import type { Identity } from './types';
 
 function AppContent() {
@@ -82,14 +83,20 @@ export default function App() {
       })
   );
   return (
-    <QueryClientProvider client={queryClient}>
-      <div style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
-        <NeuralTunnel speed={1.2} />
-      </div>
-      <GhostCursor 
-        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}
-      />
-      <AppContent />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
+          <ErrorBoundary fallback={<div style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)' }} />}>
+            <NeuralTunnel speed={1.2} />
+          </ErrorBoundary>
+        </div>
+        <ErrorBoundary fallback={null}>
+          <GhostCursor 
+            style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}
+          />
+        </ErrorBoundary>
+        <AppContent />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

@@ -349,44 +349,87 @@ export default function ChatView({
         </div>
         <nav className="sidebar-nav">
           <div className="nav-group-title">Menu</div>
-          <button
-            className={`nav-item ${viewTab === "chat" ? "active" : ""}`}
-            onClick={() => setViewTab("chat")}
-            aria-label="Navigate to Assistant chat"
-            aria-current={viewTab === "chat" ? "page" : undefined}
-          >
-            <MessageSquareIcon size={16} />
-            <span>Assistant</span>
-          </button>
-          <button
-            className={`nav-item ${viewTab === "projects" ? "active" : ""}`}
-            onClick={() => setViewTab("projects")}
-            aria-label="Navigate to Project Assignments"
-            aria-current={viewTab === "projects" ? "page" : undefined}
-          >
-            <FolderIcon size={16} />
-            <span>Projects</span>
-          </button>
-          <button
-            className={`nav-item ${viewTab === "history" ? "active" : ""}`}
-            onClick={() => setViewTab("history")}
-            aria-label="Navigate to Timecard History"
-            aria-current={viewTab === "history" ? "page" : undefined}
-          >
-            <HistoryIcon size={16} />
-            <span>History</span>
-          </button>
+          {(['chat', 'projects', 'history'] as const).map((tab) => {
+            const isActive = viewTab === tab;
+            return (
+              <button
+                key={tab}
+                className="nav-item"
+                onClick={() => setViewTab(tab)}
+                aria-label={`Navigate to ${tab === 'chat' ? 'Assistant chat' : tab === 'projects' ? 'Project Assignments' : 'Timecard History'}`}
+                aria-current={isActive ? "page" : undefined}
+                style={{
+                  position: 'relative',
+                  color: isActive ? '#ffffff' : undefined,
+                  border: '1px solid transparent',
+                  background: 'transparent',
+                }}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="active-nav-tab"
+                    initial={false}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'rgba(83, 58, 253, 0.16)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(83, 58, 253, 0.35)',
+                      boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.1)',
+                      zIndex: 0
+                    }}
+                  />
+                )}
+                <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {tab === 'chat' && <MessageSquareIcon size={16} />}
+                  {tab === 'projects' && <FolderIcon size={16} />}
+                  {tab === 'history' && <HistoryIcon size={16} />}
+                  <span>{tab === 'chat' ? 'Assistant' : tab === 'projects' ? 'Projects' : 'History'}</span>
+                </span>
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-footer">
           <div className="nav-group-title">Settings</div>
           <button
-            className={`nav-item ${voiceOn ? "active" : ""}`}
+            className="nav-item"
+            style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
             onClick={() => setVoiceOn((v) => !v)}
             aria-label={voiceOn ? "Disable voice responses" : "Enable voice responses"}
             aria-pressed={voiceOn}
           >
-            <SpeakerIcon size={16} />
-            <span>{voiceOn ? "Voice On" : "Voice Off"}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <SpeakerIcon size={16} />
+              <span>Voice</span>
+            </div>
+            <div
+              style={{
+                width: '32px',
+                height: '18px',
+                borderRadius: '999px',
+                background: voiceOn ? 'var(--color-accent-primary)' : 'rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+              }}
+            >
+              <motion.div
+                layout
+                transition={{ type: "spring", stiffness: 700, damping: 30 }}
+                style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                  marginLeft: voiceOn ? '14px' : '0px',
+                }}
+              />
+            </div>
           </button>
           <div className="user-profile">
             <div className="avatar">{username.charAt(0).toUpperCase()}</div>
@@ -429,7 +472,7 @@ export default function ChatView({
               <div className="transcript-inner">
                 {visible.map((m, i) => (
                   <motion.div
-                    key={`${m.role}-${i}-${m.content.slice(0, 20)}`}
+                    key={(m as { id?: string }).id || `${m.role}-${i}`}
                     initial={{ opacity: 0, y: 10, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.3, delay: 0.05 }}

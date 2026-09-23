@@ -8,6 +8,7 @@ import random
 import re
 import time
 from collections.abc import Callable, Iterator
+from functools import lru_cache
 from typing import TypeVar
 
 import oci
@@ -180,8 +181,8 @@ class GenAIChatClient:
             text = "".join(getattr(p, "text", "") or "" for p in parts)
             if text:
                 return text
-        except Exception:
-            pass
+        except (AttributeError, IndexError, TypeError) as exc:
+            logger.debug("Structured chat response extraction skipped: %s", exc)
         try:
             blob = oci.util.to_dict(data) if hasattr(oci, "util") and hasattr(oci.util, "to_dict") else None
             if not blob and isinstance(data, dict):
@@ -189,7 +190,7 @@ class GenAIChatClient:
             elif not blob:
                 try:
                     blob = json.loads(str(data))
-                except Exception:
+                except (ValueError, TypeError, json.JSONDecodeError):
                     blob = {}
             found: list[str] = []
             def _walk(node, depth=0):
@@ -207,8 +208,8 @@ class GenAIChatClient:
             _walk(blob)
             if found:
                 return "".join(found)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Fallback tree walk extraction failed: %s", exc)
         return ""
     def stream(self, system_prompt: str, history: list[dict]) -> Iterator[str]:
         messages = self._to_messages(system_prompt, history)
@@ -239,7 +240,8 @@ class GenAIChatClient:
     def _extract_delta(raw: str) -> str:
         try:
             obj = json.loads(raw)
-        except Exception:
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            logger.debug("Could not parse delta json: %s", exc)
             return ""
         if not isinstance(obj, dict):
             return ""
@@ -261,3 +263,14 @@ class GenAIChatClient:
             "You are a health check. Reply with the single word: OK.",
             [{"role": "user", "content": "ping"}],
         )
+
+
+@lru_cache(maxsize=1)
+def get_genai_chat_client() -> GenAIChatClient:
+    """Return a cached singleton instance of GenAIChatClient."""
+    return GenAIChatClient()
+
+
+def reset_genai_chat_client() -> None:
+    """Clear the cached GenAIChatClient instance."""
+    get_genai_chat_client.cache_clear()

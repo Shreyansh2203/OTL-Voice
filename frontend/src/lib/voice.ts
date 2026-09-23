@@ -10,7 +10,10 @@ import { OciSpeechRecognition } from './ociSpeech';
 export function useSpeechInput() {
   const [supported] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    const win = window as IWindowWithSpeech;
+    const hasWebSpeech = !!(win.SpeechRecognition || win.webkitSpeechRecognition);
+    const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    return hasWebSpeech || hasMediaDevices;
   });
   const [listening, setListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -227,7 +230,7 @@ export function useSpeechInput() {
       };
 
       // Try OCI first, unless in test environment where we just test the Web Speech API
-      // @ts-ignore
+      // @ts-expect-error Vite env import.meta.env may not be typed in all test contexts
       const isTest = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE === 'test') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'test');
       if (isTest && BrowserSpeechClass) {
         launchEngine(BrowserSpeechClass, true);

@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 title OTL Voice - Diagnostic Test
 echo ===================================================
 echo Running OTL Voice End-to-End Diagnostic Test...

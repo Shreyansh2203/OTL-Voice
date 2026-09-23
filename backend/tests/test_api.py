@@ -1,3 +1,4 @@
+import os
 from unittest.mock import patch
 
 import pytest
@@ -43,7 +44,10 @@ def test_login_success(client):
         "/api/auth/login", json={"username": "testuser", "password": "dummy-password"}
     )
     assert response.status_code == 200
-    assert response.json()["username"] == "testuser"
+    data = response.json()
+    assert data["status"] == "authenticated"
+    assert data["employee"]["username"] == "testuser"
+    assert "sessionToken" not in data
     assert "otl_session" in response.headers.get("set-cookie", "").lower()
 
 
@@ -67,16 +71,24 @@ def test_login_not_found(client):
         assert response.status_code == 401
 
 
-def test_login_passwordless_success(client, mock_otl_client):
+def test_login_empty_password_rejected(client, mock_otl_client):
     mock_otl_client.aget_worker.return_value = {
         "personNumber": "208",
         "fullName": "Jessy Brown",
     }
     mock_otl_client.aget_worker.side_effect = None
     response = client.post("/api/auth/login", json={"username": "208", "password": ""})
-    assert response.status_code == 200
-    assert response.json()["fullName"] == "Jessy Brown"
-    assert response.json()["username"] == "208"
+    assert response.status_code == 401
+    assert "password" in response.json()["detail"].lower()
+
+
+def test_login_invalid_password(client, mock_otl_client):
+    mock_otl_client.aget_worker.return_value = {
+        "personNumber": "208",
+        "fullName": "Jessy Brown",
+    }
+    response = client.post("/api/auth/login", json={"username": "208", "password": "wrong"})
+    assert response.status_code == 401
 
 
 def test_login_passwordless_not_found(client, mock_otl_client):
@@ -127,3 +139,104 @@ def test_chat_stream(auth_client):
         )
         assert response.status_code == 200
         assert "hello" in response.text
+
+
+def test_logout_clears_cookies(auth_client):
+    response = auth_client.post("/api/auth/logout")
+    assert response.status_code == 200
+    assert response.json()["status"] == "signed out"
+    cookies_headers = [
+        v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"
+    ]
+    all_cookies = "; ".join(cookies_headers).lower()
+    assert "otl_session" in all_cookies
+    assert "csrf_token" in all_cookies
+    assert auth_client.get("/api/auth/session").status_code == 401
+
+
+def test_logout_bearer_token_revocation(client):
+    from backend.core import auth
+    from backend.models import Employee
+
+    emp = Employee(employee_id="999", username="revokeme", full_name="Revoke Me")
+    token = auth.create_session(emp)
+
+    # Verify token works via Bearer header
+    res = client.get("/api/auth/session", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+
+    # Logout providing Bearer header
+    res_logout = client.post(
+        "/api/auth/logout", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res_logout.status_code == 200
+
+    # Now token should be revoked and reject access
+    res_after = client.get(
+        "/api/auth/session", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res_after.status_code == 401
+
+
+def test_admin_fail_closed_when_key_unset(auth_client):
+    with patch.dict(os.environ, {}, clear=False):
+        if "ADMIN_API_KEY" in os.environ:
+            del os.environ["ADMIN_API_KEY"]
+        res = auth_client.get("/api/admin/catalogue-status")
+        assert res.status_code == 403
+        assert res.json()["detail"] == "Admin key not configured"
+
+
+def test_admin_rejects_invalid_key(auth_client):
+    with patch.dict(os.environ, {"ADMIN_API_KEY": "supersecretkey"}):
+        res = auth_client.get(
+            "/api/admin/catalogue-status",
+            headers={"X-Admin-Key": "wrongkey"},
+        )
+        assert res.status_code == 403
+        assert res.json()["detail"] == "Admin key required."
+
+
+def test_admin_allows_valid_key(auth_client):
+    with patch.dict(os.environ, {"ADMIN_API_KEY": "supersecretkey"}):
+        res = auth_client.get(
+            "/api/admin/catalogue-status",
+            headers={"X-Admin-Key": "supersecretkey"},
+        )
+        assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limiting(client):
+    from backend.core.limiter import RateLimiter, auth_rate_limiter
+
+    assert auth_rate_limiter.max_requests == 10
+    auth_rate_limiter._local_requests.clear()
+    try:
+        with patch.dict(os.environ, {"TEST_MODE": "false"}):
+            headers = {"Authorization": "Bearer test-csrf-bypass"}
+            for _ in range(10):
+                res = client.post(
+                    "/api/auth/login",
+                    json={"username": "testuser", "password": "wrong"},
+                    headers=headers,
+                )
+                assert res.status_code == 401
+            res = client.post(
+                "/api/auth/login",
+                json={"username": "testuser", "password": "wrong"},
+                headers=headers,
+            )
+            assert res.status_code == 429
+            assert "Too many requests" in res.json()["detail"]
+
+        # Also directly test unit logic of RateLimiter
+        limiter = RateLimiter(max_requests=10, window_seconds=60)
+        for _ in range(10):
+            assert await limiter.is_allowed("unit_test_ip") is True
+        assert await limiter.is_allowed("unit_test_ip") is False
+    finally:
+        auth_rate_limiter._local_requests.clear()
+
+
+

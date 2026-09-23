@@ -110,7 +110,7 @@ export class OciSpeechRecognition {
           };
           this.onresult?.(event);
         }
-      } catch (err) {
+      } catch {
         // ignore JSON parse errors
       }
     };

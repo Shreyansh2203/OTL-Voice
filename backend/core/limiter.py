@@ -26,20 +26,35 @@ class RateLimiter:
         self._local_requests: dict[str, list[float]] = defaultdict(list)
         self._local_lock = asyncio.Lock()
         self._max_local_keys = 10000
+        self._last_reconnect_attempt: float = 0.0
+        self._reconnect_backoff: float = 1.0
 
     async def _get_redis(self) -> redis.Redis | None:
-        if not self._use_redis:
+        url = self.redis_url or os.getenv("REDIS_URL")
+        if not url:
+            self._use_redis = False
             return None
+        self.redis_url = url
+
         if self._redis is None:
-            if not self.redis_url:
-                self._use_redis = False
+            now = time.time()
+            if now - self._last_reconnect_attempt < self._reconnect_backoff:
                 return None
+            self._last_reconnect_attempt = now
             try:
                 self._redis = redis.from_url(self.redis_url, decode_responses=True)
                 await self._redis.ping()
+                self._use_redis = True
+                self._reconnect_backoff = 1.0
             except Exception:
                 self._use_redis = False
+                if self._redis:
+                    try:
+                        await self._redis.close()
+                    except Exception:
+                        pass
                 self._redis = None
+                self._reconnect_backoff = min(60.0, self._reconnect_backoff * 2)
                 logger.warning(
                     "Redis unavailable for rate limiter, falling back to in-memory mode"
                 )
@@ -64,7 +79,18 @@ class RateLimiter:
                     return False
                 return True
             except Exception:
-                pass
+                self._use_redis = False
+                if self._redis:
+                    try:
+                        await self._redis.close()
+                    except Exception:
+                        pass
+                self._redis = None
+                self._last_reconnect_attempt = time.time()
+                self._reconnect_backoff = min(60.0, self._reconnect_backoff * 2)
+                logger.warning(
+                    "Redis operation failed in rate limiter, falling back to in-memory mode"
+                )
         async with self._local_lock:
             active_timestamps = [
                 t for t in self._local_requests[key] if now - t < self.window_seconds
@@ -95,7 +121,11 @@ class RateLimiter:
 
     async def close(self) -> None:
         if self._redis:
-            await self._redis.close()
+            try:
+                await self._redis.close()
+            except Exception:
+                pass
+            self._redis = None
 
 
 class WSConnectionTracker:
@@ -121,4 +151,4 @@ class WSConnectionTracker:
 
 ws_tracker = WSConnectionTracker(max_connections_per_ip=5)
 rate_limiter = RateLimiter(max_requests=10000, window_seconds=60)
-auth_rate_limiter = RateLimiter(max_requests=10000, window_seconds=60)
+auth_rate_limiter = RateLimiter(max_requests=10, window_seconds=60)

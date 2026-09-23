@@ -4,17 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Reports live microphone amplitude (0-1) for UI feedback (the voice orb)
  * and adaptive silence detection.
  *
- * Web Speech API (the current transcription engine, see voice.ts) manages
- * its own internal audio capture and does not expose the underlying
- * MediaStream, so this hook cannot literally share a single mic handle with
- * it today — it opens its own lightweight getUserMedia + AnalyserNode tap.
- * If `start(existingStream)` is called with a stream the caller already
- * owns (e.g. a future engine that does expose one, such as the OCI
- * streaming path), this hook reuses it instead of requesting a second one,
- * and will not stop a stream it doesn't own.
+ * Supports an optional onLevel callback so 60 FPS microphone sampling can update
+ * CSS transforms directly without triggering full React component re-renders.
  */
-export function useMicLevel() {
+export function useMicLevel(onLevel?: (level: number) => void) {
   const [level, setLevel] = useState(0);
+  const onLevelRef = useRef(onLevel);
+  useEffect(() => {
+    onLevelRef.current = onLevel;
+  }, [onLevel]);
+
+  const levelRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const ownsStreamRef = useRef(false);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -39,7 +39,13 @@ export function useMicLevel() {
       ctxRef.current = null;
     }
     analyserRef.current = null;
-    setLevel(0);
+    levelRef.current = 0;
+
+    if (onLevelRef.current) {
+      onLevelRef.current(0);
+    } else {
+      setLevel(0);
+    }
   }, []);
 
   const start = useCallback(
@@ -80,7 +86,15 @@ export function useMicLevel() {
           const rms = Math.sqrt(sumSq / dataRef.current.length);
           // Perceptual compression so quiet speech still visibly moves the UI.
           const normalized = Math.min(1, Math.sqrt(rms) * 2.4);
-          setLevel((prev) => prev + (normalized - prev) * 0.5);
+          const next = levelRef.current + (normalized - levelRef.current) * 0.5;
+          levelRef.current = next;
+
+          if (onLevelRef.current) {
+            onLevelRef.current(next);
+          } else {
+            setLevel(next);
+          }
+
           rafRef.current = requestAnimationFrame(tick);
         };
         rafRef.current = requestAnimationFrame(tick);
@@ -95,5 +109,5 @@ export function useMicLevel() {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { level, start, stop };
+  return { level, levelRef, start, stop };
 }

@@ -38,7 +38,8 @@ export default function Composer({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
-  const micLevel = useMicLevel();
+  const ringRef = useRef<HTMLSpanElement | null>(null);
+  const micLevel = useMicLevel((level) => { if (ringRef.current) ringRef.current.style.transform = "scale(${1 + level * 0.5})"; });
 
   // A sentence that already sounds complete needs less confirmation silence
   // than one that trails off mid-thought — mirrors how a human listener
@@ -229,7 +230,7 @@ export default function Composer({
       )}
       {statusLabel && (
         <div className="voice-status-row" role="status" aria-live="polite">
-          <VoiceOrb state={voiceState} level={micLevel.level} size={12} />
+          <VoiceOrb state={voiceState} ringRef={ringRef} size={12} />
           <ShinyText text={statusLabel} disabled={false} speed={2} className="status-label-shiny" />
         </div>
       )}

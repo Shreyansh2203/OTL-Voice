@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from .oci_genai import GenAIChatClient
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "prompt.txt"
 
 
+@lru_cache(maxsize=1)
 def _client() -> GenAIChatClient:
     return GenAIChatClient()
 

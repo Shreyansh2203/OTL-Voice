@@ -101,6 +101,9 @@ export async function login(
   username: string,
   password = ''
 ): Promise<Identity> {
+  if (!getCsrfToken()) {
+    await fetchWithRetry(API + '/health', { credentials: 'include' });
+  }
   const res = await fetch(
     `${API}/auth/login`,
     jsonInit('POST', { username, password })
@@ -110,7 +113,7 @@ export async function login(
   if (data.sessionToken) {
     localStorage.setItem('otl_session', data.sessionToken);
   }
-  return data;
+  return data.employee ? data.employee : data;
 }
 export async function getSession(): Promise<Identity | null> {
   const res = await fetchWithRetry(`${API}/auth/session`, {

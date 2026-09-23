@@ -49,6 +49,12 @@ def _get_db() -> sqlite3.Connection:
         conn.execute(
             """CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS projects_staging (project_id TEXT PRIMARY KEY, data JSON)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS person_index_staging (name TEXT PRIMARY KEY, projects JSON)"""
+        )
         conn.commit()
         _thread_local.conn = conn
     return _thread_local.conn

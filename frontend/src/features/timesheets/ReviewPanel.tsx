@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import * as api from '../../api/client';
 import type { SubmitResponse, TimecardEntry } from '../../types';
 export interface ReviewPanelProps {
@@ -9,12 +10,10 @@ export interface ReviewPanelProps {
 export default function ReviewPanel({
   entries,
   onSessionExpired,
-  autoSubmit = false,
 }: ReviewPanelProps) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [adjustments, setAdjustments] = useState<Record<number, number>>({});
 
   const adjustHours = (index: number, delta: number) => {
@@ -38,7 +37,6 @@ export default function ReviewPanel({
     0
   );
   const submit = useCallback(async () => {
-    setCountdown(null);
     setBusy(true);
     setError(null);
     try {
@@ -53,36 +51,6 @@ export default function ReviewPanel({
       setBusy(false);
     }
   }, [activeEntries, onSessionExpired]);
-  const hasAutoSubmitted = useRef(false);
-  const isSubmittingRef = useRef(false);
-  const prevEntriesRef = useRef<TimecardEntry[]>([]);
-  useEffect(() => {
-    if (prevEntriesRef.current !== entries) {
-      hasAutoSubmitted.current = false;
-      prevEntriesRef.current = entries;
-    }
-    if (autoSubmit && !hasAutoSubmitted.current && !result && !error) {
-      hasAutoSubmitted.current = true;
-      setCountdown(4);
-    }
-  }, [autoSubmit, result, error, entries]);
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) {
-      if (!isSubmittingRef.current) {
-        isSubmittingRef.current = true;
-        const timer = setTimeout(() => {
-          submit();
-          isSubmittingRef.current = false;
-        }, 0);
-        return () => clearTimeout(timer);
-      }
-    }
-    const timer = setTimeout(() => {
-      setCountdown((prev) => (prev !== null ? prev - 1 : null));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [countdown, submit]);
   return (
     <div className="approval-card" aria-busy={busy}>
       <div className="approval-head">
@@ -240,20 +208,15 @@ export default function ReviewPanel({
           className="approval-actions"
           style={{ display: 'flex', gap: '10px', alignItems: 'center' }}
         >
-          {countdown !== null ? (
-            <>
-              <span className="muted small">
-                Auto-submitting in {countdown}s...
-              </span>
-              <button className="ghost" onClick={() => setCountdown(null)}>
-                Cancel Auto-Submit
-              </button>
-            </>
-          ) : (
-            <button className="btn-approve" onClick={submit} disabled={busy}>
-              {busy ? 'Approving…' : `Approve & Submit`}
-            </button>
-          )}
+          <motion.button 
+            whileHover={{ scale: 1.02 }} 
+            whileTap={{ scale: 0.98 }} 
+            className="btn-approve" 
+            onClick={submit} 
+            disabled={busy}
+          >
+            {busy ? 'Approving…' : 'Approve & Submit'}
+          </motion.button>
         </div>
       )}
     </div>

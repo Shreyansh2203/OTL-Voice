@@ -26,7 +26,7 @@ const fragment = `
     f = f * f * (3.0 - 2.0 * f);
     float n = p.x + p.y * 57.0;
     return mix(mix(hash(n +  0.0), hash(n +  1.0), f.x),
-               mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+               mix(hash(n + 57.0), hash(n + 58.0), f.x), f.x);
   }
   
   float fbm(vec2 p) {
@@ -44,11 +44,11 @@ const fragment = `
     p.x *= uResolution.x / uResolution.y;
 
     // Convert to polar coordinates for the tunnel effect
+    // Adding uTime makes you fly forward
     float a = atan(p.y, p.x);
     float r = length(p);
 
     // Tunnel geometry: u and v are cylindrical coordinates mapped to 2D
-    // Adding uTime makes you fly forward
     vec2 uv = vec2(3.0 / r + uTime * uSpeed, a / 3.1415926 * 4.0);
 
     // Generate neural strands using layered fbm
@@ -76,39 +76,74 @@ const fragment = `
   }
 `;
 
+function isWebGLSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    );
+  } catch {
+    return false;
+  }
+}
+
 interface NeuralTunnelProps {
   speed?: number;
 }
 
 export default function NeuralTunnel({ speed = 1.0 }: NeuralTunnelProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const supported = isWebGLSupported();
 
   useEffect(() => {
+    if (!supported) return;
     const container = ref.current;
     if (!container) return;
 
-    const renderer = new Renderer({ alpha: true, dpr: window.devicePixelRatio || 1 });
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer({ alpha: true, dpr: Math.min(window.devicePixelRatio || 1, 2) });
+      if (!renderer.gl) {
+        container.style.background = 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)';
+        return;
+      }
+    } catch {
+      container.style.background = 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)';
+      return;
+    }
+
     const gl = renderer.gl;
     container.appendChild(gl.canvas);
     gl.clearColor(0, 0, 0, 0);
 
-    const geometry = new Triangle(gl);
-    const program = new Program(gl, {
-      vertex,
-      fragment,
-      uniforms: {
-        uTime: { value: 0 },
-        uResolution: { value: new Float32Array([1, 1]) },
-        uSpeed: { value: speed },
-      },
-    });
+    let program: Program;
+    let mesh: Mesh;
+    try {
+      const geometry = new Triangle(gl);
+      program = new Program(gl, {
+        vertex,
+        fragment,
+        uniforms: {
+          uTime: { value: 0 },
+          uResolution: { value: new Float32Array([1, 1]) },
+          uSpeed: { value: speed },
+        },
+      });
+      mesh = new Mesh(gl, { geometry, program });
+    } catch {
+      if (gl.canvas.parentElement === container) {
+        container.removeChild(gl.canvas);
+      }
+      container.style.background = 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)';
+      return;
+    }
 
-    const mesh = new Mesh(gl, { geometry, program });
-
-    let requestID: number;
     const resize = () => {
       const width = container.clientWidth;
       const height = container.clientHeight;
+      if (width <= 0 || height <= 0) return;
       renderer.setSize(width, height);
       program.uniforms.uResolution.value[0] = width;
       program.uniforms.uResolution.value[1] = height;
@@ -116,20 +151,110 @@ export default function NeuralTunnel({ speed = 1.0 }: NeuralTunnelProps) {
     window.addEventListener('resize', resize);
     resize();
 
+    const prefersReducedMotion = () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    let requestID: number | null = null;
+    let isRunning = false;
+
     const loop = (t: number) => {
-      requestID = requestAnimationFrame(loop);
+      if (document.hidden || prefersReducedMotion()) {
+        isRunning = false;
+        requestID = null;
+        return;
+      }
       program.uniforms.uTime.value = t * 0.001;
       renderer.render({ scene: mesh });
+      requestID = requestAnimationFrame(loop);
     };
-    requestID = requestAnimationFrame(loop);
+
+    const startLoop = () => {
+      if (!isRunning && !document.hidden && !prefersReducedMotion()) {
+        isRunning = true;
+        requestID = requestAnimationFrame(loop);
+      }
+    };
+
+    const stopLoop = () => {
+      if (requestID !== null) {
+        cancelAnimationFrame(requestID);
+        requestID = null;
+      }
+      isRunning = false;
+    };
+
+    if (prefersReducedMotion()) {
+      program.uniforms.uTime.value = 0;
+      renderer.render({ scene: mesh });
+    } else {
+      startLoop();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopLoop();
+      } else {
+        startLoop();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    const motionQuery =
+      typeof window !== 'undefined'
+        ? window.matchMedia?.('(prefers-reduced-motion: reduce)')
+        : null;
+
+    const handleMotionChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) {
+        stopLoop();
+      } else {
+        startLoop();
+      }
+    };
+
+    if (motionQuery) {
+      if (motionQuery.addEventListener) {
+        motionQuery.addEventListener('change', handleMotionChange);
+      } else if ('addListener' in motionQuery) {
+        (motionQuery as any).addListener(handleMotionChange);
+      }
+    }
 
     return () => {
-      cancelAnimationFrame(requestID);
+      stopLoop();
       window.removeEventListener('resize', resize);
-      container.removeChild(gl.canvas);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (motionQuery) {
+        if (motionQuery.removeEventListener) {
+          motionQuery.removeEventListener('change', handleMotionChange);
+        } else if ('removeListener' in motionQuery) {
+          (motionQuery as any).removeListener(handleMotionChange);
+        }
+      }
+      if (gl.canvas.parentElement === container) {
+        container.removeChild(gl.canvas);
+      }
+      try {
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+      } catch {
+        // ignore
+      }
     };
-  }, [speed]);
+  }, [speed, supported]);
+
+  if (!supported) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          background: 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)',
+        }}
+        aria-hidden="true"
+      />
+    );
+  }
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import * as api from '../../api/client';
 import type { AssignmentsResponse, AssignedWorkOrder } from '../../types';
 function FolderIcon() {
@@ -102,34 +103,44 @@ function ProjectCard({ wo }: { wo: AssignedWorkOrder }) {
           </span>
         </span>
       </button>
-      {open && (
-        <div className="pa-card-body">
-          {wo.projects.map((p, j) => (
-            <div key={j} className="pa-project">
-              <div className="pa-project-header">
-                <div className="pa-project-title">{p.projectName}</div>
-                <div className="pa-project-num">#{p.projectNo}</div>
-              </div>
-              {p.tasks && p.tasks.length > 0 ? (
-                <div className="pa-tasks">
-                  {p.tasks.map((t, k) => (
-                    <span key={k} className="pa-task-chip">
-                      <span className="pa-task-icon">
-                        <TaskIcon />
-                      </span>
-                      <span className="pa-task-id">{t.taskId}</span>
-                      <span className="pa-task-sep">·</span>
-                      <span>{t.taskDetails}</span>
-                    </span>
-                  ))}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="pa-card-body">
+              {wo.projects.map((p, j) => (
+                <div key={j} className="pa-project">
+                  <div className="pa-project-header">
+                    <div className="pa-project-title">{p.projectName}</div>
+                    <div className="pa-project-num">#{p.projectNo}</div>
+                  </div>
+                  {p.tasks && p.tasks.length > 0 ? (
+                    <div className="pa-tasks">
+                      {p.tasks.map((t, k) => (
+                        <span key={k} className="pa-task-chip">
+                          <span className="pa-task-icon">
+                            <TaskIcon />
+                          </span>
+                          <span className="pa-task-id">{t.taskId}</span>
+                          <span className="pa-task-sep">·</span>
+                          <span>{t.taskDetails}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="pa-no-tasks">No tasks defined</p>
+                  )}
                 </div>
-              ) : (
-                <p className="pa-no-tasks">No tasks defined</p>
-              )}
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

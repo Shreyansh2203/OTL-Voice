@@ -23,6 +23,14 @@ vi.mock('./features/chat/ChatView', () => ({
     </div>
   ),
 }));
+vi.mock('./components/ui/NeuralTunnel', () => ({
+  default: () => <div data-testid="mock-neural-tunnel" />,
+  NeuralTunnel: () => <div data-testid="mock-neural-tunnel" />,
+}));
+vi.mock('./components/GhostCursor/GhostCursor', () => ({
+  default: () => <div data-testid="mock-ghost-cursor" />,
+  GhostCursor: () => <div data-testid="mock-ghost-cursor" />,
+}));
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
