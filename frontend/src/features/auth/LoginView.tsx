@@ -114,7 +114,7 @@ export default function LoginView({
             </div>
 
             {error && (
-              <div style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: "0.5rem" }}>
+              <div role="alert" style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: "0.5rem" }}>
                 {error}
               </div>
             )}

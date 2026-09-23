@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import * as api from '../../api/client';
 import type { SubmitResponse, TimecardEntry } from '../../types';
 export interface ReviewPanelProps {

@@ -43,6 +43,18 @@ Object.defineProperty(window, 'IntersectionObserver', {
   value: MockIntersectionObserver
 });
 
+// Mock ResizeObserver
+class MockResizeObserver {
+  observe = () => null;
+  unobserve = () => null;
+  disconnect = () => null;
+}
+Object.defineProperty(window, 'ResizeObserver', {
+  writable: true,
+  configurable: true,
+  value: MockResizeObserver
+});
+
 // Mock WebGL canvas context for JSDOM
 HTMLCanvasElement.prototype.getContext = vi.fn((contextId: string) => {
   if (contextId === '2d' || contextId === 'webgl' || contextId === 'webgl2') {

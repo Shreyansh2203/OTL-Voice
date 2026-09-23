@@ -24,10 +24,10 @@ describe('LoginView', () => {
     };
     vi.mocked(api.login).mockResolvedValue(mockIdentity);
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('e.g. 7');
+    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
     fireEvent.change(input, { target: { value: '7' } });
-    const submitBtn = screen.getByRole('button', { name: 'Sign in' });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
+    fireEvent.submit(form);
     expect(api.login).toHaveBeenCalledWith('7', '');
     await waitFor(() => {
       expect(onLogin).toHaveBeenCalledWith(mockIdentity);
@@ -37,10 +37,10 @@ describe('LoginView', () => {
     const onLogin = vi.fn();
     vi.mocked(api.login).mockRejectedValue(new Error('Invalid credentials'));
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('e.g. 7');
+    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
     fireEvent.change(input, { target: { value: 'wrong' } });
-    const submitBtn = screen.getByRole('button', { name: 'Sign in' });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
+    fireEvent.submit(form);
     const errorElement = await screen.findByRole('alert');
     expect(errorElement).toHaveTextContent('Invalid credentials');
     expect(onLogin).not.toHaveBeenCalled();
@@ -49,10 +49,10 @@ describe('LoginView', () => {
     const onLogin = vi.fn();
     vi.mocked(api.login).mockRejectedValue('some weird error');
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('e.g. 7');
+    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
     fireEvent.change(input, { target: { value: 'wrong' } });
-    const submitBtn = screen.getByRole('button', { name: 'Sign in' });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
+    fireEvent.submit(form);
     const errorElement = await screen.findByRole('alert');
     expect(errorElement).toHaveTextContent('Sign-in failed.');
   });

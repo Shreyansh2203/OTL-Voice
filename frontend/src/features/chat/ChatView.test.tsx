@@ -78,10 +78,10 @@ describe('ChatView', () => {
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();
     });
-    const voiceBtn = screen.getByText('Voice On');
-    expect(screen.getByText(/Voice on/i)).toBeInTheDocument();
+    const voiceBtn = screen.getByRole('button', { name: /Disable voice responses/i });
+    expect(voiceBtn).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(voiceBtn);
-    expect(screen.getByText(/Voice off/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enable voice responses/i })).toHaveAttribute('aria-pressed', 'false');
   });
   it('calls onLogout', async () => {
     const onLogout = vi.fn();
@@ -169,7 +169,7 @@ describe('ChatView', () => {
     render(
       <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
-    const voiceBtn = screen.getByText('Voice On');
+    const voiceBtn = screen.getByRole('button', { name: /Disable voice responses/i });
     fireEvent.click(voiceBtn);
     await waitFor(() => {
       expect(api.chatStream).toHaveBeenCalled();

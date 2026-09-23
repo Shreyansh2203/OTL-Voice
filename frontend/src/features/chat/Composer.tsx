@@ -39,7 +39,7 @@ export default function Composer({
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
   const ringRef = useRef<HTMLSpanElement | null>(null);
-  const micLevel = useMicLevel((level) => { if (ringRef.current) ringRef.current.style.transform = "scale(${1 + level * 0.5})"; });
+  const micLevel = useMicLevel((_level) => { if (ringRef.current) ringRef.current.style.transform = `scale(${1 + _level * 0.5})`; });
 
   // A sentence that already sounds complete needs less confirmation silence
   // than one that trails off mid-thought — mirrors how a human listener
