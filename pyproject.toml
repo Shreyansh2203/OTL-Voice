@@ -2,7 +2,6 @@
 name = "timesheet-repo"
 version = "0.1.0"
 description = "Voice-enabled AI timesheet assistant for Oracle Time and Labor (OTL) powered by OpenAI Realtime WebRTC."
-readme = "README.md"
 authors = [
     { name = "Shreyansh Srivastava", email = "main.doga@gmail.com" }
 ]
