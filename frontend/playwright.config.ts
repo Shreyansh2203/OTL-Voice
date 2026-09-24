@@ -44,12 +44,14 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'pnpm exec vite --host 127.0.0.1',
-    url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  /* Use the caller-managed Vite server in CI to avoid nested process cleanup hangs. */
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER
+    ? undefined
+    : {
+        command: 'pnpm exec vite --host 127.0.0.1',
+        url: 'http://127.0.0.1:5173',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120 * 1000,
+      },
 });
 

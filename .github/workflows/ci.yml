@@ -199,11 +199,13 @@ jobs:
         cd ..
         touch .env
         export TEST_MODE=true
+        backend_pid=""
+        frontend_pid=""
         uv run uvicorn backend.main:app &
         backend_pid=$!
         cleanup() {
-          kill "$backend_pid" >/dev/null 2>&1 || true
-          wait "$backend_pid" >/dev/null 2>&1 || true
+          kill "$backend_pid" "$frontend_pid" >/dev/null 2>&1 || true
+          wait "$backend_pid" "$frontend_pid" >/dev/null 2>&1 || true
         }
         trap cleanup EXIT
         for attempt in $(seq 1 30); do
@@ -217,6 +219,20 @@ jobs:
         done
         curl -fsS http://127.0.0.1:8000/api/health
         cd frontend
+        pnpm exec vite --host 127.0.0.1 > /tmp/otl-vite.log 2>&1 &
+        frontend_pid=$!
+        for attempt in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:5173/; then
+            break
+          fi
+          if ! kill -0 "$frontend_pid" 2>/dev/null; then
+            cat /tmp/otl-vite.log
+            exit 1
+          fi
+          sleep 1
+        done
+        curl -fsS http://127.0.0.1:5173/
+        export PLAYWRIGHT_SKIP_WEBSERVER=1
         timeout --foreground --kill-after=10s 2m pnpm exec playwright test tests/chat.spec.ts tests/history.spec.ts --project=chromium --reporter=line
 
     - name: Upload Playwright Report
