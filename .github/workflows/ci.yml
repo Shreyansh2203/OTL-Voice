@@ -185,7 +185,7 @@ jobs:
     - name: Install Playwright Browsers
       working-directory: ./frontend
       if: steps.playwright-cache.outputs.cache-hit != 'true'
-      run: pnpm exec playwright install --with-deps
+      run: pnpm exec playwright install --with-deps chromium
 
     - name: Install Playwright Dependencies
       working-directory: ./frontend
@@ -217,7 +217,7 @@ jobs:
         done
         curl -fsS http://127.0.0.1:8000/api/health
         cd frontend
-        timeout 3m pnpm exec playwright test tests/chat.spec.ts tests/history.spec.ts --project=chromium
+        timeout --foreground --kill-after=10s 2m pnpm exec playwright test tests/chat.spec.ts tests/history.spec.ts --project=chromium --reporter=line
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4
@@ -226,6 +226,7 @@ jobs:
         name: playwright-report
         path: frontend/playwright-report/
         retention-days: 14
+        if-no-files-found: ignore
 
 
 
