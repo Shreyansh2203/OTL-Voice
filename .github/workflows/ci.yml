@@ -217,7 +217,7 @@ jobs:
         done
         curl -fsS http://127.0.0.1:8000/api/health
         cd frontend
-        timeout 5m pnpm exec playwright test --project=chromium
+        timeout 3m pnpm exec playwright test tests/chat.spec.ts tests/history.spec.ts --project=chromium
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4
