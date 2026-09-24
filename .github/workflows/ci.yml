@@ -195,15 +195,29 @@ jobs:
     - name: Start Backend and Run E2E Tests
       working-directory: ./frontend
       run: |
-        # Create empty .env since it's required by backend setup
-        cd .. && touch .env
-        # Start backend in the background
+        set -euo pipefail
+        cd ..
+        touch .env
         export TEST_MODE=true
         uv run uvicorn backend.main:app &
-        # Wait for backend to be ready
-        sleep 5
-        # Run playwright
-        cd frontend && pnpm exec playwright test
+        backend_pid=$!
+        cleanup() {
+          kill "$backend_pid" >/dev/null 2>&1 || true
+          wait "$backend_pid" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+        for attempt in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:8000/api/health; then
+            break
+          fi
+          if ! kill -0 "$backend_pid" 2>/dev/null; then
+            exit 1
+          fi
+          sleep 1
+        done
+        curl -fsS http://127.0.0.1:8000/api/health
+        cd frontend
+        timeout 8m pnpm exec playwright test
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4
