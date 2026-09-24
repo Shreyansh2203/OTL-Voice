@@ -40,6 +40,9 @@ jobs:
     - name: Run Ruff (Python Linting)
       run: uv run ruff check .
 
+    - name: Verify Ruff formatting
+      run: uv run ruff format --check backend
+
     - name: Run Mypy (Python Type Checking)
       run: uv run mypy backend
 
@@ -65,7 +68,7 @@ jobs:
     - name: Set up Node.js
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 12.6.0
     - uses: actions/setup-node@v4
       with:
         node-version: '22'
@@ -114,11 +117,25 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./Containerfile
+        file: ./Dockerfile
         push: false
         tags: otl-voice-test:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Smoke test container health
+      run: |
+        set -e
+        docker run -d --name otl-voice-smoke -p 8000:8000 -e TEST_MODE=true -e DEV_MODE=true -e SESSION_SECRET_KEY=ci-test-secret-key-32-characters-min -e SESSION_COOKIE_SECURE=false otl-voice-test:latest
+        trap 'docker rm -f otl-voice-smoke >/dev/null 2>&1 || true' EXIT
+        for attempt in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:8000/api/health; then
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs otl-voice-smoke
+        exit 1
 
   e2e:
     name: E2E Tests (Playwright)
@@ -144,7 +161,7 @@ jobs:
     - name: Set up Node.js
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 12.6.0
     - uses: actions/setup-node@v4
       with:
         node-version: '22'
@@ -160,7 +177,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+        key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: |
           ${{ runner.os }}-playwright-
 

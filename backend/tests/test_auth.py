@@ -79,7 +79,9 @@ def test_cookie_secure():
 async def test_current_session_bearer_header():
     from starlette.requests import Request
 
-    employee = Employee(employee_id="456", username="beareruser", full_name="Bearer User")
+    employee = Employee(
+        employee_id="456", username="beareruser", full_name="Bearer User"
+    )
     token = create_session(employee)
 
     scope = {
@@ -90,6 +92,13 @@ async def test_current_session_bearer_header():
     ctx = await current_session(request=req, otl_session=None)
     assert ctx.employee_id == "456"
     assert ctx.username == "beareruser"
+
+
+def test_auth_exposes_token_blocklist_accessor():
+    from backend.core import auth
+    from backend.core.token_blocklist import _blocklist
+
+    assert auth._blocklist is _blocklist
 
 
 @pytest.mark.asyncio
@@ -105,8 +114,10 @@ async def test_token_blocklist_redis_connect_and_reconnect():
     mock_redis.exists = AsyncMock(return_value=1)
     mock_redis.close = AsyncMock()
 
-    with patch.dict(os.environ, {"REDIS_URL": "redis://localhost:6379/0"}), \
-         patch("redis.asyncio.from_url", return_value=mock_redis):
+    with (
+        patch.dict(os.environ, {"REDIS_URL": "redis://localhost:6379/0"}),
+        patch("redis.asyncio.from_url", return_value=mock_redis),
+    ):
         bl._redis = None
         bl._last_reconnect = 0.0
         r = await bl._ensure_redis()
@@ -128,7 +139,9 @@ async def test_rate_limiter_redis_reconnect():
 
     from backend.core.limiter import RateLimiter
 
-    limiter = RateLimiter(max_requests=10, window_seconds=60, redis_url="redis://fake:6379/0")
+    limiter = RateLimiter(
+        max_requests=10, window_seconds=60, redis_url="redis://fake:6379/0"
+    )
     mock_redis = MagicMock()
     mock_redis.ping = AsyncMock(side_effect=Exception("Connection refused"))
 
@@ -149,4 +162,3 @@ async def test_rate_limiter_redis_reconnect():
         assert r3 is mock_redis
         assert limiter._use_redis is True
         assert limiter._reconnect_backoff == 1.0
-

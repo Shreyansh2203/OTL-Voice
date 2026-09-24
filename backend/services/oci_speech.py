@@ -61,7 +61,9 @@ def clean_for_speech(text: str) -> str:
 class SpeechClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
-        self.region = _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
+        self.region = (
+            _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
+        )
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
@@ -230,7 +232,9 @@ except ImportError:
 class STTClient:
     def __init__(self) -> None:
         self.config = build_oci_config()
-        self.region = _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
+        self.region = (
+            _env("OCI_SPEECH_REGION") or self.config.get("region") or _env("OCI_REGION")
+        )
         self.compartment_id = _env("OCI_COMPARTMENT_ID")
         if not self.compartment_id:
             raise RuntimeError("OCI_COMPARTMENT_ID is not set in your .env.")
@@ -290,15 +294,16 @@ class STTClient:
                 timeout=10.0,
                 return_when=asyncio.FIRST_COMPLETED,
             )
-            for t in pending:
-                t.cancel()
-        except Exception:
-            pass
-
-        if loop_task.done() and loop_task.exception():
-            raise loop_task.exception()
-
-        if not listener.connected.is_set():
-            raise RuntimeError("Failed to connect STT listener.")
-
-        return client, result_queue, listener.done, loop_task
+            for task in pending:
+                task.cancel()
+            if loop_task.done() and loop_task.exception():
+                raise loop_task.exception()
+            if not listener.connected.is_set():
+                raise RuntimeError("Failed to connect STT listener.")
+            return client, result_queue, listener.done, loop_task
+        except BaseException:
+            if not loop_task.done():
+                loop_task.cancel()
+            await asyncio.gather(loop_task, return_exceptions=True)
+            await client.close()
+            raise

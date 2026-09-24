@@ -24,6 +24,7 @@ class TimecardEntryInput(BaseModel):
 class TimecardBody(BaseModel):
     entries: list[dict[str, Any]] | None = Field(
         default=None,
+        max_length=100,
         description="Structured timecard entries to submit to Oracle Fusion OTL",
     )
     assistantMessage: str | None = Field(

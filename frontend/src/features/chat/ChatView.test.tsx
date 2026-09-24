@@ -13,6 +13,7 @@ import * as voiceLib from '../../lib/voice';
 vi.mock('../../api/client', () => ({
   chatStream: vi.fn(),
   tts: vi.fn(),
+  getHealthOtl: vi.fn().mockResolvedValue({ status: 'connected' }),
   ApiError: class ApiError extends Error {
     status: number;
     constructor(status: number, message: string) {
@@ -41,6 +42,17 @@ vi.mock('../timesheets/TimecardHistory', () => ({
 describe('ChatView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(voiceLib.useAudioPlayer).mockReturnValue({
+      play: vi.fn(),
+      stop: vi.fn(),
+    } as any);
+    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
+      supported: true,
+      listening: false,
+      isListening: vi.fn(() => false),
+      start: vi.fn(),
+      stop: vi.fn(),
+    } as any);
     Element.prototype.scrollIntoView = vi.fn();
   });
   it('renders chat view and kicks off', async () => {
@@ -261,6 +273,62 @@ describe('ChatView', () => {
     expect(stopAudio).toHaveBeenCalled();
   });
 
+  it('does not start hands-free microphone input when voice is disabled', async () => {
+    localStorage.setItem('otl_voice_on', 'false');
+    const startMic = vi.fn();
+    vi.mocked(voiceLib.useSpeechInput).mockReturnValue({
+      supported: true,
+      listening: false,
+      isListening: vi.fn(() => false),
+      start: startMic,
+      stop: vi.fn(),
+    } as any);
+    vi.mocked(api.chatStream).mockImplementation(async (_history, onEvent) => {
+      onEvent({ delta: 'Hello' });
+      onEvent({ done: true });
+    });
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+    expect(startMic).not.toHaveBeenCalled();
+  });
+  it('does not let a stale request completion enable a newer request', async () => {
+    let callCount = 0;
+    let resolveFirst: (() => void) | undefined;
+    vi.mocked(api.chatStream).mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return new Promise<void>(() => {});
+    });
+    render(
+      <ChatView username="Test" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    await waitFor(() => expect(api.chatStream).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('otl:barge-in'));
+    });
+    const input = screen.getByRole('textbox');
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'New request' } });
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() => expect(api.chatStream).toHaveBeenCalledTimes(2));
+    expect(input).toBeDisabled();
+
+    await act(async () => {
+      resolveFirst?.();
+      await Promise.resolve();
+    });
+    expect(input).toBeDisabled();
+  });
   it('stops mic when farewell is detected in assistant response', async () => {
     const stopMic = vi.fn();
     const micMock = {

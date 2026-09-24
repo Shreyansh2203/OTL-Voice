@@ -16,12 +16,13 @@ router = APIRouter(tags=["health", "admin"])
 
 def _assert_admin(request: Request) -> None:
     key = os.getenv("ADMIN_API_KEY")
-    if not key:
+    if auth._is_insecure_placeholder(key):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin key not configured",
         )
-    if not secrets.compare_digest(request.headers.get("X-Admin-Key") or "", key):
+    key_value = key or ""
+    if not secrets.compare_digest(request.headers.get("X-Admin-Key") or "", key_value):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin key required.",

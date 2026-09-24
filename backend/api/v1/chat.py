@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from functools import lru_cache
 
@@ -42,17 +43,31 @@ def _speech_client():
 async def chat_stream(
     body: ChatBody, ctx: SessionContext = Depends(auth.current_session)
 ) -> StreamingResponse:
-    assignments = await fusion_catalogue.alist_assignments_for_worker(ctx.employee_id, ctx.full_name)
+    assignments = await fusion_catalogue.alist_assignments_for_worker(
+        ctx.employee_id, ctx.full_name
+    )
     recent_history_str = ""
     try:
         recent = await otl_client.alist_timecard_entries(
-            otl_client.service_credential(), limit=1, offset=0, person_number=ctx.employee_id
+            otl_client.service_credential(),
+            limit=1,
+            offset=0,
+            person_number=ctx.employee_id,
         )
         items = recent.get("items", [])
         if items:
             latest = items[0]
-            attrs = latest.get("timeRecordEventAttribute") or latest.get("timeAttributes", [])
-            proj = next((a.get("attributeValue") for a in attrs if a.get("attributeName") == "PJC_PROJECT_ID"), None)
+            attrs = latest.get("timeRecordEventAttribute") or latest.get(
+                "timeAttributes", []
+            )
+            proj = next(
+                (
+                    a.get("attributeValue")
+                    for a in attrs
+                    if a.get("attributeName") == "PJC_PROJECT_ID"
+                ),
+                None,
+            )
             hours = latest.get("measure", "")
             if proj:
                 p_info = fusion_catalogue.get_project_by_id(proj)
@@ -80,12 +95,12 @@ async def chat_stream(
 
 
 @router.post("/api/tts")
-def tts(
+async def tts(
     body: TtsBody, _: SessionContext = Depends(auth.current_session)
 ) -> Response:
     try:
         client = _speech_client()
-        audio = client.synthesize(body.text, rate=body.rate)
+        audio = await asyncio.to_thread(client.synthesize, body.text, body.rate)
     except Exception as exc:
         logger.error("TTS synthesis failed", exc_info=exc)
         raise HTTPException(
@@ -98,10 +113,14 @@ def tts(
 @router.websocket("/api/stt/stream")
 async def stt_stream(websocket: WebSocket):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    origin = websocket.headers.get("origin") or websocket.headers.get("sec-websocket-origin")
+    origin = websocket.headers.get("origin") or websocket.headers.get(
+        "sec-websocket-origin"
+    )
     allowed_origins = _cors_origins()
-    if origin and allowed_origins and origin not in allowed_origins:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed")
+    if origin and (not allowed_origins or origin not in allowed_origins):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed"
+        )
         return
     otl_session = (
         websocket.cookies.get(auth._session_cookie_name())
@@ -110,11 +129,17 @@ async def stt_stream(websocket: WebSocket):
     )
     ctx = await auth.resolve(otl_session)
     if not ctx:
-        logger.warning("STT WebSocket rejected: Unauthorized (no valid session cookie found)")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+        logger.warning(
+            "STT WebSocket rejected: Unauthorized (no valid session cookie found)"
+        )
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized"
+        )
         return
     if not await ws_tracker.acquire(client_ip):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections")
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections"
+        )
         return
     await websocket.accept()
     oci_client = None
@@ -135,7 +160,9 @@ async def stt_stream(websocket: WebSocket):
                         await oci_client.request_final_result()
                         break
                     if len(data) > 64 * 1024:
-                        logging.getLogger(__name__).warning("STT message too large: %d bytes", len(data))
+                        logging.getLogger(__name__).warning(
+                            "STT message too large: %d bytes", len(data)
+                        )
                         continue
                     if result_queue.qsize() > 50:
                         backpressure_active = True
@@ -144,9 +171,10 @@ async def stt_stream(websocket: WebSocket):
                         backpressure_active = False
                     await oci_client.send_data(data)
             except WebSocketDisconnect:
-                pass
+                done_event.set()
             except Exception:
                 logger.exception("STT RX Error")
+                done_event.set()
 
         async def send_to_frontend():
             try:
@@ -164,30 +192,55 @@ async def stt_stream(websocket: WebSocket):
                     for t in pending:
                         t.cancel()
             except WebSocketDisconnect:
-                pass
+                done_event.set()
             except Exception:
                 logging.getLogger(__name__).exception("STT TX Error")
+                done_event.set()
 
         rx_task = asyncio.create_task(receive_from_frontend())
         tx_task = asyncio.create_task(send_to_frontend())
-        results = await asyncio.gather(rx_task, tx_task, loop_task, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                logging.getLogger(__name__).exception("STT task error", exc_info=result)
+        done_wait_task = asyncio.create_task(done_event.wait())
+        pending = {rx_task, tx_task, done_wait_task}
+        try:
+            while pending and not done_event.is_set():
+                done, pending = await asyncio.wait(
+                    pending,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if rx_task in done and tx_task in done:
+                    break
+            if not done_event.is_set() and rx_task in done and tx_task in done:
+                done_event.set()
+        finally:
+            for task in (rx_task, tx_task, done_wait_task):
+                if not task.done():
+                    task.cancel()
+            results = await asyncio.gather(
+                rx_task,
+                tx_task,
+                done_wait_task,
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, Exception):
+                    logging.getLogger(__name__).exception(
+                        "STT task error", exc_info=result
+                    )
+            if not loop_task.done():
+                loop_task.cancel()
+            await asyncio.gather(loop_task, return_exceptions=True)
     except Exception:
         logging.getLogger(__name__).exception("STT Session Error")
     finally:
         await ws_tracker.release(client_ip)
         try:
             if oci_client:
-                oci_client.close()
+                close_result = oci_client.close()
+                if inspect.isawaitable(close_result):
+                    await close_result
         except Exception:
             pass
         try:
             await websocket.close()
         except Exception:
             pass
-
-
-
-

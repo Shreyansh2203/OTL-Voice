@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import * as api from "../../api/client";
 import { updateLastAssistant } from "../../lib/chat";
@@ -6,16 +6,10 @@ import { extractEntries, stripEntriesBlock } from "../../lib/entries";
 import { useAudioPlayer, useSpeechInput } from "../../lib/voice";
 import { playThinkingCue } from "../../lib/audio";
 import type { ChatMessage } from "../../types";
-import {
-  SpeakerIcon,
-  FolderIcon,
-  HistoryIcon,
-  MessageSquareIcon,
-} from "../../components/ui/icons";
 import { ProjectAssignments, ReviewPanel, TimecardHistory } from "../timesheets";
+import ChatShell, { type ChatTab, type OracleStatus } from "./ChatShell";
 import Composer from "./Composer";
 import MessageBubble from "./MessageBubble";
-import ShinyText from "../../components/ui/ShinyText";
 
 const KICKOFF = "Please begin the session now.";
 
@@ -38,7 +32,21 @@ export default function ChatView({
   useEffect(() => {
     localStorage.setItem("otl_voice_on", String(voiceOn));
   }, [voiceOn]);
-  const [viewTab, setViewTab] = useState<"chat" | "history" | "projects">("chat");
+  const [viewTab, setViewTab] = useState<ChatTab>("chat");
+  const [oracleStatus, setOracleStatus] = useState<OracleStatus>("checking");
+  useEffect(() => {
+    let active = true;
+    api.getHealthOtl()
+      .then(() => {
+        if (active) setOracleStatus("online");
+      })
+      .catch(() => {
+        if (active) setOracleStatus("offline");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const player = useAudioPlayer();
   const mic = useSpeechInput();
   const voiceOnRef = useRef(voiceOn);
@@ -55,6 +63,7 @@ export default function ChatView({
   // Conversational state refs
   const abortControllerRef = useRef<AbortController | null>(null);
   const interruptTokenRef = useRef<number>(0);
+  const sendGenerationRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
   const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
 
@@ -66,6 +75,7 @@ export default function ChatView({
     }
     // 2. Invalidate current turn token
     interruptTokenRef.current += 1;
+    sendGenerationRef.current += 1;
     isPlayingRef.current = false;
     // 3. Stop audio playback immediately
     player.stop();
@@ -89,13 +99,18 @@ export default function ChatView({
   const sendUser = useCallback(
     (content: string, isVoice?: boolean) => {
       handleBargeIn();
+      const generation = ++sendGenerationRef.current;
       wasLastInputVoiceRef.current = !!isVoice;
       const cleanPrev = messagesRef.current.filter(
         (m) => m.content && m.content.trim().length > 0 && !m.content.startsWith("Sorry —")
       );
       const historyForApi = [...cleanPrev, { role: "user", content } as ChatMessage];
       setMessages(historyForApi);
-      setTimeout(() => runAssistantRef.current?.(historyForApi), 0);
+      setTimeout(() => {
+        if (generation === sendGenerationRef.current) {
+          void runAssistantRef.current?.(historyForApi);
+        }
+      }, 0);
     },
     [handleBargeIn]
   );
@@ -112,10 +127,11 @@ export default function ChatView({
 
   const runAssistant = useCallback(
     async (history: ChatMessage[]) => {
-      const thisToken = ++interruptTokenRef.current;
-      setSending(true);
+       const thisToken = ++interruptTokenRef.current;
+       const turnIsVoice = wasLastInputVoiceRef.current;
+       setSending(true);
       setVoiceState("thinking");
-      if (wasLastInputVoiceRef.current) {
+       if (turnIsVoice) {
         void playThinkingCue();
       }
       player.stop();
@@ -160,9 +176,13 @@ export default function ChatView({
         void processAudioQueue();
       };
 
-      const processAudioQueue = async () => {
-        if (isPlayingRef.current || audioQueue.length === 0) return;
-        isPlayingRef.current = true;
+       const processAudioQueue = async () => {
+         if (interruptTokenRef.current !== thisToken) {
+           audioQueue.length = 0;
+           return;
+         }
+         if (isPlayingRef.current || audioQueue.length === 0) return;
+         isPlayingRef.current = true;
 
         while (audioQueue.length > 0 && interruptTokenRef.current === thisToken) {
           const item = audioQueue.shift()!;
@@ -185,8 +205,10 @@ export default function ChatView({
           }
         }
 
-        isPlayingRef.current = false;
-      };
+         if (interruptTokenRef.current === thisToken) {
+           isPlayingRef.current = false;
+         }
+       };
 
       const cleanHistory = history.filter(
         (m) => m.content && m.content.trim().length > 0 && !m.content.startsWith("Sorry —")
@@ -240,8 +262,8 @@ export default function ChatView({
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null;
+          setSending(false);
         }
-        setSending(false);
       }
 
       if (interruptTokenRef.current !== thisToken) return;
@@ -266,8 +288,11 @@ export default function ChatView({
       if (isFarewell) {
         mic.stop();
         setVoiceState("idle");
-      } else if (mic.supported && wasLastInputVoiceRef.current) {
-        // Alexa / Google Assistant Hands-Free Dialogue Loop
+      } else if (
+        voiceOnRef.current &&
+        mic.supported &&
+         turnIsVoice
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         if (interruptTokenRef.current === thisToken) {
           composerMicTriggerRef.current?.();
@@ -330,131 +355,25 @@ export default function ChatView({
   const lastAssistant = [...messages]
     .reverse()
     .find((m) => m.role === "assistant");
-  const entries = lastAssistant
-    ? extractEntries(lastAssistant.content)
-    : null;
-  const shouldAutoSubmit = lastAssistant
-    ? (!lastAssistant.streaming && lastAssistant.content.includes("```json"))
-    : false;
+  const lastAssistantContent = lastAssistant?.content;
+  const entries = useMemo(
+    () =>
+      lastAssistantContent ? extractEntries(lastAssistantContent) : null,
+    [lastAssistantContent]
+  );
   const visible = messages.filter((m) => !m.hidden);
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="brand-logo">
-            <img src="/favicon.svg" alt="" width={24} height={24} />
-          </div>
-          <span className="brand-title">OTL Timesheet</span>
-        </div>
-        <nav className="sidebar-nav">
-          <div className="nav-group-title">Menu</div>
-          {(['chat', 'projects', 'history'] as const).map((tab) => {
-            const isActive = viewTab === tab;
-            return (
-              <button
-                key={tab}
-                className="nav-item"
-                onClick={() => setViewTab(tab)}
-                aria-label={`Navigate to ${tab === 'chat' ? 'Assistant chat' : tab === 'projects' ? 'Project Assignments' : 'Timecard History'}`}
-                aria-current={isActive ? "page" : undefined}
-                style={{
-                  position: 'relative',
-                  color: isActive ? '#ffffff' : undefined,
-                  border: '1px solid transparent',
-                  background: 'transparent',
-                }}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="active-nav-tab"
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'rgba(83, 58, 253, 0.16)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(83, 58, 253, 0.35)',
-                      boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.1)',
-                      zIndex: 0
-                    }}
-                  />
-                )}
-                <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {tab === 'chat' && <MessageSquareIcon size={16} />}
-                  {tab === 'projects' && <FolderIcon size={16} />}
-                  {tab === 'history' && <HistoryIcon size={16} />}
-                  <span>{tab === 'chat' ? 'Assistant' : tab === 'projects' ? 'Projects' : 'History'}</span>
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-footer">
-          <div className="nav-group-title">Settings</div>
-          <button
-            className="nav-item"
-            style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
-            onClick={() => setVoiceOn((v) => !v)}
-            aria-label={voiceOn ? "Disable voice responses" : "Enable voice responses"}
-            aria-pressed={voiceOn}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <SpeakerIcon size={16} />
-              <span>Voice</span>
-            </div>
-            <div
-              style={{
-                width: '32px',
-                height: '18px',
-                borderRadius: '999px',
-                background: voiceOn ? 'var(--color-accent-primary)' : 'rgba(255, 255, 255, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '2px',
-                cursor: 'pointer',
-                transition: 'background 0.2s',
-              }}
-            >
-              <motion.div
-                layout
-                transition={{ type: "spring", stiffness: 700, damping: 30 }}
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  borderRadius: '50%',
-                  background: '#fff',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                  marginLeft: voiceOn ? '14px' : '0px',
-                }}
-              />
-            </div>
-          </button>
-          <div className="user-profile">
-            <div className="avatar">{username.charAt(0).toUpperCase()}</div>
-            <div className="user-info">
-              <span className="user-name" title={username}>{username}</span>
-              <button className="sign-out-btn" onClick={onLogout} aria-label="Sign out of your account">Sign out</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-      <main className="workspace" style={{ position: 'relative' }}>
-        <header className="workspace-header" style={{ zIndex: 1, position: 'relative', background: 'rgba(18, 15, 23, 0.65)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-          <h2 style={{ color: 'white' }}>
-            {viewTab === "chat" ? "Assistant" : 
-             viewTab === "projects" ? "Project Assignments" : 
-             "Timecard History"}
-          </h2>
-          <div className="workspace-header-meta" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-            <span className="status-heartbeat">
-              <span className="status-heartbeat-dot" />
-              <ShinyText text="Oracle Fusion Connected" disabled={false} speed={3} className="shiny-heartbeat" />
-            </span>
-          </div>
-        </header>
-        {viewTab === "history" ? (
+    <ChatShell
+      username={username}
+      viewTab={viewTab}
+      onViewTabChange={setViewTab}
+      voiceOn={voiceOn}
+      onVoiceToggle={() => setVoiceOn((v) => !v)}
+      onLogout={onLogout}
+      oracleStatus={oracleStatus}
+    >
+      {viewTab === "history" ? (
           <div className="workspace-content scroll-y">
             <div className="workspace-inner">
               <TimecardHistory onSessionExpired={onSessionExpired} />
@@ -481,10 +400,10 @@ export default function ChatView({
                   </motion.div>
                 ))}
                 {entries && (
-                  <ReviewPanel 
-                    entries={entries} 
+                   <ReviewPanel
+                     key={`${(lastAssistant as { id?: string })?.id || 'message'}-${messages.length}-${JSON.stringify(entries)}`}
+                     entries={entries}
                     onSessionExpired={onSessionExpired}
-                    autoSubmit={shouldAutoSubmit}
                   />
                 )}
                 <div ref={scrollAnchor} className="scroll-anchor" />
@@ -501,7 +420,7 @@ export default function ChatView({
                   onStopMic={stopMicSession}
                   errorMsg={mic.errorMsg}
                   voiceState={voiceState}
-                  handsFree={true}
+                  handsFree={voiceOn}
                   onRegisterTrigger={(trigger) => {
                     composerMicTriggerRef.current = trigger;
                   }}
@@ -513,8 +432,7 @@ export default function ChatView({
               </div>
             </div>
           </div>
-        )}
-      </main>
-    </div>
+      )}
+    </ChatShell>
   );
 }

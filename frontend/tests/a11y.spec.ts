@@ -56,12 +56,21 @@ test.describe('Accessibility (a11y) Tests', () => {
         body: sseContent + sseDone
       });
     });
+
+    await page.route(/\/api\/health\/otl/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'connected' })
+      });
+    });
   });
 
   test('Main chat view should not have any automatically detectable accessibility issues', async ({ page }) => {
     await page.goto('/');
     const greeting = page.locator('.md', { hasText: "Test Project Mock" });
     await expect(greeting).toBeVisible({ timeout: 10000 });
+    await page.waitForTimeout(500);
 
     const accessibilityScanResults = await new AxeBuilder({ page }).disableRules(["page-has-heading-one"]).analyze();
     expect(accessibilityScanResults.violations).toEqual([]);

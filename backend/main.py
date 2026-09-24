@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import mimetypes
 import os
@@ -82,6 +83,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         refresh_task.cancel()
         await rate_limiter.close()
         await auth_rate_limiter.close()
+        close_result = otl_client.close_shared_client()
+        if inspect.isawaitable(close_result):
+            await close_result
         from .core.auth import _blocklist
 
         await _blocklist().close()
@@ -138,7 +142,8 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", CSRF_HEADER_NAME],
+    expose_headers=["X-CSRF-Token"],
 )
 
 
@@ -151,17 +156,19 @@ async def csrf_protection(request: Request, call_next):
         "/api/health/otl",
     ):
         response = await call_next(request)
-        if CSRF_COOKIE_NAME not in request.cookies:
-            token = _generate_csrf_token()
+        csrf_token = request.cookies.get(CSRF_COOKIE_NAME)
+        if not csrf_token:
+            csrf_token = _generate_csrf_token()
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
-                value=token,
+                value=csrf_token,
                 httponly=False,
                 secure=auth.cookie_secure(),
                 samesite="lax",
                 max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
                 path="/",
             )
+        response.headers["X-CSRF-Token"] = csrf_token
         return response
     if request.headers.get("upgrade", "").lower() == "websocket":
         return await call_next(request)
@@ -195,7 +202,7 @@ async def add_security_headers(request: Request, call_next):
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
             "worker-src 'self' blob:; "
             "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
+            "img-src 'self' data: https:; "
             "font-src 'self'; "
             "connect-src 'self' wss: https: ws:; "
             "frame-ancestors 'none'; "
@@ -207,8 +214,9 @@ async def add_security_headers(request: Request, call_next):
             "default-src 'self'; "
             "script-src 'self'; "
             "worker-src 'self' blob:; "
-            "style-src 'self'; "
-            "img-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; "
+            "media-src 'self' blob:; "
+            "img-src 'self' data: https:; "
             "font-src 'self'; "
             "connect-src 'self' wss: https: ws:; "
             "frame-ancestors 'none'; "

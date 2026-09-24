@@ -1,7 +1,8 @@
 import os
 
-os.environ['TEST_MODE'] = 'true'
-os.environ['SESSION_COOKIE_SECURE'] = 'false'
+os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret-key-32-bytes-minimum")
+os.environ["TEST_MODE"] = "true"
+os.environ["SESSION_COOKIE_SECURE"] = "false"
 
 import sys
 
@@ -15,7 +16,10 @@ def run_test():
     client = TestClient(app)
 
     print("1. Authenticating as Person 10021 via POST /api/auth/login")
-    res_login = client.post("/api/auth/login", json={"personNumber": "10021"})
+    res_login = client.post(
+        "/api/auth/login",
+        json={"personNumber": "10021", "password": os.getenv("AUTH_PASSWORD", "test-password")},
+    )
     
     if res_login.status_code != 200:
         print(f"FAIL: Login returned {res_login.status_code} - {res_login.text}")

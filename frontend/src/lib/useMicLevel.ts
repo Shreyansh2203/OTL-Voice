@@ -22,8 +22,10 @@ export function useMicLevel(onLevel?: (level: number) => void) {
   const rafRef = useRef<number | null>(null);
   const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const activeRef = useRef(false);
+  const generationRef = useRef(0);
 
   const stop = useCallback(() => {
+    generationRef.current += 1;
     activeRef.current = false;
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -51,6 +53,8 @@ export function useMicLevel(onLevel?: (level: number) => void) {
   const start = useCallback(
     async (existingStream?: MediaStream) => {
       if (activeRef.current) return;
+      const generation = ++generationRef.current;
+      activeRef.current = true;
       try {
         let stream = existingStream;
         let owns = false;
@@ -58,7 +62,12 @@ export function useMicLevel(onLevel?: (level: number) => void) {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           owns = true;
         }
-        if (!activeRef.current && streamRef.current) return; // stopped while awaiting
+        if (generationRef.current !== generation || !activeRef.current) {
+          if (owns) {
+            stream.getTracks().forEach((track) => track.stop());
+          }
+          return;
+        }
         streamRef.current = stream;
         ownsStreamRef.current = owns;
         const ctx = new (
@@ -72,7 +81,6 @@ export function useMicLevel(onLevel?: (level: number) => void) {
         source.connect(analyser);
         analyserRef.current = analyser;
         dataRef.current = new Uint8Array(analyser.frequencyBinCount);
-        activeRef.current = true;
 
         const tick = () => {
           if (!activeRef.current || !analyserRef.current || !dataRef.current)
@@ -99,9 +107,9 @@ export function useMicLevel(onLevel?: (level: number) => void) {
         };
         rafRef.current = requestAnimationFrame(tick);
       } catch {
-        // Permission denied or no mic — the orb just stays flat; the actual
-        // STT hook surfaces the real error message to the user.
-        stop();
+        if (generationRef.current === generation) {
+          stop();
+        }
       }
     },
     [stop]

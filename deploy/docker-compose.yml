@@ -3,23 +3,16 @@
 #   cd deploy && docker compose up --build
 #   open http://localhost         (nginx :80 -> app :8000)
 #
-# The app image is built from ../Containerfile (multi-stage: PWA build + backend).
+# The app image is built from ../Dockerfile (multi-stage: PWA build + backend).
 # Secrets come from ../.env. For TLS, see deploy/nginx/otl.conf.
 
 services:
   app:
     build:
       context: ..
-      dockerfile: Containerfile
+      dockerfile: Dockerfile
     env_file:
       - ../.env
-    environment:
-      # HTTP by default (nginx :80). Set to true once TLS is enabled, otherwise
-      # a Secure cookie won't be sent over http and login will appear to fail.
-      - SESSION_COOKIE_SECURE=false
-      - SESSION_COOKIE_SAMESITE=lax
-      # CORS is unused in single-origin mode; keep empty to avoid confusion.
-      - CORS_ORIGINS=
     expose:
       - "8000"          # internal only; nginx is the public entrypoint
     volumes:

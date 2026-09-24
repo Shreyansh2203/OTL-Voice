@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -71,7 +71,7 @@ def build_system_prompt(
     assignments: list[dict[str, Any]] | None = None,
     recent_history: str = "",
 ) -> str:
-    date_str = datetime.now(UTC).strftime("%A, %Y-%m-%d")
+    date_str = datetime.now().astimezone().strftime("%A, %Y-%m-%d")
     prompt = load_prompt_template()
     prompt = prompt.replace("{{USERNAME}}", _sanitize_template_value(username))
     prompt = prompt.replace(

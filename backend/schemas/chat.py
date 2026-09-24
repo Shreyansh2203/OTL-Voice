@@ -15,5 +15,5 @@ class ChatBody(BaseModel):
 
 
 class TtsBody(BaseModel):
-    text: str
-    rate: float = 1.0
+    text: str = Field(..., min_length=1, max_length=2000)
+    rate: float = Field(1.0, ge=0.5, le=2.0)

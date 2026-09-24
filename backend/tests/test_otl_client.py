@@ -1,3 +1,4 @@
+import math
 import os
 from unittest.mock import MagicMock, patch
 
@@ -118,6 +119,10 @@ def test_coerce_number():
     assert _coerce_number("7.5") == 7.5
     assert _coerce_number(8.0) == 8.0
     assert _coerce_number(8) == 8
+    assert _coerce_number(True) is None
+    assert _coerce_number(math.nan) is None
+    assert _coerce_number(math.inf) is None
+    assert _coerce_number(-math.inf) is None
     assert _coerce_number("abc") is None
 
 
@@ -132,6 +137,9 @@ def test_map_entry_to_otl():
         map_entry_to_otl({"employeeNumber": "123", "hours": 0})
     with pytest.raises(OtlError, match="must be greater than zero"):
         map_entry_to_otl({"employeeNumber": "123", "hours": -5})
+    for invalid_hours in (True, math.nan, math.inf, -math.inf):
+        with pytest.raises(OtlError, match="finite number"):
+            map_entry_to_otl({"employeeNumber": "123", "hours": invalid_hours})
     with pytest.raises(OtlError, match="employeeNumber is required"):
         map_entry_to_otl({"hours": 5})
     with pytest.raises(OtlError, match="Invalid date format"):
@@ -215,15 +223,21 @@ def test_escape_q_literal():
 def test_list_timecard_entries(mock_get):
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = {"items": []}
+    mock_resp.json.return_value = {
+        "items": [
+            {"timeRecordEvent": [{"timeStatuses": [{"displayValue": "Approved"}]}]}
+        ]
+    }
     mock_get.return_value = mock_resp
     cred = OtlCredential("u", "p")
     with patch.dict(os.environ, {"OTL_BASE_URL": "http://x"}):
         res = list_timecard_entries(cred, person_number="test")
-        assert res == {"items": []}
+        assert res["items"][0]["timeRecordEvent"][0]["eventStatus"] == "Approved"
         mock_get.assert_called_once()
         _args, kwargs = mock_get.call_args
         assert kwargs["params"]["q"] == "personNumber='test'"
+        assert kwargs["params"]["orderBy"] == "startTime:desc"
+        assert kwargs["params"]["expand"] == "timeAttributes,timeStatuses"
 
 
 def test_hcm_base_url():

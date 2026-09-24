@@ -14,6 +14,14 @@ test.describe('Visual Regression Tests', () => {
       });
     });
 
+    await page.route(/\/api\/health\/otl/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'connected' }),
+      });
+    });
+
     await page.route(/\/api\/labour\/assignments/, async (route) => {
       await route.fulfill({
         status: 200,
@@ -58,13 +66,13 @@ test.describe('Visual Regression Tests', () => {
   });
 
   test('Main Chat View should match screenshot', async ({ page }) => {
-    // VISUAL TEST DISABLED: Gemini Live Voice removal changed the UI. 
-    // Please update snapshots locally using `npx playwright test --update-snapshots`
-    // await page.goto('/');
-    // const greeting = page.locator('.md', { hasText: "Test Project Mock" });
-    // await expect(greeting).toBeVisible({ timeout: 10000 });
-    // await expect(page).toHaveScreenshot('main-chat-view.png', {
-    //   maxDiffPixelRatio: 0.05
-    // });
+    await page.goto('/');
+    const greeting = page.locator('.md', { hasText: 'Test Project Mock' });
+    await expect(greeting).toBeVisible({ timeout: 10000 });
+    await page.addStyleTag({ content: 'canvas { visibility: hidden !important; }' });
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot('main-chat-view.png', {
+      maxDiffPixelRatio: 0.05,
+    });
   });
 });

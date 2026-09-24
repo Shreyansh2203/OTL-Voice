@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import time
 from unittest.mock import MagicMock, patch
@@ -12,6 +13,7 @@ from backend.services.fusion_catalogue import (
     _fetch_all_projects,
     _fetch_project_tasks,
     _fetch_project_team_members,
+    _FetchResult,
     _find_person_projects,
     _host_url,
     _ppm_base,
@@ -59,6 +61,19 @@ def clear_db(mock_db):
     mock_db.execute("DELETE FROM person_index")
     mock_db.execute("DELETE FROM meta")
     mock_db.commit()
+
+
+def test_fusion_endpoint_overrides():
+    with patch.dict(
+        os.environ,
+        {
+            "FUSION_HOST_URL": "https://fusion.example/",
+            "FUSION_PPM_BASE_URL": "https://ppm.example/custom/",
+        },
+        clear=False,
+    ):
+        assert _host_url() == "https://fusion.example"
+        assert _ppm_base() == "https://ppm.example/custom"
 
 
 def test_build_index():
@@ -131,13 +146,87 @@ def test_fetch_all_projects():
     assert len(projects) == 150
 
 
-def test_fetch_project_tasks():
+def test_fetch_all_projects_marks_http_failure_incomplete():
     client = MagicMock()
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.json.return_value = {"items": [{"TaskId": "T1"}]}
-    client.get.return_value = resp
+    response = MagicMock()
+    response.status_code = 503
+    response.text = "unavailable"
+    client.get.return_value = response
+
+    result = _fetch_all_projects(client)
+
+    assert result == []
+    assert result.complete is False
+
+
+def test_fetch_all_projects_follows_has_more():
+    client = MagicMock()
+    first = MagicMock()
+    first.status_code = 200
+    first.json.return_value = {"items": [{"ProjectId": "P1"}], "hasMore": True}
+    second = MagicMock()
+    second.status_code = 200
+    second.json.return_value = {"items": [{"ProjectId": "P2"}], "hasMore": False}
+    client.get.side_effect = [first, second]
+
+    result = _fetch_all_projects(client)
+
+    assert [project["ProjectId"] for project in result] == ["P1", "P2"]
+    assert result.complete is True
+
+
+def test_fetch_all_projects_advances_by_actual_page_size():
+    client = MagicMock()
+    first = MagicMock()
+    first.status_code = 200
+    first.json.return_value = {"items": [{"ProjectId": "P1"}], "hasMore": True}
+    second = MagicMock()
+    second.status_code = 200
+    second.json.return_value = {"items": [{"ProjectId": "P2"}], "hasMore": False}
+    client.get.side_effect = [first, second]
+
+    result = _fetch_all_projects(client)
+
+    assert [project["ProjectId"] for project in result] == ["P1", "P2"]
+    assert client.get.call_args_list[1].kwargs["params"]["offset"] == 1
+
+
+def test_fetch_all_projects_marks_empty_has_more_page_incomplete():
+    client = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"items": [], "hasMore": True}
+    client.get.return_value = response
+
+    result = _fetch_all_projects(client)
+
+    assert result == []
+    assert result.complete is False
+    assert client.get.call_count == 1
+
+    client = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"items": [{"TaskId": "T1"}]}
+    client.get.return_value = response
+
     assert _fetch_project_tasks(client, "P1") == [{"TaskId": "T1"}]
+
+
+def test_fetch_project_tasks_follows_has_more():
+    client = MagicMock()
+    first = MagicMock()
+    first.status_code = 200
+    first.json.return_value = {"items": [{"TaskId": "T1"}], "hasMore": True}
+    second = MagicMock()
+    second.status_code = 200
+    second.json.return_value = {"items": [{"TaskId": "T2"}], "hasMore": False}
+    client.get.side_effect = [first, second]
+
+    assert _fetch_project_tasks(client, "P1") == [
+        {"TaskId": "T1"},
+        {"TaskId": "T2"},
+    ]
 
 
 def test_fetch_project_team_members():
@@ -193,6 +282,37 @@ def test_do_load_catalogue(
     assert "1" in names
 
 
+def test_failed_refresh_keeps_existing_catalogue(mock_db):
+    mock_db.execute("INSERT INTO meta (key, value) VALUES ('is_loaded', 'true')")
+    mock_db.execute(
+        "INSERT INTO projects (project_id, data) VALUES (?, ?)",
+        ("P1", json.dumps({"project_id": "P1", "project_number": "1001"})),
+    )
+    mock_db.execute(
+        "INSERT INTO person_index (name, projects) VALUES (?, ?)",
+        ("1", json.dumps([{"project_id": "P1"}])),
+    )
+    mock_db.commit()
+    client = MagicMock()
+    credential = MagicMock()
+    credential.auth = ("user", "pass")
+    with (
+        patch("backend.services.fusion_catalogue.httpx.Client", return_value=client),
+        patch(
+            "backend.services.fusion_catalogue._fetch_all_projects",
+            return_value=_FetchResult(complete=False),
+        ),
+        patch(
+            "backend.services.otl_client.service_credential",
+            return_value=credential,
+        ),
+    ):
+        _do_load_catalogue()
+
+    assert get_project_by_id("P1")["project_number"] == "1001"
+    assert _find_person_projects("1")[0]["project_id"] == "P1"
+
+
 def test_load_catalogue():
     with patch.dict("os.environ", {"TEST_MODE": "false"}):
         with patch("threading.Thread") as mock_thread:
@@ -223,8 +343,10 @@ def test_find_person_projects(mock_db):
 
 @patch("backend.services.fusion_catalogue.time.sleep")
 def test_list_assignments_for_worker(mock_sleep, mock_db):
-    assert list_assignments_for_worker("1", "Bob") == []
+    assert list_assignments_for_worker("1", "Bob") is None
     mock_db.execute("INSERT INTO meta (key, value) VALUES ('is_loaded', 'true')")
+    mock_db.commit()
+    assert list_assignments_for_worker("missing", "Nobody") == []
     mock_db.execute(
         "INSERT INTO person_index (name, projects) VALUES (?, ?)",
         (
@@ -248,7 +370,8 @@ def test_list_assignments_for_worker(mock_sleep, mock_db):
     result = list_assignments_for_worker("1", "Bob")
     assert len(result) == 1
     assert result[0]["projects"][0]["projectNo"] == 1001
-    assert result[0]["projects"][0]["tasks"][0]["taskId"] == 1
+    assert result[0]["projects"][0]["tasks"][0]["taskId"] == "T1"
+    assert result[0]["projects"][0]["tasks"][0]["taskNumber"] == "1"
 
 
 def test_catalogue_age_seconds(mock_db):

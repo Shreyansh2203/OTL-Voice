@@ -64,7 +64,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<true/>
+  <key>UIViewControllerBasedStatusBarAppearance</key>
+  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Microphone access is used for voice timesheet entry.</string>
 </dict>
 </plist>

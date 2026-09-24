@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import secrets
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, ClassVar, Literal, Self, cast
+from typing import Any, Literal, cast
 
 from fastapi import Cookie, HTTPException, Request, Response, status
 
 from ..models import Employee
+from .token_blocklist import _blocklist
 
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "otl_session"
@@ -65,167 +65,59 @@ def set_auth_cookies(
         max_age=max_age,
         path="/",
     )
+    response.headers["X-CSRF-Token"] = csrf_token
 
 
 import jwt
 
 JWT_ALGORITHM = "HS256"
+_fallback_jwt_secret: str | None = None
+_jwt_secret_lock = Lock()
 
 
 def _jwt_secret() -> str:
+    global _fallback_jwt_secret
     secret = os.getenv("SESSION_SECRET_KEY")
+    if _is_insecure_placeholder(secret):
+        secret = None
     test_mode = os.getenv("TEST_MODE", "false").strip().lower() == "true"
     dev_mode = os.getenv("DEV_MODE", "false").strip().lower() == "true"
     if not secret:
         if test_mode or dev_mode:
-            logger.warning(
-                "SESSION_SECRET_KEY not set - generating temporary secret for development. "
-                "Set SESSION_SECRET_KEY in .env for production use!"
-            )
-            secret = secrets.token_urlsafe(32)
-        else:
-            raise RuntimeError(
-                "SESSION_SECRET_KEY is not set. "
-                "This environment variable is REQUIRED for production use. "
-                'Generate a secret with: python -c "import secrets; print(secrets.token_urlsafe(32))" '
-                "and add it to your .env file. "
-                "For local development only, you can set DEV_MODE=true or TEST_MODE=true to allow a temporary secret."
-            )
+            if _fallback_jwt_secret is None:
+                with _jwt_secret_lock:
+                    if _fallback_jwt_secret is None:
+                        logger.warning(
+                            "SESSION_SECRET_KEY not set - generating temporary secret for development. "
+                            "Set SESSION_SECRET_KEY in .env for production use!"
+                        )
+                        _fallback_jwt_secret = secrets.token_urlsafe(32)
+            return _fallback_jwt_secret
+        raise RuntimeError(
+            "SESSION_SECRET_KEY is not set. "
+            "This environment variable is REQUIRED for production use. "
+            'Generate a secret with: python -c "import secrets; print(secrets.token_urlsafe(32))" '
+            "and add it to your .env file. "
+            "For local development only, you can set DEV_MODE=true or TEST_MODE=true to allow a temporary secret."
+        )
     return secret
 
 
-class _TokenBlocklist:
-    _instance: ClassVar[_TokenBlocklist | None] = None
-    _init_lock: ClassVar[Lock] = Lock()
-    _local_revoked: dict[str, float]
-    _local_lock: asyncio.Lock
-    _redis: Any
-    _use_redis: bool
-    _last_reconnect: float
-    _backoff: float
-
-    def __new__(cls) -> Self:
-        if cls._instance is None:
-            with cls._init_lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._redis = None
-                    cls._instance._use_redis = bool(os.getenv("REDIS_URL"))
-                    cls._instance._local_revoked = {}
-                    cls._instance._local_lock = asyncio.Lock()
-                    cls._instance._last_reconnect = 0.0
-                    cls._instance._backoff = 1.0
-        from typing import cast
-
-        return cast(Self, cls._instance)
-
-    def _get_redis(self):
-        redis_url = os.getenv("REDIS_URL")
-        if not redis_url:
-            self._use_redis = False
-            return None
-        now = time.time()
-        if self._redis is None:
-            if now - getattr(self, "_last_reconnect", 0.0) < getattr(self, "_backoff", 1.0):
-                return None
-            self._last_reconnect = now
-            try:
-                import redis.asyncio as redis
-
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                self._use_redis = True
-                self._backoff = 1.0
-            except Exception:
-                self._use_redis = False
-                self._redis = None
-                self._backoff = min(60.0, getattr(self, "_backoff", 1.0) * 2)
-                logger.warning(
-                    "Redis unavailable for token blocklist, falling back to in-memory mode"
-                )
-        return self._redis
-
-    async def _ensure_redis(self):
-        r = self._get_redis()
-        if r is not None:
-            try:
-                await r.ping()
-                self._use_redis = True
-                self._backoff = 1.0
-                return self._redis
-            except Exception:
-                self._use_redis = False
-                if self._redis:
-                    try:
-                        await self._redis.close()
-                    except Exception:
-                        pass
-                self._redis = None
-                self._backoff = min(60.0, getattr(self, "_backoff", 1.0) * 2)
-                self._last_reconnect = time.time()
-                logger.warning("Redis ping failed for token blocklist, falling back to in-memory mode")
-        return None
-
-    async def add(self, token: str) -> None:
-        try:
-            payload = jwt.decode(
-                token,
-                _jwt_secret(),
-                algorithms=[JWT_ALGORITHM],
-                options={"verify_signature": True},
-            )
-            exp = float(payload.get("exp", time.time() + _ttl_seconds()))
-        except jwt.PyJWTError:
-            return
-
-        ttl = int(max(1, exp - time.time()))
-
-        r = await self._ensure_redis()
-        if r:
-            try:
-                await r.setex(f"revoked:{token}", ttl, "1")
-                return
-            except Exception:
-                self._use_redis = False
-                self._redis = None
-                self._last_reconnect = time.time()
-
-        async with self._local_lock:
-            current = time.time()
-            expired = [t for t, e in self._local_revoked.items() if e < current]
-            for t in expired:
-                del self._local_revoked[t]
-            self._local_revoked[token] = exp
-
-    async def is_revoked(self, token: str) -> bool:
-        r = await self._ensure_redis()
-        if r:
-            try:
-                return await r.exists(f"revoked:{token}") > 0
-            except Exception:
-                self._use_redis = False
-                self._redis = None
-                self._last_reconnect = time.time()
-        async with self._local_lock:
-            current = time.time()
-            expired = [t for t, exp in self._local_revoked.items() if exp < current]
-            for t in expired:
-                del self._local_revoked[t]
-            return token in self._local_revoked
-
-    async def close(self):
-        if self._redis:
-            await self._redis.close()
-            self._redis = None
-
-
-_blocklist_instance: _TokenBlocklist | None = None
-
-
-def _blocklist() -> _TokenBlocklist:
-    global _blocklist_instance
-    if _blocklist_instance is None:
-        _blocklist_instance = _TokenBlocklist()
-    return _blocklist_instance
+def _is_insecure_placeholder(value: str | None) -> bool:
+    if not value:
+        return True
+    normalized = value.strip().lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "replace-with",
+            "generate_a_secure",
+            "your_secure",
+            "your-",
+            "change-me",
+            "changeme",
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -242,6 +134,7 @@ def create_session(employee: Employee) -> str:
         "full_name": employee.full_name,
         "exp": time.time() + _ttl_seconds(),
         "iat": time.time(),
+        "jti": secrets.token_urlsafe(16),
     }
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
 

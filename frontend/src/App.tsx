@@ -9,24 +9,14 @@ import * as api from './api/client';
 import { LoginView } from './features/auth';
 import { ChatView } from './features/chat';
 import NeuralTunnel from './components/ui/NeuralTunnel';
-import GhostCursor from './components/GhostCursor/GhostCursor';
 import ErrorBoundary from './components/ErrorBoundary';
 import type { Identity } from './types';
 
 function AppContent() {
   const qc = useQueryClient();
-  const { data: identity, isLoading } = useQuery({
+  const { data: identity, isLoading, isError, refetch } = useQuery({
     queryKey: ['session'],
-    queryFn: async () => {
-      try {
-        return await api.getSession();
-      } catch (err) {
-        if (err instanceof api.ApiError && err.status === 401) {
-          return null;
-        }
-        return null;
-      }
-    },
+    queryFn: api.getSession,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -37,10 +27,15 @@ function AppContent() {
     [qc]
   );
   const handleLogout = useCallback(async () => {
-    await api.logout().catch(() => undefined);
-    qc.setQueryData(['session'], null);
+    try {
+      await api.logout();
+      qc.setQueryData(['session'], null);
+    } catch (err) {
+      void err;
+    }
   }, [qc]);
   const handleSessionExpired = useCallback(() => {
+    localStorage.removeItem('otl_session');
     qc.setQueryData(['session'], null);
   }, [qc]);
   useEffect(() => {
@@ -48,7 +43,11 @@ function AppContent() {
     const baseInterval = 1000 * 60 * 15;
     const jitter = Math.random() * 1000 * 60 * 2;
     const interval = setInterval(() => {
-      api.refreshSession().catch(() => handleSessionExpired());
+      api.refreshSession().catch((err) => {
+        if (err instanceof api.ApiError && err.status === 401) {
+          handleSessionExpired();
+        }
+      });
     }, baseInterval + jitter);
     return () => clearInterval(interval);
   }, [identity, handleSessionExpired]);
@@ -56,6 +55,18 @@ function AppContent() {
     return (
       <div className="centered">
         <div className="spinner" aria-label="Loading" />
+      </div>
+    );
+  }
+  if (isError && !identity) {
+    return (
+      <div className="centered">
+        <div className="error" role="alert">
+          Unable to verify your session. Please try again.
+        </div>
+        <button type="button" onClick={() => void refetch()}>
+          Try again
+        </button>
       </div>
     );
   }
@@ -90,11 +101,6 @@ export default function App() {
             <NeuralTunnel speed={1.2} />
           </ErrorBoundary>
         </div>
-        <ErrorBoundary fallback={null}>
-          <GhostCursor 
-            style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}
-          />
-        </ErrorBoundary>
         <AppContent />
       </QueryClientProvider>
     </ErrorBoundary>

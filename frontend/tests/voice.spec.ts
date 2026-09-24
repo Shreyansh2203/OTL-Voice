@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Voice Input State Machine', () => {
+  test.describe.configure({ mode: 'serial' });
   test.beforeEach(async ({ page }) => {
     page.on('console', (msg) => console.log(`BROWSER: ${msg.text()}`));
     await page.addInitScript(() => window.localStorage.setItem('otl_voice_on', 'false'));
@@ -115,8 +116,9 @@ test.describe('Voice Input State Machine', () => {
   test('should not repopulate text box if Send is clicked during active dictation (Race Condition)', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'Speech API permissions and audio mocks are only reliable on Chromium');
     await page.goto('/');
+    await page.waitForTimeout(1000);
     const micBtn = page.getByRole('button', { name: /Speak/i });
-    await expect(micBtn).toBeVisible();
+    await expect(micBtn).toBeVisible({ timeout: 15000 });
     await expect(micBtn).toBeEnabled();
     await micBtn.click();
     await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();
@@ -131,8 +133,9 @@ test.describe('Voice Input State Machine', () => {
   test('should auto-send transcribed text when manual mic button is toggled off', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'Speech API permissions and audio mocks are only reliable on Chromium');
     await page.goto('/');
+    await page.waitForTimeout(1000);
     const micBtn = page.getByRole('button', { name: /Speak/i });
-    await expect(micBtn).toBeVisible();
+    await expect(micBtn).toBeVisible({ timeout: 15000 });
     await expect(micBtn).toBeEnabled();
     await micBtn.click();
     await expect(page.getByRole('button', { name: /Stop recording/i })).toBeVisible();

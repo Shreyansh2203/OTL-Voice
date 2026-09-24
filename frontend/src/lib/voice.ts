@@ -192,6 +192,13 @@ export function useSpeechInput() {
 
           recognition.onend = () => {
             if (!isCurrentRecognition()) return;
+            if (recognition instanceof OciSpeechRecognition && recognition.closed) {
+              recognitionRef.current = null;
+              isListeningRef.current = false;
+              setListening(false);
+              setErrorMsg('Speech recognition session closed.');
+              return;
+            }
             if (continuous) {
               try {
                 completedFinal = lastFinal;
@@ -319,7 +326,7 @@ export function useAudioPlayer() {
         audio.onerror = (e) => {
           setPlaying(false);
           const isAutoplayBlocked =
-            audio.error?.code === 4 || (e as any).name === 'NotAllowedError';
+            e instanceof DOMException && e.name === 'NotAllowedError';
           if (resolveRef.current === resolve) {
             resolveRef.current = null;
             resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
@@ -329,15 +336,18 @@ export function useAudioPlayer() {
         audio
           .play()
           .then(() => {
-            setPlaying(true);
+            if (urlRef.current === url) {
+              setPlaying(true);
+            }
           })
           .catch((err) => {
-            setPlaying(false);
-            const isAutoplayBlocked =
-              err.name === 'NotAllowedError' || err.name === 'AbortError';
-            if (resolveRef.current === resolve) {
-              resolveRef.current = null;
-              resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
+            if (urlRef.current === url) {
+              setPlaying(false);
+              const isAutoplayBlocked = err.name === 'NotAllowedError';
+              if (resolveRef.current === resolve) {
+                resolveRef.current = null;
+                resolve({ success: false, autoplayBlocked: isAutoplayBlocked });
+              }
             }
           });
       });

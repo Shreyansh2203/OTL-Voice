@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import random
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -42,6 +44,16 @@ def base_url() -> str:
 def _timeout() -> httpx.Timeout:
     secs = float(os.getenv("OTL_TIMEOUT_SECONDS", "30"))
     return httpx.Timeout(secs, connect=10.0)
+
+
+def _business_timezone():
+    name = os.getenv("APP_TIMEZONE", "").strip()
+    if name:
+        try:
+            return ZoneInfo(name)
+        except ZoneInfoNotFoundError:
+            logger.warning("Unknown APP_TIMEZONE '%s'; using system timezone.", name)
+    return datetime.now().astimezone().tzinfo or UTC
 
 
 @dataclass(frozen=True)
@@ -110,13 +122,16 @@ def _safe_body(resp: httpx.Response) -> Any:
         return (resp.text or "")[:10000]
 
 
-def _coerce_number(value: Any) -> float | int | None:
-    if value is None or value == "":
+def _coerce_number(value: Any) -> float | None:
+    if value is None or value == "" or isinstance(value, bool):
         return None
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
         return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 def _clip(value: Any) -> str | None:
@@ -130,19 +145,24 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
     if not emp_num:
         raise OtlError(400, "employeeNumber is required.")
     emp_num = str(emp_num).strip()
-    hours = _coerce_number(entry.get("hours")) or 0  # default to 0 if None/empty
+    hours = _coerce_number(entry.get("hours"))
+    if hours is None:
+        raise OtlError(
+            400, "Timecard entry hours must be a finite number greater than zero."
+        )
     if hours <= 0:
         raise OtlError(
             400, f"Timecard entry hours must be greater than zero, got {hours}."
         )
-    now = datetime.now(UTC)
+    timezone = _business_timezone()
+    now = datetime.now(timezone)
     start_time_str = entry.get("startTime")
     stop_time_str = entry.get("stopTime")
     date_str = entry.get("date")
     try:
         if date_str:
             y, m, d = map(int, date_str.split("-"))
-            base_dt = datetime(year=y, month=m, day=d, tzinfo=UTC)
+            base_dt = datetime(year=y, month=m, day=d, tzinfo=timezone)
         else:
             base_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     except (ValueError, TypeError, AttributeError):
@@ -171,8 +191,8 @@ def map_entry_to_otl(entry: dict[str, Any]) -> dict[str, Any]:
 
     if stop_dt < start_dt:
         stop_dt += timedelta(days=1)
-    start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    stop_time = stop_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    start_time = start_dt.isoformat(timespec="milliseconds")
+    stop_time = stop_dt.isoformat(timespec="milliseconds")
     parts: list[str] = []
     project_name = entry.get("projectName")
     if project_name:
@@ -288,11 +308,22 @@ def _request_with_retry(
             else:
                 resp = client.request(method, url, **kwargs)
 
-            if idempotent and resp.status_code in RETRYABLE_STATUS_CODES and attempt < retries:
-                delay = min(base_delay * (2 ** attempt), max_delay) * (0.8 + random.random() * 0.4)
+            if (
+                idempotent
+                and resp.status_code in RETRYABLE_STATUS_CODES
+                and attempt < retries
+            ):
+                delay = min(base_delay * (2**attempt), max_delay) * (
+                    0.8 + random.random() * 0.4
+                )
                 logger.warning(
                     "Oracle HCM HTTP %d on %s %s; retrying in %.2fs (attempt %d/%d)",
-                    resp.status_code, method, url, delay, attempt + 1, retries
+                    resp.status_code,
+                    method,
+                    url,
+                    delay,
+                    attempt + 1,
+                    retries,
                 )
                 time.sleep(delay)
                 continue
@@ -300,10 +331,17 @@ def _request_with_retry(
         except RETRYABLE_EXCEPTIONS as exc:
             last_exc = exc
             if idempotent and attempt < retries:
-                delay = min(base_delay * (2 ** attempt), max_delay) * (0.8 + random.random() * 0.4)
+                delay = min(base_delay * (2**attempt), max_delay) * (
+                    0.8 + random.random() * 0.4
+                )
                 logger.warning(
                     "Oracle HCM network error (%s) on %s %s; retrying in %.2fs (attempt %d/%d)",
-                    exc, method, url, delay, attempt + 1, retries
+                    exc,
+                    method,
+                    url,
+                    delay,
+                    attempt + 1,
+                    retries,
                 )
                 time.sleep(delay)
             else:
@@ -325,7 +363,7 @@ async def _arequest_with_retry(
     idempotent: bool = True,
     **kwargs,
 ) -> httpx.Response:
-    auth = cred.auth if cred else None
+    auth = cred.auth if cred is not None else httpx.USE_CLIENT_DEFAULT
     last_exc: Exception | None = None
     retries = max_retries if idempotent else 0
     for attempt in range(retries + 1):
@@ -340,11 +378,22 @@ async def _arequest_with_retry(
             else:
                 resp = await client.request(method, url, auth=auth, **kwargs)
 
-            if idempotent and resp.status_code in RETRYABLE_STATUS_CODES and attempt < retries:
-                delay = min(base_delay * (2 ** attempt), max_delay) * (0.8 + random.random() * 0.4)
+            if (
+                idempotent
+                and resp.status_code in RETRYABLE_STATUS_CODES
+                and attempt < retries
+            ):
+                delay = min(base_delay * (2**attempt), max_delay) * (
+                    0.8 + random.random() * 0.4
+                )
                 logger.warning(
                     "Oracle HCM HTTP %d on %s %s; retrying in %.2fs (attempt %d/%d)",
-                    resp.status_code, method, url, delay, attempt + 1, retries
+                    resp.status_code,
+                    method,
+                    url,
+                    delay,
+                    attempt + 1,
+                    retries,
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -352,10 +401,17 @@ async def _arequest_with_retry(
         except RETRYABLE_EXCEPTIONS as exc:
             last_exc = exc
             if idempotent and attempt < retries:
-                delay = min(base_delay * (2 ** attempt), max_delay) * (0.8 + random.random() * 0.4)
+                delay = min(base_delay * (2**attempt), max_delay) * (
+                    0.8 + random.random() * 0.4
+                )
                 logger.warning(
                     "Oracle HCM network error (%s) on %s %s; retrying in %.2fs (attempt %d/%d)",
-                    exc, method, url, delay, attempt + 1, retries
+                    exc,
+                    method,
+                    url,
+                    delay,
+                    attempt + 1,
+                    retries,
                 )
                 await asyncio.sleep(delay)
             else:
@@ -384,6 +440,55 @@ def escape_q_literal(value: str) -> str:
     return str(value).replace("'", "''")
 
 
+def _time_status_value(statuses: Any) -> str | None:
+    if isinstance(statuses, dict):
+        statuses = statuses.get("items", [statuses])
+    if isinstance(statuses, str):
+        return statuses or None
+    if not isinstance(statuses, list):
+        return None
+    for status in statuses:
+        if isinstance(status, str) and status:
+            return status
+        if not isinstance(status, dict):
+            continue
+        for key in ("displayValue", "statusName", "statusCode", "name"):
+            value = status.get(key)
+            if value not in (None, ""):
+                return str(value)
+    return None
+
+
+def propagate_timecard_statuses(data: Any) -> Any:
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return data
+    for item in data["items"]:
+        if not isinstance(item, dict):
+            continue
+        item_status = _time_status_value(item.get("timeStatuses"))
+        if not item_status and item.get("eventStatus"):
+            item_status = str(item["eventStatus"])
+        events = item.get("timeRecordEvent", [])
+        if isinstance(events, dict):
+            events = events.get("items", [])
+        if isinstance(events, list):
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                event_status = _time_status_value(event.get("timeStatuses"))
+                if not event_status and event.get("eventStatus"):
+                    event_status = str(event["eventStatus"])
+                if not event_status and item_status:
+                    event_status = item_status
+                if event_status and not event.get("eventStatus"):
+                    event["eventStatus"] = event_status
+                if not item_status and event_status:
+                    item_status = event_status
+        if item_status and not item.get("eventStatus"):
+            item["eventStatus"] = item_status
+    return data
+
+
 def list_timecard_entries(
     cred: OtlCredential,
     limit: int = 25,
@@ -393,7 +498,8 @@ def list_timecard_entries(
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
-        "expand": "timeAttributes",
+        "expand": "timeAttributes,timeStatuses",
+        "orderBy": "startTime:desc",
     }
     q_parts = []
     if person_number:
@@ -404,7 +510,7 @@ def list_timecard_entries(
     with _client(cred) as client:
         resp = _request_with_retry(client, "GET", url, params=params, idempotent=True)
     _raise_for_status(resp)
-    return resp.json()
+    return propagate_timecard_statuses(resp.json())
 
 
 def hcm_base_url() -> str:
@@ -449,7 +555,7 @@ def get_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None
 
 def list_worker_assignments(
     cred: OtlCredential, person_number: str, full_name: str = ""
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
     from . import fusion_catalogue
 
     return fusion_catalogue.list_assignments_for_worker(person_number, full_name)
@@ -601,7 +707,8 @@ async def alist_timecard_entries(
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
-        "expand": "timeAttributes",
+        "expand": "timeAttributes,timeStatuses",
+        "orderBy": "startTime:desc",
     }
     q_parts = []
     if person_number:
@@ -614,12 +721,14 @@ async def alist_timecard_entries(
         client, "GET", url, cred=cred, params=params, idempotent=True
     )
     _raise_for_status(resp)
-    return resp.json()
+    return propagate_timecard_statuses(resp.json())
 
 
 async def acreate_many(
     cred: OtlCredential, entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
+    if len(entries) > 100:
+        raise ValueError("At most 100 timecard entries may be submitted at once.")
     client = await get_shared_async_client()
 
     async def _submit_single(index: int, entry: dict[str, Any]) -> dict[str, Any]:
@@ -653,7 +762,7 @@ async def acreate_many(
 
 async def alist_worker_assignments(
     cred: OtlCredential, person_number: str, full_name: str = ""
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
     return await asyncio.to_thread(
         list_worker_assignments, cred, person_number, full_name
     )
@@ -668,4 +777,3 @@ async def acreate_timecard_entry(
     resp = await client.post(base_url(), json=body, auth=cred.auth)
     _raise_for_status(resp)
     return resp.json()
-

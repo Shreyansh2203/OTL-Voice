@@ -1,5 +1,5 @@
 import type { TimecardEntry } from '../types';
-const FENCED_JSON = /```(?:json)?\s*([{[][\s\S]*?[}\]])\s*```/;
+const FENCED_JSON = /```(?:json)?\s*([{[][\s\S]*?[}\]])\s*```/i;
 export function extractEntries(text: string): TimecardEntry[] | null {
   const match = FENCED_JSON.exec(text || '');
   if (!match) return null;

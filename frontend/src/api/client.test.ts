@@ -17,6 +17,7 @@ vi.mock('../lib/sse', () => ({
 describe('client API', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(readSse).mockReset();
   });
   it('login handles success', async () => {
     const mockIdentity = {
@@ -84,6 +85,7 @@ describe('client API', () => {
     expect(result).toEqual(mockIdentity);
   });
   it('getSession returns null on 401', async () => {
+    localStorage.setItem('otl_session', 'expired');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -93,8 +95,10 @@ describe('client API', () => {
     );
     const result = await getSession();
     expect(result).toBeNull();
+    expect(localStorage.getItem('otl_session')).toBeNull();
   });
   it('getSession throws error on other failures', async () => {
+    localStorage.setItem('otl_session', 'valid');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -105,11 +109,26 @@ describe('client API', () => {
       })
     );
     await expect(getSession()).rejects.toThrow(ApiError);
+    expect(localStorage.getItem('otl_session')).toBe('valid');
   });
   it('logout calls fetch', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    localStorage.setItem('otl_session', 'valid');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
     await logout();
     expect(fetch).toHaveBeenCalledWith('/api/auth/logout', expect.any(Object));
+    expect(localStorage.getItem('otl_session')).toBeNull();
+  });
+  it('logout preserves a valid session when the request fails', async () => {
+    localStorage.setItem('otl_session', 'valid');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(logout()).rejects.toThrow('offline');
+    expect(localStorage.getItem('otl_session')).toBe('valid');
+  });
+  it('logout accepts an already expired session', async () => {
+    localStorage.setItem('otl_session', 'expired');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect(logout()).resolves.toBeUndefined();
+    expect(localStorage.getItem('otl_session')).toBeNull();
   });
   it('chatStream works correctly', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
@@ -117,6 +136,23 @@ describe('client API', () => {
     await chatStream([{ role: 'user', content: 'hello' }], onEvent);
     expect(fetch).toHaveBeenCalledWith('/api/chat', expect.any(Object));
     expect(readSse).toHaveBeenCalled();
+  });
+  it('keeps external abort connected while consuming the stream', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    let streamSignal: AbortSignal | undefined;
+    vi.mocked(readSse).mockImplementation(
+      (_response, _onEvent, signal) =>
+        new Promise<void>((resolve) => {
+          streamSignal = signal;
+          signal?.addEventListener('abort', () => resolve(), { once: true });
+        })
+    );
+    const controller = new AbortController();
+    const stream = chatStream([], vi.fn(), controller.signal);
+    await vi.waitFor(() => expect(streamSignal).toBeDefined());
+    controller.abort();
+    await stream;
+    expect(streamSignal?.aborted).toBe(true);
   });
   it('chatStream handles error', async () => {
     vi.stubGlobal(

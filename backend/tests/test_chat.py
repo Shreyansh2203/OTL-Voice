@@ -60,7 +60,9 @@ def test_load_prompt_template(mock_prompt_path):
 @patch("backend.services.chat.datetime")
 def test_build_system_prompt(mock_datetime, mock_load):
     mock_load.return_value = "{{USERNAME}} {{EMPLOYEE_NUMBER}} {{EMPLOYEE_NAME}} {{CURRENT_DATE}} {{ASSIGNMENTS}}"
-    mock_datetime.now.return_value.strftime.return_value = "Monday, 2026-01-01"
+    mock_datetime.now.return_value.astimezone.return_value.strftime.return_value = (
+        "Monday, 2026-01-01"
+    )
     prompt = build_system_prompt("john_doe", "123", "John Doe")
     assert "john_doe" in prompt
     assert "123" in prompt

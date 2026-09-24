@@ -7,7 +7,7 @@ uv run pytest backend/tests
 
 echo ""
 echo "Running Frontend Unit Tests (vitest)..."
-npm --prefix frontend run test:unit
+pnpm --dir frontend run test:unit
 
 echo ""
 echo "========================================="

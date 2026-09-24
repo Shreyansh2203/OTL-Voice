@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import os
-import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,180 +8,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ...core import auth
 from ...core.auth import SessionContext
 from ...schemas.timecards import TimecardBody
-from ...services import fusion_catalogue, otl_client
+from ...services import fusion_catalogue, otl_client, timecard_entries
+from ...services.otl_client import propagate_timecard_statuses
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["timecards", "labour"])
 
-_FENCED_JSON = re.compile(r"```(?:json)?\s*([{\[][\s\S]*?[}\]])\s*```", re.MULTILINE)
-
-
-def _normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    norm = dict(entry)
-    if "project_number" in norm and "projectNo" not in norm:
-        norm["projectNo"] = norm["project_number"]
-    if "project_name" in norm and "projectName" not in norm:
-        norm["projectName"] = norm["project_name"]
-    if "task_name" in norm and "taskDetails" not in norm:
-        norm["taskDetails"] = norm["task_name"]
-    if "work_order_number" in norm and "workOrder" not in norm:
-        norm["workOrder"] = norm["work_order_number"]
-    if "person_number" in norm and "employeeNumber" not in norm:
-        norm["employeeNumber"] = norm["person_number"]
-    if "employee_name" in norm and "employeeName" not in norm:
-        norm["employeeName"] = norm["employee_name"]
-    return norm
-
-
-def _extract_entries(assistant_message: str) -> list[dict[str, Any]]:
-    if not assistant_message:
-        return []
-    match = _FENCED_JSON.search(assistant_message)
-    if match:
-        try:
-            data = json.loads(match.group(1))
-            if isinstance(data, list):
-                return [_normalize_entry(e) for e in data if isinstance(e, dict)]
-            if isinstance(data, dict):
-                entries = data.get("entries")
-                if isinstance(entries, list):
-                    return [_normalize_entry(e) for e in entries if isinstance(e, dict)]
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Assistant generated malformed JSON: {e}")
-    try:
-        data = json.loads(assistant_message.strip())
-        if isinstance(data, list):
-            return [_normalize_entry(e) for e in data if isinstance(e, dict)]
-        if isinstance(data, dict):
-            entries = data.get("entries")
-            if isinstance(entries, list):
-                return [_normalize_entry(e) for e in entries if isinstance(e, dict)]
-    except json.JSONDecodeError:
-        pass
-    return []
-
-
-_STRICT_ASSIGNMENT_CACHE: bool | None = None
-
-
-def _strict_assignment() -> bool:
-    global _STRICT_ASSIGNMENT_CACHE
-    if _STRICT_ASSIGNMENT_CACHE is None:
-        _STRICT_ASSIGNMENT_CACHE = (
-            os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
-        )
-    return _STRICT_ASSIGNMENT_CACHE
-
-
-def _validate_timecard_entry(
-    entry: dict[str, Any], assignments: list[dict[str, Any]] | None = None
-) -> tuple[bool, str | None]:
-    entry = _normalize_entry(entry)
-    hours = entry.get("hours")
-    if hours is None or not isinstance(hours, (int, float)):
-        return False, "Hours is required and must be a number"
-    if hours <= 0:
-        return False, "Hours must be greater than zero"
-    if not entry.get("projectNo") and not entry.get("projectName"):
-        return False, "Project number or project name is required"
-    if not entry.get("taskDetails"):
-        return False, "Task details are required"
-    date_str = entry.get("date")
-    if date_str and not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-        return False, f"Invalid date format '{date_str}'. Expected YYYY-MM-DD."
-    for time_field in ["startTime", "stopTime"]:
-        time_str = entry.get(time_field)
-        if time_str and not re.match(r"^\d{2}:\d{2}$", time_str):
-            return False, f"Invalid {time_field} format '{time_str}'. Expected HH:MM."
-    if assignments is not None and _strict_assignment():
-        project_no = entry.get("projectNo")
-        project_name = entry.get("projectName")
-        project_found = False
-        for order in assignments:
-            for p in order.get("projects", []):
-                if project_no and str(p.get("projectNo")) == str(project_no):
-                    project_found = True
-                    break
-                if (
-                    not project_no
-                    and project_name
-                    and p.get("projectName") == project_name
-                ):
-                    project_found = True
-                    break
-            if project_found:
-                break
-        if not project_found:
-            return (
-                False,
-                f"Project {project_no or project_name} is not in your assigned projects",
-            )
-    return True, None
-
-
-def _resolve_entry(
-    entry: dict[str, Any], ctx: SessionContext, assignments: list[dict[str, Any]]
-) -> dict[str, Any]:
-    norm = _normalize_entry(entry)
-    resolved = dict(norm)
-    resolved["employeeNumber"] = ctx.employee_id
-    resolved["employeeName"] = ctx.full_name
-    project = None
-    project_no = norm.get("projectNo")
-    for order in assignments:
-        for p in order.get("projects", []):
-            if project_no and str(p.get("projectNo")) == str(project_no):
-                project = dict(p)
-                project["workOrder"] = order.get("workOrder")
-                break
-            if (
-                not project_no
-                and norm.get("projectName")
-                and p.get("projectName") == norm.get("projectName")
-            ):
-                project = dict(p)
-                project["workOrder"] = order.get("workOrder")
-                break
-        if project:
-            break
-    resolved.update(
-        {
-            "projectId": project.get("projectId") if project else None,
-            "projectNo": project.get("projectNo") if project else project_no,
-            "workOrder": project.get("workOrder") if project else None,
-            "projectName": project.get("projectName")
-            if project
-            else norm.get("projectName"),
-        }
-    )
-    if not resolved.get("taskId") and resolved.get("taskDetails"):
-        target_name = str(resolved["taskDetails"]).lower()
-        if project:
-            for t in project.get("tasks", []):
-                if str(t.get("taskDetails")).lower() == target_name:
-                    resolved["taskId"] = t.get("taskId")
-                    break
-    return resolved
-
-
-def _options_hint(assignments: list[dict[str, Any]]) -> str:
-    projects = [
-        f"{p.get('projectNo')} ({p.get('projectName')}, WO {order.get('workOrder')})"
-        for order in assignments
-        for p in order.get("projects", [])
-    ]
-    if not projects:
-        return "You have no project assignments."
-    max_projects = 10
-    max_length = 500
-    display_projects = projects[:max_projects]
-    hint = "Assigned projects: " + "; ".join(display_projects) + "."
-    if len(projects) > max_projects:
-        hint += f" ... and {len(projects) - max_projects} more."
-    if len(hint) > max_length:
-        hint = hint[: max_length - 3] + "..."
-    return hint
+_FENCED_JSON = timecard_entries._FENCED_JSON
+_STRICT_ASSIGNMENT_CACHE = timecard_entries._STRICT_ASSIGNMENT_CACHE
+MAX_TIMECARD_ENTRIES = timecard_entries.MAX_TIMECARD_ENTRIES
+_extract_entries = timecard_entries._extract_entries
+_normalize_entry = timecard_entries._normalize_entry
+_options_hint = timecard_entries._options_hint
+_resolve_entry = timecard_entries._resolve_entry
+_strict_assignment = timecard_entries._strict_assignment
+_validate_timecard_entry = timecard_entries._validate_timecard_entry
 
 
 @router.post("/api/otl/timecard")
@@ -198,18 +37,28 @@ async def submit_timecard(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         )
+    if len(entries) > MAX_TIMECARD_ENTRIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"At most {MAX_TIMECARD_ENTRIES} timecard entries may be submitted.",
+        )
     if not entries:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No timecard entries found to submit.",
         )
-    assignments_for_validation = []
+    assignments_for_validation: list[dict[str, Any]] | None = []
     if _strict_assignment():
         assignments_for_validation = (
             await fusion_catalogue.alist_assignments_for_worker(
                 ctx.employee_id, ctx.full_name
             )
         )
+        if assignments_for_validation is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Project assignments catalogue is not loaded yet.",
+            )
     for i, entry in enumerate(entries):
         valid, error = _validate_timecard_entry(entry, assignments_for_validation)
         if not valid:
@@ -254,11 +103,12 @@ async def list_timecards(
             person_number=ctx.employee_id,
         )
     except Exception as exc:
-        logger.info(
-            "Could not fetch live timecards from Oracle (%s), returning empty list",
-            exc,
-        )
-        timecards = {"items": []}
+        logger.info("Could not fetch live timecards from Oracle", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not fetch timecards from Oracle Cloud.",
+        ) from exc
+    timecards = propagate_timecard_statuses(timecards)
     for item in timecards.get("items", []):
         attrs = item.get("timeAttributes", [])
         if "timeRecordEvent" in item:
@@ -324,8 +174,16 @@ async def labour_assignments(
         work_orders = await fusion_catalogue.alist_assignments_for_worker(
             ctx.employee_id, ctx.full_name
         )
-    except Exception:
-        work_orders = []
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Project assignments are temporarily unavailable.",
+        ) from exc
+    if work_orders is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Project assignments are still loading.",
+        )
     return {
         "employeeId": ctx.employee_id,
         "fullName": ctx.full_name,

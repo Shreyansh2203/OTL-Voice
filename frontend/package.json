@@ -18,7 +18,7 @@
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "cap:ios": "cap open ios",
-    "build:mobile": "tsc -b && vite build && cap sync"
+    "build:mobile": "node -e \"if (!process.env.VITE_API_URL) { console.error('VITE_API_URL is required for mobile builds'); process.exit(1) }\" && tsc -b && vite build && cap sync"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
@@ -38,12 +38,6 @@
     "react-markdown": "^9.0.1",
     "three": "^0.186.0",
     "workbox-window": "^7.4.1"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@sentry/cli",
-      "esbuild"
-    ]
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

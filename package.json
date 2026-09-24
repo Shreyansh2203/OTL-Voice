@@ -2,6 +2,7 @@
   "name": "otl-voice-root",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev:backend": "set \"UV_PROJECT_ENVIRONMENT=.venv2\" && uv run uvicorn backend.main:app --reload --reload-include \".env\"",
     "dev:frontend": "cd frontend && pnpm run dev",

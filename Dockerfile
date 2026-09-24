@@ -7,10 +7,12 @@
 FROM node:22-slim AS frontend
 WORKDIR /fe
 # Install deps first for better layer caching
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
-COPY frontend/ ./
-RUN pnpm run build            # -> /fe/dist
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json ./frontend/package.json
+RUN npm install -g pnpm@12.6.0 && pnpm install --frozen-lockfile
+COPY frontend/ ./frontend/
+WORKDIR /fe/frontend
+RUN ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build
 
 # ---------- Stage 2: backend runtime ----------
 FROM python:3.12-slim
@@ -38,14 +40,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Backend code (carries db/schema.sql and db/seed.json), then the built SPA.
 COPY backend ./backend
-COPY --from=frontend /fe/dist ./frontend/dist
+COPY --from=frontend /fe/frontend/dist ./frontend/dist
 
 # The reference database is created and seeded on first startup. Mount a volume
 # here to keep employees and assignments across container replacements.
 RUN mkdir -p /app/data
 
 # Switch to a non-root user for security best practices
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser \
+RUN groupadd --gid 10001 appgroup && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appgroup /app
 USER appuser
 
@@ -61,5 +63,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 CMD ["uvicorn", "backend.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips=*"]
-
-

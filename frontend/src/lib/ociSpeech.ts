@@ -12,15 +12,21 @@ export class OciSpeechRecognition {
   onend: (() => void) | null = null;
 
   private ws: WebSocket | null = null;
+  closed = false;
   private stream: MediaStream | null = null;
   private audioCtx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private stopped = true;
   private hasEmittedStart = false;
+  private finalParts: string[] = [];
+  private lastFinalTranscript = '';
 
   start() {
     this.stopped = false;
+    this.closed = false;
     this.hasEmittedStart = false;
+    this.finalParts = [];
+    this.lastFinalTranscript = '';
     this._init().catch((e) => {
       if (this.stopped) return;
       this.onerror?.({
@@ -40,6 +46,7 @@ export class OciSpeechRecognition {
 
   private _cleanup() {
     this.stopped = true;
+    this.closed = true;
     if (this.workletNode) {
       this.workletNode.disconnect();
       this.workletNode = null;
@@ -94,22 +101,34 @@ export class OciSpeechRecognition {
       if (this.stopped) return;
       try {
         const data = JSON.parse(e.data);
-        if (data.isFinal !== undefined && data.text) {
-          if (!this.hasEmittedStart) {
-            this.hasEmittedStart = true;
-            this.onspeechstart?.();
-          }
-          const event = {
-            results: {
-              length: 1,
-              0: {
-                0: { transcript: data.text, confidence: 1.0 },
-                isFinal: data.isFinal,
-              },
-            },
-          };
-          this.onresult?.(event);
+        if (data.isFinal === undefined || typeof data.text !== 'string') return;
+        const transcript = data.text.trim();
+        if (!transcript) return;
+        if (!this.hasEmittedStart) {
+          this.hasEmittedStart = true;
+          this.onspeechstart?.();
         }
+        if (data.isFinal && transcript !== this.lastFinalTranscript) {
+          this.finalParts.push(transcript);
+          this.lastFinalTranscript = transcript;
+        }
+        const finalResults = this.finalParts.map((finalTranscript) => ({
+          0: { transcript: finalTranscript, confidence: 1.0 },
+          isFinal: true,
+        }));
+        const event = {
+          resultIndex: 0,
+          results: data.isFinal
+            ? finalResults
+            : [
+                ...finalResults,
+                {
+                  0: { transcript, confidence: 1.0 },
+                  isFinal: false,
+                },
+              ],
+        };
+        this.onresult?.(event);
       } catch {
         // ignore JSON parse errors
       }

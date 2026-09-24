@@ -29,6 +29,12 @@
         src: ../nginx/otl.conf
         dest: /etc/nginx/sites-available/otl
 
+    - name: Use host-local application upstream
+      replace:
+        path: /etc/nginx/sites-available/otl
+        regexp: 'server app:8000;'
+        replace: 'server 127.0.0.1:8000;'
+
     - name: Enable Nginx site
       file:
         src: /etc/nginx/sites-available/otl
@@ -51,6 +57,24 @@
         name: "{{ image_name }}"
         source: pull
 
+    - name: Create project data directory
+      file:
+        path: "{{ project_dir }}/data"
+        state: directory
+        owner: "10001"
+        mode: "0750"
+
+    - name: Check deployment environment file
+      stat:
+        path: "{{ project_dir }}/.env"
+      register: deployment_env
+
+    - name: Require deployment environment file
+      assert:
+        that:
+          - deployment_env.stat.exists
+        fail_msg: "Create {{ project_dir }}/.env before provisioning."
+
     - name: Run OTL-Voice container
       docker_container:
         name: otl_app
@@ -58,5 +82,7 @@
         state: started
         restart_policy: always
         ports:
-          - "8000:8000"
+          - "127.0.0.1:8000:8000"
+        volumes:
+          - "{{ project_dir }}/data:/app/data"
         env_file: "{{ project_dir }}/.env"

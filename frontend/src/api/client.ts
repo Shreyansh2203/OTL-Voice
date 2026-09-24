@@ -11,6 +11,7 @@ import type {
 const API = import.meta.env.VITE_API_URL || '/api';
 const CSRF_COOKIE_NAME = 'csrf_token';
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
+let csrfToken: string | null = null;
 
 export function getWsApiUrl(path: string): string {
   if (API.startsWith('http')) {
@@ -21,11 +22,16 @@ export function getWsApiUrl(path: string): string {
   return `${protocol}//${loc.host}${API}${path}`;
 }
 
+function captureCsrfToken(response: Response): void {
+  const value = response.headers?.get?.(CSRF_HEADER_NAME);
+  if (value) csrfToken = value;
+}
+
 function getCsrfToken(): string | null {
   const match = document.cookie.match(
-    new RegExp(`(^| )${CSRF_COOKIE_NAME}=([^;]+)`)
+    new RegExp(`(^|;\\s*)${CSRF_COOKIE_NAME}=([^;]+)`)
   );
-  return match ? match[2] : null;
+  return match ? match[2] : csrfToken;
 }
 export class ApiError extends Error {
   status: number;
@@ -54,6 +60,7 @@ async function fetchWithRetry(
   try {
     options.headers = { ...defaultHeaders(), ...options.headers };
     const response = await fetch(url, options);
+    captureCsrfToken(response);
     const method = options.method?.toUpperCase() || 'GET';
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
     if (response.status >= 500 && isSafeMethod && retries > 0) {
@@ -108,6 +115,7 @@ export async function login(
     `${API}/auth/login`,
     jsonInit('POST', { username, password })
   );
+  captureCsrfToken(res);
   if (!res.ok) throw await parseError(res);
   const data = await res.json();
   if (data.sessionToken) {
@@ -119,22 +127,24 @@ export async function getSession(): Promise<Identity | null> {
   const res = await fetchWithRetry(`${API}/auth/session`, {
     credentials: 'include',
   });
-  if (res.status === 401) return null;
+  if (res.status === 401) {
+    localStorage.removeItem('otl_session');
+    return null;
+  }
   if (!res.ok) throw await parseError(res);
   return res.json();
 }
 export async function refreshSession(): Promise<void> {
   const res = await fetch(`${API}/auth/refresh`, jsonInit('POST'));
+  captureCsrfToken(res);
   if (!res.ok) throw await parseError(res);
 }
 export async function logout(): Promise<void> {
-  try {
-    await fetch(`${API}/auth/logout`, jsonInit('POST'));
-  } catch {
-    // Silently ignore network/CSRF errors on sign out so UI session teardown proceeds
-  } finally {
-    localStorage.removeItem('otl_session');
-  }
+  const res = await fetch(`${API}/auth/logout`, jsonInit('POST'));
+  captureCsrfToken(res);
+  if (!res.ok && res.status !== 401) throw await parseError(res);
+  localStorage.removeItem('otl_session');
+  csrfToken = null;
 }
 export async function chatStream(
   messages: ChatMessage[],
@@ -156,19 +166,17 @@ export async function chatStream(
       ...jsonInit('POST', { messages: history }),
       signal: controller.signal,
     });
-    if (signal) {
-      signal.removeEventListener('abort', abortHandler);
-    }
     if (!res.ok) throw await parseError(res);
     await readSse(res, onEvent, controller.signal);
   } catch (err) {
-    if (signal) {
-      signal.removeEventListener('abort', abortHandler);
-    }
     if (err instanceof DOMException && err.name === 'AbortError') {
       return;
     }
     throw err;
+  } finally {
+    if (signal) {
+      signal.removeEventListener('abort', abortHandler);
+    }
   }
 }
 export async function tts(text: string, rate = 1.0): Promise<Blob> {
@@ -210,7 +218,11 @@ export async function getHealthOtl(): Promise<{
   ok: boolean;
   username?: string;
 }> {
-  const res = await fetchWithRetry(`${API}/health/otl`);
+  const res = await fetchWithRetry(
+    `${API}/health/otl`,
+    { credentials: 'include' },
+    0
+  );
   if (!res.ok) throw await parseError(res);
   return res.json();
 }

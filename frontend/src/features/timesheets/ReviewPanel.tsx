@@ -1,13 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import * as api from '../../api/client';
 import type { SubmitResponse, TimecardEntry } from '../../types';
 export interface ReviewPanelProps {
   entries: TimecardEntry[];
   onSessionExpired: () => void;
-  autoSubmit?: boolean;
 }
-export default function ReviewPanel({
+export default function ReviewPanel(props: ReviewPanelProps) {
+  return <ReviewPanelContent key={JSON.stringify(props.entries)} {...props} />;
+}
+function ReviewPanelContent({
   entries,
   onSessionExpired,
 }: ReviewPanelProps) {
@@ -27,10 +29,14 @@ export default function ReviewPanel({
     });
   };
 
-  const activeEntries = entries.map((e, i) => ({
-    ...e,
-    hours: adjustments[i] !== undefined ? adjustments[i] : e.hours,
-  }));
+  const activeEntries = useMemo(
+    () =>
+      entries.map((e, i) => ({
+        ...e,
+        hours: adjustments[i] !== undefined ? adjustments[i] : e.hours,
+      })),
+    [entries, adjustments]
+  );
 
   const totalHours = activeEntries.reduce(
     (sum, e) => sum + (Number(e.hours) || 0),
@@ -51,6 +57,37 @@ export default function ReviewPanel({
       setBusy(false);
     }
   }, [activeEntries, onSessionExpired]);
+  const retryFailed = useCallback(async () => {
+    if (!result || !result.failed) return;
+    setBusy(true);
+    setError(null);
+    const failedIndices = result.results
+      .filter((row) => !row.ok)
+      .map((row) => row.index);
+    try {
+      const retry = await api.submitTimecard(
+        failedIndices.map((index) => activeEntries[index])
+      );
+      const replacements = new Map(
+        retry.results.map((row) => [failedIndices[row.index], row])
+      );
+      const merged = result.results.map((row) => replacements.get(row.index) || row);
+      setResult({
+        ...result,
+        succeeded: merged.filter((row) => row.ok).length,
+        failed: merged.filter((row) => !row.ok).length,
+        results: merged,
+      });
+    } catch (err) {
+      if (err instanceof api.ApiError && err.status === 401) {
+        onSessionExpired();
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Retry failed.');
+    } finally {
+      setBusy(false);
+    }
+  }, [activeEntries, onSessionExpired, result]);
   return (
     <div className="approval-card" aria-busy={busy}>
       <div className="approval-head">
@@ -146,15 +183,25 @@ export default function ReviewPanel({
       )}
       {result ? (
         <>
-          <div
-            className={`result ${result.failed ? 'warn' : 'ok'}`}
-            aria-live="polite"
-          >
-            <strong>
-              {result.succeeded}/{result.submitted} submitted to OTL
-              {result.failed ? ` · ${result.failed} failed` : ''}.
-            </strong>
-          </div>
+           <div
+             className={`result ${result.failed ? 'warn' : 'ok'}`}
+             aria-live="polite"
+           >
+             <strong>
+               {result.succeeded}/{result.submitted} submitted to OTL
+               {result.failed ? ` · ${result.failed} failed` : ''}.
+             </strong>
+             {result.failed > 0 && (
+               <button
+                 type="button"
+                 className="btn btn-secondary"
+                 onClick={retryFailed}
+                 disabled={busy}
+               >
+                 {busy ? 'Retrying…' : 'Retry failed'}
+               </button>
+             )}
+           </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -184,7 +231,7 @@ export default function ReviewPanel({
                         )}
                       </td>
                       <td>{entry?.taskDetails || '—'}</td>
-                      <td className="num">{entry?.hours ?? '—'}</td>
+                      <td className="num">{activeEntries[r.index]?.hours ?? '—'}</td>
                       <td>
                         {r.ok ? (
                           <span className="status-ok">

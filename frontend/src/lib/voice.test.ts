@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSpeechInput, useAudioPlayer } from './voice';
+import { useMicLevel } from './useMicLevel';
+import { OciSpeechRecognition } from './ociSpeech';
 
 describe('useSpeechInput with Web Speech API', () => {
   let mockRecognitionInstance: any;
@@ -348,6 +350,113 @@ describe('useSpeechInput with Web Speech API', () => {
     );
     expect(onFinal).toHaveBeenCalledWith(text);
     expect(result.current.errorMsg).toBeNull();
+  });
+});
+
+describe('OciSpeechRecognition', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('accumulates multiple final transcripts before emitting results', async () => {
+    class MockWebSocket {
+      static OPEN = 1;
+      static instance: MockWebSocket | null = null;
+      readyState = 0;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      port = { onmessage: null };
+
+      constructor() {
+        MockWebSocket.instance = this;
+      }
+
+      close() {}
+      send() {}
+    }
+    class MockAudioContext {
+      audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
+      destination = {};
+      createMediaStreamSource() {
+        return { connect: vi.fn() };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    class MockAudioWorkletNode {
+      port = { onmessage: null };
+      connect() {}
+      disconnect() {}
+    }
+
+    vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream);
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.stubGlobal('AudioContext', MockAudioContext);
+    vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
+
+    const recognition = new OciSpeechRecognition();
+    const onResult = vi.fn();
+    recognition.onresult = onResult;
+    recognition.start();
+    await vi.waitFor(() =>
+      expect(MockWebSocket.instance?.onmessage).toBeTypeOf('function')
+    );
+
+    MockWebSocket.instance?.onmessage?.({
+      data: JSON.stringify({ text: 'I worked 4 hours', isFinal: true }),
+    });
+    MockWebSocket.instance?.onmessage?.({
+      data: JSON.stringify({ text: 'on Alpha', isFinal: true }),
+    });
+    MockWebSocket.instance?.onmessage?.({
+      data: JSON.stringify({ text: 'for testing', isFinal: false }),
+    });
+
+    const lastEvent = onResult.mock.calls.at(-1)?.[0];
+    expect(
+      lastEvent.results.map((result: any) => result[0].transcript)
+    ).toEqual(['I worked 4 hours', 'on Alpha', 'for testing']);
+    expect(lastEvent.results.map((result: any) => result.isFinal)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    recognition.stop();
+  });
+});
+
+describe('useMicLevel', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('stops a microphone stream acquired after start was cancelled', async () => {
+    const track = { stop: vi.fn() };
+    let resolveMedia!: (stream: MediaStream) => void;
+    vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockReturnValue(
+      new Promise<MediaStream>((resolve) => {
+        resolveMedia = resolve;
+      })
+    );
+    const { result } = renderHook(() => useMicLevel());
+    let startPromise!: Promise<void>;
+    act(() => {
+      startPromise = result.current.start();
+    });
+    act(() => {
+      result.current.stop();
+    });
+    await act(async () => {
+      resolveMedia({ getTracks: () => [track] } as unknown as MediaStream);
+      await startPromise;
+    });
+    expect(track.stop).toHaveBeenCalledTimes(1);
   });
 });
 

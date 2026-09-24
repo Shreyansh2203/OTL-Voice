@@ -172,11 +172,18 @@ class RealtimeSpeechClient:
             except Exception as e:
                 logger.error(f"Error handling message: {e}")
 
-    def close(self):
+    async def close(self):
         logger.info("Client has initiated closure")
-        self.listener.on_close(1000, "Closure Initiated by Client")
         self.close_flag = True
+        connection = self.connection
         self.connection = None
+        if connection is not None:
+            try:
+                await connection.close()
+            except Exception:
+                pass
+        if self.listener:
+            self.listener.on_close(1000, "Closure Initiated by Client")
 
     def _parse_parameters(self, params: RealtimeParameters):
         parameterString = "/ws/transcribe/stream?"

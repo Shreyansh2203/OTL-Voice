@@ -18,11 +18,25 @@ import os
 import sqlite3
 import threading
 import time
-import urllib.parse
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+from . import fusion_catalogue_client as _client_module
+
+_FetchResult = _client_module._FetchResult
+_CatalogueFetchError = _client_module._CatalogueFetchError
+_fetch_complete = _client_module._fetch_complete
+_has_more = _client_module._has_more
+_host_url = _client_module._host_url
+_ppm_base = _client_module._ppm_base
+_client = _client_module._client
+_fetch_all_projects = _client_module._fetch_all_projects
+_fetch_child_items = _client_module._fetch_child_items
+_fetch_project_tasks = _client_module._fetch_project_tasks
+_fetch_project_team_members = _client_module._fetch_project_team_members
+_fetch_all_resource_assignments = _client_module._fetch_all_resource_assignments
 
 logger = logging.getLogger(__name__)
 _REFRESH_INTERVAL = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))
@@ -30,6 +44,19 @@ _DB_PATH = Path(__file__).parent.parent.parent / "data" / "catalogue.db"
 _thread_local = threading.local()
 _load_lock = threading.Lock()
 _is_loading = False
+
+
+def _existing_projects(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = conn.execute("SELECT project_id, data FROM projects").fetchall()
+    result: dict[str, dict[str, Any]] = {}
+    for project_id, data in rows:
+        try:
+            value = json.loads(data)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            result[str(project_id)] = value
+    return result
 
 
 def _get_db() -> sqlite3.Connection:
@@ -64,108 +91,6 @@ def _close_db() -> None:
     if hasattr(_thread_local, "conn") and _thread_local.conn is not None:
         _thread_local.conn.close()
         _thread_local.conn = None
-
-
-def _host_url() -> str:
-    from . import otl_client
-
-    url = otl_client.base_url()
-    parsed = urllib.parse.urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
-def _ppm_base() -> str:
-    api_version = os.getenv("FUSION_API_VERSION", "11.13.18.05")
-    return f"{_host_url()}/fscmRestApi/resources/{api_version}"
-
-
-def _client() -> httpx.Client:
-    from . import otl_client
-
-    cred = otl_client.service_credential()
-    return httpx.Client(
-        auth=cred.auth,
-        timeout=httpx.Timeout(60.0, connect=15.0),
-        headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
-    )
-
-
-def _fetch_all_projects(client: httpx.Client) -> list[dict]:
-    projects = []
-    offset = 0
-    limit = 100
-    while True:
-        resp = client.get(
-            f"{_ppm_base()}/projects",
-            params={
-                "limit": limit,
-                "offset": offset,
-            },
-        )
-        if resp.status_code != 200:
-            logger.error(
-                "Failed to fetch projects (HTTP %d): %s",
-                resp.status_code,
-                resp.text[:300],
-            )
-            break
-        items = resp.json().get("items", [])
-        if not items:
-            break
-        projects.extend(items)
-        logger.info("  Fetched %d projects (offset=%d)", len(items), offset)
-        if len(items) < limit:
-            break
-        offset += limit
-    return projects
-
-
-def _fetch_project_tasks(client: httpx.Client, project_id: str) -> list[dict]:
-    resp = client.get(
-        f"{_ppm_base()}/projects/{project_id}/child/Tasks",
-        params={"limit": 100},
-    )
-    if resp.status_code != 200:
-        return []
-    return resp.json().get("items", [])
-
-
-def _fetch_project_team_members(client: httpx.Client, project_id: str) -> list[dict]:
-    resp = client.get(
-        f"{_ppm_base()}/projects/{project_id}/child/ProjectTeamMembers",
-        params={"limit": 100},
-    )
-    if resp.status_code != 200:
-        return []
-    return resp.json().get("items", [])
-
-
-def _fetch_all_resource_assignments(client: httpx.Client) -> list[dict]:
-    assignments = []
-    offset = 0
-    limit = 100
-    while True:
-        resp = client.get(
-            f"{_ppm_base()}/projectResourceAssignments",
-            params={
-                "fields": "ProjectId,ResourceHCMPersonId,ResourceName",
-                "limit": limit,
-                "offset": offset,
-            },
-        )
-        if resp.status_code != 200:
-            logger.error(
-                "Failed to fetch resource assignments (HTTP %d)", resp.status_code
-            )
-            break
-        items = resp.json().get("items", [])
-        if not items:
-            break
-        assignments.extend(items)
-        if len(items) < limit:
-            break
-        offset += limit
-    return assignments
 
 
 def _build_index(
@@ -300,10 +225,20 @@ def _do_load_catalogue() -> None:
         return
     try:
         raw_projects = _fetch_all_projects(client)
+        if not _fetch_complete(raw_projects):
+            raise _CatalogueFetchError("Fusion project catalogue fetch was incomplete")
+        if not raw_projects:
+            existing_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+            if existing_count:
+                raise _CatalogueFetchError(
+                    "Fusion project catalogue fetch returned no data"
+                )
         logger.info("Fetched %d projects total.", len(raw_projects))
         import concurrent.futures
 
+        existing_projects = _existing_projects(conn)
         enriched = []
+        details_complete = True
 
         def create_client() -> httpx.Client:
             from . import otl_client
@@ -318,11 +253,26 @@ def _do_load_catalogue() -> None:
         def fetch_project_details(p):
             thread_client = create_client()
             try:
-                p_id = str(p.get("ProjectId", ""))
+                p_id = str(p.get("ProjectId", "")).strip()
+                if not p_id:
+                    raise _CatalogueFetchError("Project response omitted ProjectId")
                 p_num = str(p.get("ProjectNumber", ""))
                 p_name = p.get("ProjectName", "")
                 tasks = _fetch_project_tasks(thread_client, p_id)
                 members = _fetch_project_team_members(thread_client, p_id)
+                if not _fetch_complete(tasks) or not _fetch_complete(members):
+                    raise _CatalogueFetchError(
+                        f"Project detail fetch was incomplete for {p_id}"
+                    )
+                old_project = existing_projects.get(p_id, {})
+                if not tasks and old_project.get("tasks"):
+                    raise _CatalogueFetchError(
+                        f"Project task fetch returned partial data for {p_id}"
+                    )
+                if not members and old_project.get("team_members"):
+                    raise _CatalogueFetchError(
+                        f"Project team fetch returned partial data for {p_id}"
+                    )
                 return {
                     "project_id": p_id,
                     "project_number": p_num,
@@ -353,6 +303,7 @@ def _do_load_catalogue() -> None:
                 try:
                     enriched.append(future.result())
                 except Exception as exc:
+                    details_complete = False
                     logger.error(
                         "Project details fetch generated an exception: %s", exc
                     )
@@ -360,14 +311,29 @@ def _do_load_catalogue() -> None:
                     logger.info(
                         "  Enriched %d/%d projects...", i + 1, len(raw_projects)
                     )
+        if not details_complete or len(enriched) != len(raw_projects):
+            raise _CatalogueFetchError("Some Fusion project details were unavailable")
         logger.info("Fetched details for %d projects.", len(enriched))
         logger.info("Fetching project resource assignments...")
         assignments = _fetch_all_resource_assignments(client)
+        if not _fetch_complete(assignments):
+            raise _CatalogueFetchError(
+                "Fusion resource assignment fetch was incomplete"
+            )
+        if not assignments:
+            existing_count = max(
+                conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0],
+                conn.execute("SELECT COUNT(*) FROM person_index").fetchone()[0],
+            )
+            if existing_count:
+                raise _CatalogueFetchError(
+                    "Fusion resource assignment fetch returned no data"
+                )
         logger.info("Fetched %d resource assignments.", len(assignments))
         logger.info("Building project index...")
         person_index = _build_index(enriched, assignments_data=assignments)
         _save_catalogue(conn, enriched, person_index)
-        
+
         elapsed = time.time() - start
         logger.info(
             "Fusion catalogue ready: %d projects, %d persons indexed (%.1fs)",
@@ -375,8 +341,10 @@ def _do_load_catalogue() -> None:
             len(person_index),
             elapsed,
         )
+    except _CatalogueFetchError as exc:
+        logger.error("Keeping existing Fusion catalogue: %s", exc)
     except Exception:
-        logger.exception("Failed to load Fusion catalogue")
+        logger.exception("Failed to load Fusion catalogue; keeping existing catalogue")
     finally:
         client.close()
         _set_loading_false(conn, lock_path)
@@ -474,18 +442,24 @@ def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
             project_no = p_num
         tasks = []
         for t in proj.get("tasks", []):
-            raw_id = t.get("task_number") or t.get("task_id") or "0"
+            task_id_value = t.get("task_id")
+            raw_id = (
+                task_id_value
+                if task_id_value not in (None, "")
+                else t.get("task_number") or "0"
+            )
             task_id: int | str
             try:
                 task_id = int(raw_id)
             except (ValueError, TypeError):
                 task_id = raw_id
-            tasks.append(
-                {
-                    "taskId": task_id,
-                    "taskDetails": t.get("task_name", ""),
-                }
-            )
+            task = {
+                "taskId": task_id,
+                "taskDetails": t.get("task_name", ""),
+            }
+            if t.get("task_number") not in (None, ""):
+                task["taskNumber"] = t.get("task_number")
+            tasks.append(task)
         result.append(
             {
                 "workOrder": f"WO-{p_num}",
@@ -502,16 +476,19 @@ def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
     return result
 
 
-def list_assignments_for_worker(
-    employee_number: str, full_name: str = ""
-) -> list[dict[str, Any]]:
+def is_catalogue_loaded() -> bool:
     conn = _get_db()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
     row = cur.fetchone()
-    is_loaded = row and row[0] == "true"
-    if not is_loaded:
-        logger.warning("Catalogue not loaded - returning empty assignments")
-        return []
+    return bool(row and row[0] == "true")
+
+
+def list_assignments_for_worker(
+    employee_number: str, full_name: str = ""
+) -> list[dict[str, Any]] | None:
+    if not is_catalogue_loaded():
+        logger.warning("Catalogue not loaded")
+        return None
     assigned = _find_person_projects(employee_number, full_name)
     if not assigned:
         return []
@@ -520,8 +497,10 @@ def list_assignments_for_worker(
 
 async def alist_assignments_for_worker(
     employee_number: str, full_name: str = ""
-) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(list_assignments_for_worker, employee_number, full_name)
+) -> list[dict[str, Any]] | None:
+    return await asyncio.to_thread(
+        list_assignments_for_worker, employee_number, full_name
+    )
 
 
 def catalogue_age_seconds() -> float | None:
@@ -535,9 +514,7 @@ def catalogue_age_seconds() -> float | None:
 
 def status() -> dict[str, Any]:
     conn = _get_db()
-    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
-    row = cur.fetchone()
-    is_loaded = row and row[0] == "true"
+    is_loaded = is_catalogue_loaded()
     cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
     row = cur.fetchone()
     is_loading = row and row[0] == "true"

@@ -14,6 +14,6 @@ def is_test_mode() -> bool:
 def cors_origins() -> list[str]:
     raw = os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:4173,http://localhost:8000,http://localhost,http://127.0.0.1:5173,http://127.0.0.1:4173,http://127.0.0.1:8000,capacitor://localhost,https://localhost",
+        "http://localhost:5173,http://localhost:4173,http://localhost:8000,http://localhost,http://127.0.0.1:5173,http://127.0.0.1:4173,http://127.0.0.1:8000,http://127.0.0.1,capacitor://localhost,https://localhost",
     )
     return [o.strip() for o in raw.split(",") if o.strip()]

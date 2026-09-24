@@ -19,7 +19,7 @@ help:
 
 dev:
 	@test -f .env || (echo "[warn] .env is missing. Copy .env.example to .env first." && exit 1)
-	npx --yes concurrently -c "blue,magenta" -n "BACKEND,FRONTEND" "uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload" "npm --prefix frontend run dev"
+	npx --yes concurrently -c "blue,magenta" -n "BACKEND,FRONTEND" "uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload" "pnpm --dir frontend run dev"
 
 test: test-backend test-frontend
 
@@ -27,22 +27,22 @@ test-backend:
 	uv run pytest backend/tests
 
 test-frontend:
-	npm --prefix frontend run test:unit
+	pnpm --dir frontend run test:unit
 
 test-e2e:
-	npm --prefix frontend run test:e2e
+	pnpm --dir frontend run test:e2e
 
 lint:
 	uv run ruff check .
-	npm --prefix frontend run lint
+	pnpm --dir frontend run lint
 
 format:
 	uv run ruff format .
-	npm --prefix frontend run format
+	pnpm --dir frontend run format
 
 typecheck:
 	uv run mypy backend
-	npm --prefix frontend run typecheck
+	pnpm --dir frontend run typecheck
 
 up:
 	@test -f .env || (echo "[warn] .env is missing. Copy .env.example to .env first." && exit 1)

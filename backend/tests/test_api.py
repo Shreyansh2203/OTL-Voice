@@ -87,7 +87,9 @@ def test_login_invalid_password(client, mock_otl_client):
         "personNumber": "208",
         "fullName": "Jessy Brown",
     }
-    response = client.post("/api/auth/login", json={"username": "208", "password": "wrong"})
+    response = client.post(
+        "/api/auth/login", json={"username": "208", "password": "wrong"}
+    )
     assert response.status_code == 401
 
 
@@ -237,6 +239,3 @@ async def test_auth_rate_limiting(client):
         assert await limiter.is_allowed("unit_test_ip") is False
     finally:
         auth_rate_limiter._local_requests.clear()
-
-
-

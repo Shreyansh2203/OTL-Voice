@@ -65,6 +65,46 @@ describe('ReviewPanel', () => {
     expect(screen.getByText('✓ 12345')).toBeDefined();
     expect(screen.getByText('✗ Bad data')).toBeDefined();
   });
+  it('resets submission state when entries change', async () => {
+    const onSessionExpired = vi.fn();
+    vi.spyOn(api, 'submitTimecard').mockResolvedValue({
+      submitted: 1,
+      succeeded: 1,
+      failed: 0,
+      results: [{ index: 0, ok: true }],
+    });
+    const { rerender } = render(
+      <ReviewPanel
+        entries={mockEntries as any}
+        onSessionExpired={onSessionExpired}
+      />
+    );
+    fireEvent.click(screen.getByText('Approve & Submit'));
+    await waitFor(() => {
+      expect(screen.getByText('Timesheet Submitted')).toBeInTheDocument();
+    });
+
+    rerender(
+      <ReviewPanel
+        entries={
+          [
+            {
+              ...mockEntries[0],
+              projectName: 'Proj B',
+              projectNo: 'PB-2',
+            },
+          ] as any
+        }
+        onSessionExpired={onSessionExpired}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Approve & Submit')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Proj B')).toBeInTheDocument();
+    expect(screen.queryByText('Timesheet Submitted')).not.toBeInTheDocument();
+  });
   it('handles general errors on submit', async () => {
     const onSessionExpired = vi.fn();
     vi.spyOn(api, 'submitTimecard').mockRejectedValue(

@@ -35,15 +35,19 @@ def _validate_password(password: str) -> None:
         )
     clean_pwd = password.strip()
     configured_pwd = os.getenv("AUTH_PASSWORD")
-    if configured_pwd:
-        if not secrets.compare_digest(clean_pwd, configured_pwd):
+    configured_value = (
+        configured_pwd.strip()
+        if configured_pwd and not auth._is_insecure_placeholder(configured_pwd)
+        else ""
+    )
+    if configured_value:
+        if not secrets.compare_digest(clean_pwd, configured_value):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password.",
             )
         return
 
-    # In dev/test mode, accept non-empty password meeting basic criteria
     if is_dev_mode() or is_test_mode():
         if len(clean_pwd) < 4 or clean_pwd.lower() in (
             "wrong",
@@ -57,12 +61,10 @@ def _validate_password(password: str) -> None:
             )
         return
 
-    # Production criteria: enforce password length when standalone
-    if len(clean_pwd) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Password must be at least 8 characters.",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication is not configured.",
+    )
 
 
 @router.post("/login")
@@ -110,6 +112,12 @@ async def login(body: LoginBody, response: Response) -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Person Number '{person_number}' was not found.",
+        )
+
+    if not worker_data.get("isActive", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is inactive.",
         )
 
     employee = Employee(

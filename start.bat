@@ -51,7 +51,7 @@ echo.
 echo =======================================================
 echo Application is running at:
 echo   Web App:  http://localhost
-echo   API Docs: http://localhost/api/docs
+echo   API Docs: http://localhost/docs
 echo =======================================================
 echo.
 pause
