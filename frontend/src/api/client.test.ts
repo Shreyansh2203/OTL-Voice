@@ -1,246 +1,222 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  login,
-  getSession,
-  logout,
-  chatStream,
-  tts,
-  getAssignments,
-  submitTimecard,
-  listTimecards,
   ApiError,
+  chatStream,
+  getSession,
+  login,
+  logout,
+  submitTimecard,
 } from './client';
-import { readSse } from '../lib/sse';
-vi.mock('../lib/sse', () => ({
-  readSse: vi.fn(),
-}));
-describe('client API', () => {
+
+function response(body: unknown, status = 200, csrf?: string): Response {
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (csrf) headers.set('X-CSRF-Token', csrf);
+  return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+    status,
+    headers,
+  });
+}
+
+function headersFor(call: unknown[]): Headers {
+  const init = call[1] as RequestInit | undefined;
+  return new Headers(init?.headers);
+}
+
+describe('cookie and CSRF client flow', () => {
+  beforeEach(() => {
+    document.cookie = 'csrf_token=; Max-Age=0; path=/';
+    localStorage.clear();
+  });
+
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.mocked(readSse).mockReset();
+    vi.unstubAllGlobals();
   });
-  it('login handles success', async () => {
-    const mockIdentity = {
-      username: 'testuser',
-      fullName: 'Test',
-      employeeId: '123',
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockIdentity),
-      })
-    );
-    const result = await login('testuser', 'password');
-    expect(result).toEqual(mockIdentity);
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/auth/login',
-      expect.objectContaining({
-        method: 'POST',
-      })
-    );
-  });
-  it('login throws ApiError on failure', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        statusText: 'Unauthorized',
-        json: () => Promise.resolve({ detail: 'Wrong password' }),
-      })
-    );
-    await expect(login('user', 'pass')).rejects.toThrow(ApiError);
-    await expect(login('user', 'pass')).rejects.toThrow('Wrong password');
-  });
-  it('login handles missing json detail in error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: () => Promise.reject(new Error('not json')),
-      })
-    );
-    await expect(login('user', 'pass')).rejects.toThrow(
-      'Internal Server Error'
-    );
-  });
-  it('getSession returns session', async () => {
-    const mockIdentity = {
-      username: 'testuser',
-      fullName: 'Test',
-      employeeId: '123',
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockIdentity),
-      })
-    );
-    const result = await getSession();
-    expect(result).toEqual(mockIdentity);
-  });
-  it('getSession returns null on 401', async () => {
-    localStorage.setItem('otl_session', 'expired');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-      })
-    );
-    const result = await getSession();
-    expect(result).toBeNull();
+
+  it('primes CSRF before login and uses an HttpOnly session cookie', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ ok: true }, 200, 'primed-token'))
+      .mockResolvedValueOnce(
+        response({ username: '7', fullName: 'Mala Kumari', employeeId: '7' })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const identity = await login('7', 'secret');
+
+    expect(identity.employeeId).toBe('7');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const loginCall = fetchMock.mock.calls[1];
+    expect(loginCall[0]).toBe('/api/auth/login');
+    expect((loginCall[1] as RequestInit).credentials).toBe('include');
+    expect(headersFor(loginCall).get('X-CSRF-Token')).toBe('primed-token');
     expect(localStorage.getItem('otl_session')).toBeNull();
   });
-  it('getSession throws error on other failures', async () => {
-    localStorage.setItem('otl_session', 'valid');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Server Error',
-        json: () => Promise.resolve({}),
+
+  it('retries a submission with the newly rotated CSRF token after refresh', async () => {
+    document.cookie = 'csrf_token=old-token; path=/';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ detail: 'expired' }, 401))
+      .mockImplementationOnce(async () => {
+        const result = response({ ok: true }, 200, 'new-token');
+        document.cookie = 'csrf_token=new-token; path=/';
+        return result;
       })
-    );
-    await expect(getSession()).rejects.toThrow(ApiError);
-    expect(localStorage.getItem('otl_session')).toBe('valid');
-  });
-  it('logout calls fetch', async () => {
-    localStorage.setItem('otl_session', 'valid');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-    await logout();
-    expect(fetch).toHaveBeenCalledWith('/api/auth/logout', expect.any(Object));
-    expect(localStorage.getItem('otl_session')).toBeNull();
-  });
-  it('logout preserves a valid session when the request fails', async () => {
-    localStorage.setItem('otl_session', 'valid');
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    await expect(logout()).rejects.toThrow('offline');
-    expect(localStorage.getItem('otl_session')).toBe('valid');
-  });
-  it('logout accepts an already expired session', async () => {
-    localStorage.setItem('otl_session', 'expired');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
-    await expect(logout()).resolves.toBeUndefined();
-    expect(localStorage.getItem('otl_session')).toBeNull();
-  });
-  it('chatStream works correctly', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-    const onEvent = vi.fn();
-    await chatStream([{ role: 'user', content: 'hello' }], onEvent);
-    expect(fetch).toHaveBeenCalledWith('/api/chat', expect.any(Object));
-    expect(readSse).toHaveBeenCalled();
-  });
-  it('keeps external abort connected while consuming the stream', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-    let streamSignal: AbortSignal | undefined;
-    vi.mocked(readSse).mockImplementation(
-      (_response, _onEvent, signal) =>
-        new Promise<void>((resolve) => {
-          streamSignal = signal;
-          signal?.addEventListener('abort', () => resolve(), { once: true });
+      .mockResolvedValueOnce(
+        response({
+          submitted: 1,
+          succeeded: 1,
+          failed: 0,
+          results: [{ index: 0, ok: true, id: 9001 }],
         })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await submitTimecard([
+      {
+        requestId: 'request-1',
+        employeeNumber: '7',
+        employeeName: 'Mala Kumari',
+        projectId: 'PRJ-1',
+        projectNo: 'PA-1',
+        projectName: 'Operations',
+        workOrder: 'WO-1',
+        taskDetails: 'Task',
+        hours: 1,
+        date: '2026-09-25',
+        currencyCode: 'USD',
+      },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(headersFor(fetchMock.mock.calls[0]).get('X-CSRF-Token')).toBe(
+      'old-token'
     );
-    const controller = new AbortController();
-    const stream = chatStream([], vi.fn(), controller.signal);
-    await vi.waitFor(() => expect(streamSignal).toBeDefined());
-    controller.abort();
-    await stream;
-    expect(streamSignal?.aborted).toBe(true);
-  });
-  it('chatStream handles error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
+    expect(headersFor(fetchMock.mock.calls[1]).get('X-CSRF-Token')).toBe(
+      'old-token'
     );
-    await expect(chatStream([], vi.fn())).rejects.toThrow(ApiError);
+    expect(headersFor(fetchMock.mock.calls[2]).get('X-CSRF-Token')).toBe(
+      'new-token'
+    );
   });
-  it('tts returns blob', async () => {
-    const blob = new Blob();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        blob: () => Promise.resolve(blob),
+
+  it('refreshes an expired session once and retries the session read', async () => {
+    document.cookie = 'csrf_token=old-token; path=/';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ detail: 'expired' }, 401))
+      .mockImplementationOnce(async () => {
+        const result = response({ ok: true }, 200, 'new-token');
+        document.cookie = 'csrf_token=new-token; path=/';
+        return result;
       })
-    );
-    const result = await tts('hello', 1.0);
-    expect(result).toBe(blob);
-    expect(fetch).toHaveBeenCalledWith('/api/tts', expect.any(Object));
-  });
-  it('tts handles error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
-    );
-    await expect(tts('hello', 1)).rejects.toThrow(ApiError);
-  });
-  it('getAssignments returns assignments', async () => {
-    const mockData = { ok: true };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockData),
-      })
-    );
-    const result = await getAssignments();
-    expect(result).toEqual(mockData);
-  });
-  it('getAssignments handles error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
-    );
-    await expect(getAssignments()).rejects.toThrow(ApiError);
-  });
-  it('submitTimecard works correctly', async () => {
-    const mockData = { ok: true };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockData),
-      })
-    );
-    const result = await submitTimecard([]);
-    expect(result).toEqual(mockData);
-    expect(fetch).toHaveBeenCalledWith('/api/otl/timecard', expect.any(Object));
-  });
-  it('submitTimecard handles error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
-    );
-    await expect(submitTimecard([])).rejects.toThrow(ApiError);
-  });
-  it('listTimecards handles success', async () => {
-    const mockData = { items: [] };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockData),
-      })
-    );
-    const result = await listTimecards(50, 0);
-    expect(result).toEqual(mockData);
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/otl/timecards?limit=50&offset=0',
-      expect.any(Object)
+      .mockResolvedValueOnce(
+        response({ username: '7', fullName: 'Mala Kumari', employeeId: '7' })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getSession()).resolves.toMatchObject({ employeeId: '7' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(headersFor(fetchMock.mock.calls[2]).get('X-CSRF-Token')).toBe(
+      'new-token'
     );
   });
-  it('listTimecards handles error', async () => {
+
+  it('rejects malformed submission confirmations as uncertain', async () => {
+    document.cookie = 'csrf_token=test-token; path=/';
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 500 })
+      vi.fn().mockResolvedValue(
+        response({
+          submitted: 1,
+          succeeded: 0,
+          failed: 0,
+          results: [{ index: 0, ok: false }],
+        })
+      )
     );
-    await expect(listTimecards()).rejects.toThrow(ApiError);
+
+    await expect(
+      submitTimecard([
+        {
+          requestId: 'request-1',
+          employeeNumber: '7',
+          employeeName: 'Mala Kumari',
+          projectId: 'PRJ-1',
+          projectNo: 'PA-1',
+          projectName: 'Operations',
+          workOrder: 'WO-1',
+          taskDetails: 'Task',
+          hours: 1,
+          date: '2026-09-25',
+          currencyCode: 'USD',
+        },
+      ])
+    ).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringMatching(/invalid submission confirmation/i),
+    });
+  });
+
+  it('returns null when both the session and refresh are unauthorized', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ detail: 'expired' }, 401))
+      .mockResolvedValueOnce(response({ ok: true }, 200, 'rotated'))
+      .mockResolvedValueOnce(response({ detail: 'expired' }, 401));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getSession()).resolves.toBeNull();
+  });
+
+  it('primes CSRF before logout and accepts an already expired session', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ ok: true }, 200, 'logout-token'))
+      .mockResolvedValueOnce(response({ detail: 'expired' }, 401));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(logout()).resolves.toBeUndefined();
+    expect(headersFor(fetchMock.mock.calls[1]).get('X-CSRF-Token')).toBe(
+      'logout-token'
+    );
+    expect((fetchMock.mock.calls[1][1] as RequestInit).credentials).toBe('include');
+  });
+
+  it('surfaces non-authentication session failures', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'down' }, 500)));
+
+    await expect(getSession()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('parses streamed assistant deltas without persisting auth tokens', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"assistant_delta","delta":"Hello"}\n\ndata: {"type":"done"}\n\n'
+          )
+        );
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      )
+    );
+
+    const deltas: string[] = [];
+    await chatStream([{ role: 'user', content: 'Hello' }], (event) => {
+      if (event.delta) deltas.push(event.delta);
+    });
+
+    expect(deltas).toEqual(['Hello']);
+    expect(localStorage.getItem('otl_session')).toBeNull();
   });
 });

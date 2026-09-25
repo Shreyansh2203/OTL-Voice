@@ -28,7 +28,7 @@ vi.mock('./api/client', () => ({
   },
 }));
 vi.mock('./features/auth/LoginView', () => ({
-  default: ({ onLogin }: { onLogin: (u: any) => void }) => (
+  default: ({ onLogin }: { onLogin: (identity: unknown) => void }) => (
     <div data-testid="login-view">
       <button onClick={() => onLogin({ username: 'user', fullName: 'User' })}>
         Simulate Login
@@ -37,19 +37,24 @@ vi.mock('./features/auth/LoginView', () => ({
   ),
 }));
 vi.mock('./features/chat/ChatView', () => ({
-  default: ({ onLogout, onSessionExpired }: any) => (
+  default: ({
+    onLogout,
+    onSessionExpired,
+  }: {
+    onLogout: () => Promise<void>;
+    onSessionExpired: () => void;
+  }) => (
     <div data-testid="chat-view">
-      <button onClick={onLogout}>Simulate Logout</button>
+      <button onClick={() => void onLogout().catch(() => undefined)}>
+        Simulate Logout
+      </button>
       <button onClick={onSessionExpired}>Simulate Expire</button>
     </div>
   ),
 }));
-vi.mock('./components/ui/NeuralTunnel', () => ({
-  default: () => <div data-testid="mock-neural-tunnel" />,
-  NeuralTunnel: () => <div data-testid="mock-neural-tunnel" />,
-}));
 describe('App', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(api.refreshSession).mockResolvedValue();
   });
@@ -117,11 +122,14 @@ describe('App', () => {
     });
   });
   it('handles logout callback', async () => {
-    vi.mocked(api.getSession).mockResolvedValue({
+    const identity = {
       username: '1',
       fullName: 'User',
       employeeId: '1',
-    });
+    };
+    vi.mocked(api.getSession)
+      .mockResolvedValueOnce(identity)
+      .mockResolvedValue(null);
     vi.mocked(api.logout).mockResolvedValue();
     render(<App />);
     await waitFor(() => {
@@ -150,13 +158,15 @@ describe('App', () => {
     expect(screen.getByTestId('chat-view')).toBeInTheDocument();
     expect(screen.queryByTestId('login-view')).not.toBeInTheDocument();
   });
-  it('handles session expired callback', async () => {
-    localStorage.setItem('otl_session', 'expired');
-    vi.mocked(api.getSession).mockResolvedValue({
+  it('clears only in-memory session state on an expiry callback', async () => {
+    const identity = {
       username: '1',
       fullName: 'User',
       employeeId: '1',
-    });
+    };
+    vi.mocked(api.getSession)
+      .mockResolvedValueOnce(identity)
+      .mockResolvedValue(null);
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('chat-view')).toBeInTheDocument();

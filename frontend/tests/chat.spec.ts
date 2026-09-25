@@ -1,128 +1,252 @@
-import { test, expect } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
-test.describe('Chat View UI', () => {
-  test.beforeEach(async ({ page }) => {
-    // Mock authentication session
-    await page.route(/\/api\/auth\/session/, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          username: 'E100', employeeId: 'E100',
-          fullName: 'Playwright Tester',
-          authenticated: true
-        })
-      });
-    });
+const identity = {
+  username: '7',
+  fullName: 'Test User',
+  employeeId: '7',
+};
 
-    // Mock the backend assignments endpoint to return fake project data
-    await page.route(/\/api\/labour\/assignments/, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          employeeId: "E100",
-          fullName: "Playwright Tester",
-          workOrders: [
-            {
-              workOrder: "WO-1234",
-              projects: [
-                {
-                  projectId: "proj-1",
-                  projectNo: "1234",
-                  projectName: "Test Project Mock",
-                  tasks: [
-                    { taskId: "task-1", taskNo: "T1", taskName: "Mock Task 1" }
-                  ]
-                }
-              ]
-            }
-          ]
-        })
-      });
-    });
+const reviewEntry = {
+  employeeNumber: '7',
+  employeeName: 'Test User',
+  projectId: 'PRJ-1',
+  projectNo: 'PA-1',
+  projectName: 'Operations',
+  workOrder: 'WO-9',
+  taskId: 'TASK-1',
+  taskDetails: 'Reviewed weekly payroll entries',
+  hours: 2.5,
+  date: '2026-09-25',
+  startTime: '09:00',
+  stopTime: '11:30',
+  payrollTimeType: 'Regular',
+  expenditureType: 'Regular Time',
+  currencyCode: 'USD',
+};
 
-    // Mock TTS endpoint to prevent proxy errors
-    await page.route(/\/api\/tts/, async (route) => {
-      await route.fulfill({ status: 200, body: 'mock-audio', contentType: 'audio/mpeg' });
-    });
+const isApiPath = (url: URL) => url.pathname.startsWith('/api/');
 
-    // Mock the chat streaming endpoint to return a simulated assistant response
-    await page.route(/\/api\/chat/, async (route) => {
-      console.log('INTERCEPTED CHAT:', route.request().url(), route.request().method());
-      let isSubmission = false;
+async function installMocks(
+  page: Page,
+  assistantDelta = '',
+  assistantDelayMs = 0
+) {
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.addInitScript(() => {
+    localStorage.setItem('otl_voice_on', 'false');
+  });
+  await page.route(isApiPath, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/session') {
+      await route.fulfill({ json: identity });
+      return;
+    }
+    if (path === '/api/health' || path === '/api/health/otl') {
+      await route.fulfill({ json: { ok: true, status: 'connected' } });
+      return;
+    }
+    if (path === '/api/chat') {
+      let isKickoff = false;
       try {
-        const postData = route.request().postDataJSON();
-        // Check if there are user messages that are NOT the kickoff message
-        isSubmission = postData?.messages?.some(
-          (m: any) => m.role === 'user' && m.content !== 'Please begin the session now.'
-        );
-      } catch (e) {
-        // Ignore if no JSON body
+        const payload = route.request().postDataJSON() as {
+          messages?: Array<{ content?: string }>;
+        };
+        isKickoff =
+          payload.messages?.length === 1 &&
+          payload.messages[0]?.content === 'Please begin the session now.';
+      } catch {
+        isKickoff = false;
       }
+      const delta = isKickoff ? '' : assistantDelta;
+      if (assistantDelayMs && delta) {
+        await new Promise((resolve) => setTimeout(resolve, assistantDelayMs));
+      }
+      const body =
+        `data: ${JSON.stringify({ delta })}\n\n` +
+        `data: ${JSON.stringify({ done: true })}\n\n`;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body,
+      });
+      return;
+    }
+    if (path === '/api/tts') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from([0, 0, 0, 0]),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
+  });
+}
+test.beforeEach(async ({ page }) => {
+  await installMocks(page);
+});
 
-      const responseText = isSubmission 
-        ? 'Timesheet submitted for 5 hours.' 
-        : 'Hello, I am your assistant. You are assigned to Test Project Mock.';
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.clear();
+  });
+});
 
-      const sseContent = `data: {"delta": ${JSON.stringify(responseText)}}\n\n`;
-      const sseDone = `data: {"done": true}\n\n`;
-      
-      try {
+async function readyComposer(page: Page) {
+  const input = page.getByRole('textbox', { name: /message/i });
+  await expect(input).toBeEnabled({ timeout: 15_000 });
+  return input;
+}
+
+test('lands in the authenticated voice workspace', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Assistant' })).toBeVisible();
+  await expect(page.getByText('Oracle Fusion Connected')).toBeVisible();
+  await expect(
+    page.getByText(/Nothing is sent to OTL until you approve/i)
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /New conversation/i })
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /Sign out/i })).toBeVisible();
+});
+
+test('accepts chat input and shows the loading then response states', async ({
+  page,
+}) => {
+  await installMocks(page, 'Thanks, I captured that.', 800);
+  await page.goto('/');
+  const input = await readyComposer(page);
+  await input.fill('Capture my time');
+  await page.getByRole('button', { name: /send/i }).click();
+
+  await expect(page.getByText('Capture my time')).toBeVisible();
+  await expect(input).toBeDisabled();
+  await expect(page.getByText('Thanks, I captured that.')).toBeVisible();
+  await expect(input).toBeEnabled();
+  await expect(page.getByRole('button', { name: /send/i })).toBeDisabled();
+});
+
+test('renders all review fields for a valid assistant payload', async ({
+  page,
+}) => {
+  const payload = `Review this before approval.\n\`\`\`json\n${JSON.stringify({
+    entries: [reviewEntry],
+  })}\n\`\`\``;
+  await installMocks(page, payload);
+  await page.goto('/');
+  const input = await readyComposer(page);
+  await input.fill('Record my time');
+  await page.getByRole('button', { name: /send/i }).click();
+
+  await expect(page.getByText('Review Timesheet')).toBeVisible();
+  await expect(page.getByText('Awaiting Approval')).toBeVisible();
+  await expect(page.getByLabel('Project number')).toHaveValue('PA-1');
+  await expect(page.getByLabel('Work order')).toHaveValue('WO-9');
+  await expect(page.getByLabel('Task details')).toHaveValue(
+    'Reviewed weekly payroll entries'
+  );
+  await expect(page.getByRole('spinbutton', { name: 'Hours' })).toHaveValue(
+    '2.5'
+  );
+  await expect(page.getByLabel('Date')).toHaveValue('2026-09-25');
+  await expect(page.getByLabel('Stop time (optional)')).toHaveValue('11:30');
+  await expect(page.getByLabel('Payroll time type')).toHaveValue('Regular');
+  await expect(page.getByLabel('Expenditure type')).toHaveValue('Regular Time');
+  await expect(page.getByLabel('Currency code')).toHaveValue('USD');
+  await expect(page.getByText('{"entries"')).toHaveCount(0);
+});
+
+test('opens a complete manual fallback for malformed JSON', async ({
+  page,
+}) => {
+  await installMocks(
+    page,
+    'I could not finalize this.\n```json\n{"entries":[\n```'
+  );
+  await page.goto('/');
+  const input = await readyComposer(page);
+  await input.fill('Capture malformed time');
+  await page.getByRole('button', { name: /send/i }).click();
+
+  await expect(
+    page.getByText(/did not return a valid timesheet payload/i)
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Manual Timesheet Review' })
+  ).toBeVisible();
+  await expect(page.getByLabel('Employee number')).toHaveValue('7');
+  await expect(page.getByLabel('Employee name')).toHaveValue('Test User');
+  await expect(page.getByRole('spinbutton', { name: 'Hours' })).toHaveValue('');
+});
+
+test('reuses the requestId when an uncertain submission is retried', async ({
+  page,
+}) => {
+  await installMocks(page, '```json\n{"entries":[\n```');
+  await page.goto('/');
+  const input = await readyComposer(page);
+  await input.fill('Capture manually');
+  await page.getByRole('button', { name: /send/i }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Manual Timesheet Review' })
+  ).toBeVisible();
+
+  await page.getByLabel('Project ID (optional)').fill('PRJ-1');
+  await page.getByLabel('Project number').fill('PA-1');
+  await page.getByLabel('Project name').fill('Operations');
+  await page.getByLabel('Work order').fill('WO-1');
+  await page.getByLabel('Task details').fill('Manual task');
+  await page.getByRole('spinbutton', { name: 'Hours' }).fill('1');
+  await page.getByLabel('Start time (optional)').fill('09:00');
+  await page.getByLabel('Stop time (optional)').fill('10:00');
+  await page.getByLabel('Payroll time type').fill('Regular');
+  await page.getByLabel('Expenditure type').fill('Regular Time');
+
+  const requests: Array<{
+    entries: Array<{ requestId?: string }>;
+  }> = [];
+  let attempts = 0;
+  await page.route(
+    (url) => url.pathname === '/api/otl/timecard',
+    async (route: Route) => {
+      attempts += 1;
+      requests.push(
+        route.request().postDataJSON() as {
+          entries: Array<{ requestId?: string }>;
+        }
+      );
+      if (attempts === 1) {
         await route.fulfill({
-          status: 200,
-          contentType: 'text/event-stream',
-          body: sseContent + sseDone
+          status: 503,
+          json: { detail: 'Oracle temporarily unavailable' },
         });
-        console.log('FULFILLED CHAT ROUTE');
-      } catch (e: any) {
-        console.log('ERROR IN FULFILL:', e.message);
+        return;
       }
-    });
-  });
+      await route.fulfill({
+        json: {
+          submitted: 1,
+          succeeded: 1,
+          failed: 0,
+          results: [{ index: 0, ok: true, id: 9001 }],
+        },
+      });
+    }
+  );
 
-  test('should display assistant greeting and project list', async ({ page }) => {
-    await page.goto('/');
+  await page.getByRole('button', { name: 'Approve & Submit' }).click();
+  await expect(page.getByText('Oracle temporarily unavailable')).toBeVisible();
+  await page.getByRole('button', { name: 'Retry submission safely' }).click();
 
-    // Verify Chat tab is active by checking the URL or the tab styling
-    // Wait for the greeting message to appear
-    const greeting = page.locator('.md', { hasText: "Test Project Mock" });
-    await expect(greeting).toBeVisible({ timeout: 10000 });
-  });
-
-  test('should handle user chat input and show response', async ({ page }) => {
-    await page.goto('/');
-    
-    // Type in the chat input box
-    const input = page.locator('textarea');
-    await input.waitFor({ state: 'visible' });
-    await input.fill('I worked 5 hours on Mock Task 1 for Test Project Mock');
-    await input.press('Enter');
-
-    // Wait for the user's message to appear in the chat history
-    const userMessage = page.locator('.bubble-row.user', { hasText: 'I worked 5 hours on Mock Task 1' });
-    await expect(userMessage).toBeVisible();
-
-    // Wait for the simulated assistant response to appear
-    const assistantMessage = page.locator('.md', { hasText: 'Timesheet submitted for 5 hours.' });
-    await expect(assistantMessage).toBeVisible();
-  });
-
-  test('should toggle voice button between on and off', async ({ page }) => {
-    await page.goto('/');
-
-    const voiceBtn = page.getByRole('button', { name: /Disable voice responses/i });
-    await expect(voiceBtn).toBeVisible();
-    await expect(voiceBtn).toHaveAttribute('aria-pressed', 'true');
-
-    // Click to turn off voice
-    await voiceBtn.click();
-    const voiceOffBtn = page.getByRole('button', { name: /Enable voice responses/i });
-    await expect(voiceOffBtn).toBeVisible();
-    await expect(voiceOffBtn).toHaveAttribute('aria-pressed', 'false');
-
-    // Click to turn voice back on
-    await voiceOffBtn.click();
-    await expect(page.getByRole('button', { name: /Disable voice responses/i })).toBeVisible();
-  });
+  await expect(
+    page.getByText('Server Confirmed', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Server confirmed 1 of 1 timecards/i)
+  ).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[0].entries[0].requestId).toBeTruthy();
+  expect(requests[1].entries[0].requestId).toBe(
+    requests[0].entries[0].requestId
+  );
 });

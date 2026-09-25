@@ -9,6 +9,7 @@ export interface AssignedTask {
   taskDetails: string;
 }
 export interface AssignedProject {
+  projectId?: string;
   projectNo: string | number;
   projectName: string;
   tasks: AssignedTask[];
@@ -37,15 +38,24 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
 }
 export interface TimecardEntry {
+  requestId?: string;
   employeeNumber?: string;
   employeeName?: string;
+  projectId?: string;
   projectNo?: string | number;
   projectName?: string;
   workOrder?: string;
+  taskId?: string | number;
   taskDetails?: string;
   hours?: number;
+  date?: string;
+  startTime?: string;
+  stopTime?: string;
+  payrollTimeType?: string;
+  expenditureType?: string;
   currencyCode?: string;
   recordName?: string;
+  comment?: string;
 }
 export interface SubmitResultRow {
   index: number;
@@ -68,5 +78,5 @@ export interface ChatEvent {
   error?: string;
 }
 export interface TimecardsResponse {
-  items: any[];
+  items: unknown[];
 }

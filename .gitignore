@@ -50,6 +50,7 @@ frontend/dist/
 
 # Testing & Coverage Artifacts
 .coverage
+coverage.xml
 htmlcov/
 coverage/
 frontend/coverage/
@@ -70,3 +71,15 @@ Thumbs.db
 *.swp
 *.swo
 .kilo/
+
+# Deployment secrets and local TLS material
+secrets/
+!deploy/secrets/
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+deploy/nginx/certs/*
+!deploy/nginx/certs/.gitkeep
+*.p12
+*.pfx
+*.sqlite3-wal
+*.sqlite3-shm

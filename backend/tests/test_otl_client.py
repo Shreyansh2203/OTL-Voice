@@ -1,9 +1,11 @@
+import asyncio
 import math
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.services.idempotency import IdempotencyStore
 from backend.services.otl_client import (
     OtlConfigError,
     OtlCredential,
@@ -100,7 +102,7 @@ def test_raise_for_status():
     with pytest.raises(OtlError) as exc:
         _raise_for_status(resp)
     assert exc.value.status_code == 400
-    assert exc.value.message == "Bad Request"
+    assert exc.value.message == "Oracle rejected this timecard entry."
 
 
 def test_safe_body():
@@ -148,6 +150,16 @@ def test_map_entry_to_otl():
         map_entry_to_otl({"employeeNumber": "123", "hours": 8, "startTime": "bad"})
     with pytest.raises(OtlError, match="Invalid stopTime format"):
         map_entry_to_otl({"employeeNumber": "123", "hours": 8, "stopTime": "bad"})
+    with pytest.raises(OtlError, match="earlier than stopTime"):
+        map_entry_to_otl(
+            {
+                "employeeNumber": "123",
+                "hours": 8,
+                "date": "2024-05-10",
+                "startTime": "09:00",
+                "stopTime": "09:00",
+            }
+        )
     entry = {
         "employeeNumber": "123",
         "hours": 8,
@@ -181,7 +193,7 @@ def test_map_entry_to_otl():
     assert ev2["reporterId"] == "123"
     entry3 = {
         "employeeNumber": "123",
-        "hours": 8,
+        "hours": 1,
         "date": "2024-05-10",
         "startTime": "10:00",
         "stopTime": "11:00",
@@ -210,7 +222,7 @@ def test_validate(mock_get):
         res = validate(cred)
         assert res["ok"] is True
     mock_resp.status_code = 401
-    with pytest.raises(OtlError, match="rejected the service account credential"):
+    with pytest.raises(OtlError, match="authentication or authorization failed"):
         with patch.dict(os.environ, {"OTL_BASE_URL": "http://x"}):
             validate(cred)
 
@@ -330,12 +342,127 @@ def test_delete_timecard_entry(mock_delete):
 async def test_create_many(mock_create):
     mock_create.side_effect = [
         {"timeRecordEventRequestId": "req1"},
-        OtlError(400, "Bad Request"),
+        OtlError(400, "Oracle internals leaked here"),
     ]
     cred = OtlCredential("u", "p")
-    results = await acreate_many(cred, [{"hours": 5}, {"hours": -1}])
+    results = await acreate_many(
+        cred,
+        [{"employeeNumber": "123", "hours": 5}, {"employeeNumber": "123", "hours": 1}],
+    )
     assert len(results) == 2
     assert results[0]["ok"] is True
     assert results[0]["id"] == "req1"
     assert results[1]["ok"] is False
-    assert results[1]["error"] == "Bad Request"
+    assert results[1]["error"] == "Oracle rejected this timecard entry."
+    assert "internals" not in results[1]["error"]
+
+
+@pytest.mark.asyncio
+async def test_create_many_replays_same_request_id(tmp_path):
+    store = IdempotencyStore(tmp_path / "idempotency.db", poll_seconds=0.002)
+    entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-replay-123",
+    }
+    mock_create = MagicMock()
+
+    async def create(*args, **kwargs):
+        mock_create()
+        return {"timeRecordEventRequestId": "req1"}
+
+    with (
+        patch(
+            "backend.services.otl_client.get_shared_async_client",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "backend.services.otl_client.acreate_timecard_entry",
+            new=AsyncMock(side_effect=create),
+        ) as create_mock,
+    ):
+        first = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+        replay = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+
+    assert first[0]["ok"] is True
+    assert replay[0]["ok"] is True
+    assert replay[0]["replayed"] is True
+    assert replay[0]["id"] == "req1"
+    assert create_mock.await_count == 1
+    assert mock_create.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_waits_for_original_result(tmp_path):
+    store = IdempotencyStore(
+        tmp_path / "idempotency.db",
+        wait_seconds=1,
+        poll_seconds=0.002,
+    )
+    entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-concurrent-123",
+    }
+
+    async def delayed_create(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        return {"timeRecordEventRequestId": "req-concurrent"}
+
+    with (
+        patch(
+            "backend.services.otl_client.get_shared_async_client",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "backend.services.otl_client.acreate_timecard_entry",
+            new=AsyncMock(side_effect=delayed_create),
+        ) as create_mock,
+    ):
+        first, duplicate = await asyncio.gather(
+            acreate_many(OtlCredential("u", "p"), [entry], idempotency_store=store),
+            acreate_many(OtlCredential("u", "p"), [entry], idempotency_store=store),
+        )
+
+    assert first[0]["id"] == "req-concurrent"
+    assert duplicate[0]["id"] == "req-concurrent"
+    assert [
+        result.get("replayed") is True for result in (first[0], duplicate[0])
+    ].count(True) == 1
+    assert create_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_request_id_payload_mismatch_never_writes(tmp_path):
+    store = IdempotencyStore(tmp_path / "idempotency.db")
+    first_entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-conflict-123",
+    }
+    changed_entry = {**first_entry, "hours": 4}
+
+    with (
+        patch(
+            "backend.services.otl_client.get_shared_async_client",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "backend.services.otl_client.acreate_timecard_entry",
+            new=AsyncMock(return_value={"timeRecordEventRequestId": "req1"}),
+        ) as create_mock,
+    ):
+        await acreate_many(
+            OtlCredential("u", "p"), [first_entry], idempotency_store=store
+        )
+        conflict = await acreate_many(
+            OtlCredential("u", "p"), [changed_entry], idempotency_store=store
+        )
+
+    assert conflict[0]["ok"] is False
+    assert conflict[0]["status"] == 409
+    assert create_mock.await_count == 1

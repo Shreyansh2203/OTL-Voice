@@ -1,0 +1,2 @@
+[otl]
+otl-production.example.com ansible_user=deploy

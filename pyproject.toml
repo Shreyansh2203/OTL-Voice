@@ -1,7 +1,7 @@
 [project]
 name = "timesheet-repo"
 version = "0.1.0"
-description = "Voice-enabled AI timesheet assistant for Oracle Time and Labor (OTL) powered by OpenAI Realtime WebRTC."
+description = "Voice-enabled Oracle Time and Labor assistant powered by Oracle Cloud Infrastructure (OCI) generative AI and speech services."
 authors = [
     { name = "Shreyansh Srivastava", email = "main.doga@gmail.com" }
 ]
@@ -33,30 +33,59 @@ dev = [
     "ruff>=0.5.0",
 ]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = [".venv", ".venv2", "frontend", "node_modules"]
+
 [tool.ruff.lint]
-ignore = ["B008", "BLE001", "S110", "TRY002", "SIM117"]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "B008",
+    "B027",
+    "B904",
+    "B905",
+    "BLE001",
+    "E402",
+    "S110",
+    "SIM105",
+    "SIM117",
+    "SIM300",
+    "TRY002",
+    "UP015",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/core/config.py" = ["I001"]
+"deploy/preflight.py" = ["I001"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 asyncio_mode = "strict"
 
 [tool.mypy]
+python_version = "3.12"
+files = ["backend"]
 ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
 
 [tool.coverage.run]
 source = ["backend"]
-omit = [
-    "backend/tests/*",
-    ]
+omit = ["backend/tests/*"]
+relative_files = true
 
 [tool.coverage.report]
+# Change this gate by editing fail_under; verify it with `uv run --frozen coverage report` (or `uv run --frozen coverage report --fail-under=<percent>`).
+fail_under = 65
+precision = 1
 show_missing = true
+skip_covered = true
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
-
-
-

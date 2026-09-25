@@ -154,23 +154,31 @@ export default function ProjectAssignments({
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   useEffect(() => {
+    const controller = new AbortController();
     api
-      .getAssignments()
+      .getAssignments(controller.signal)
       .then((res) => {
+        if (controller.signal.aborted) return;
         setData(res);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
         if (
           err instanceof api.ApiError &&
           (err.status === 401 || err.status === 403)
         ) {
           onSessionExpired();
-        } else {
-          setError(err.message || 'Failed to load projects.');
+          return;
         }
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to load projects.'
+        );
         setLoading(false);
       });
+    return () => controller.abort();
   }, [onSessionExpired]);
   if (loading) {
     return (

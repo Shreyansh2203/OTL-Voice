@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import * as api from '../../api/client';
+import { formatDateInAppTimezone } from '../../lib/entries';
 interface TimeAttribute {
   attributeName: string;
   attributeValue: string;
@@ -35,27 +36,30 @@ export default function TimecardHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    let mounted = true;
+    const controller = new AbortController();
     api
-      .listTimecards()
+      .listTimecards(25, 0, controller.signal)
       .then((res) => {
-        if (mounted) {
-          setData(res as TimecardsResponse);
-          setLoading(false);
-        }
+        if (controller.signal.aborted) return;
+        setData({
+          items: Array.isArray(res.items) ? (res.items as TimecardItem[]) : [],
+        });
+        setLoading(false);
       })
-      .catch((err) => {
-        if (!mounted) return;
-        if (err.status === 401) {
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        if (err instanceof api.ApiError && err.status === 401) {
           onSessionExpired();
           return;
         }
-        setError(err.message || 'Failed to load timesheets');
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to load timesheets'
+        );
         setLoading(false);
       });
-    return () => {
-      mounted = false;
-    };
+    return () => controller.abort();
   }, [onSessionExpired]);
   if (loading) {
     return (
@@ -98,7 +102,7 @@ export default function TimecardHistory({
                if (startTime) {
                  const dateObj = new Date(startTime);
                  if (!isNaN(dateObj.getTime())) {
-                   dateStr = dateObj.toLocaleDateString();
+                    dateStr = formatDateInAppTimezone(dateObj);
                  }
                }
                const statusValue =

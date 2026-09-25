@@ -67,7 +67,7 @@ describe('TimecardHistory', () => {
     });
   });
   it('handles successful fetch with no items array', async () => {
-    vi.mocked(api.listTimecards).mockResolvedValue({});
+    vi.mocked(api.listTimecards).mockResolvedValue({} as never);
     render(<TimecardHistory onSessionExpired={vi.fn()} />);
     await waitFor(() => {
       expect(

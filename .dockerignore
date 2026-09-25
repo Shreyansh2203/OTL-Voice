@@ -1,32 +1,58 @@
-# Docker reads .dockerignore (podman reads .containerignore); keep them in sync.
+.git/
+.gitignore
+.github/
 .venv/
+.venv*/
 venv/
 env/
 __pycache__/
 **/__pycache__/
 *.py[cod]
-.git/
-.gitignore
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/coverage/
+*.tsbuildinfo
+
 .env
+.env.*
+!.env.example
 *.pem
+*.key
+*.p12
+*.pfx
+certs/
+secrets/
 .streamlit/secrets.toml
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
 
-# Node / frontend: install and build happen inside the image.
-frontend/node_modules/
-frontend/dist/
-frontend/test-results/
-frontend/playwright-report/
-node_modules/
-dist/
-
-# Docs and deploy manifests aren't needed inside the runtime image.
 docs/
-deploy/
+deploy/*
+!deploy/readycheck.py
 
-# The reference database is built inside the container on first start; never
-# ship the host's copy (it holds locally-created employees).
+backend/tests/
+test_*.py
+*_test.py
 data/
 *.db
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+
+Makefile
+README.md
+ARCHITECTURE.md

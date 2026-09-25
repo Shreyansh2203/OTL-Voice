@@ -1,145 +1,172 @@
 import { getWsApiUrl } from '../api/client';
 
+const WEBSOCKET_OPEN_TIMEOUT_MS = 10_000;
+
 export class OciSpeechRecognition {
   continuous = false;
   interimResults = false;
   lang = 'en-US';
   maxAlternatives = 1;
-
   onspeechstart: (() => void) | null = null;
-  onresult: ((event: any) => void) | null = null;
-  onerror: ((event: any) => void) | null = null;
+  onresult: ((event: unknown) => void) | null = null;
+  onerror: ((event: { error: string }) => void) | null = null;
   onend: (() => void) | null = null;
+  closed = false;
 
   private ws: WebSocket | null = null;
-  closed = false;
   private stream: MediaStream | null = null;
   private audioCtx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
+  private openTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
   private hasEmittedStart = false;
   private finalParts: string[] = [];
   private lastFinalTranscript = '';
 
-  start() {
+  start(): void {
     this.stopped = false;
     this.closed = false;
     this.hasEmittedStart = false;
     this.finalParts = [];
     this.lastFinalTranscript = '';
-    this._init().catch((e) => {
+    this._init().catch((error: unknown) => {
       if (this.stopped) return;
+      const name = error instanceof Error ? error.name : '';
       this.onerror?.({
-        error: e.name === 'NotAllowedError' ? 'not-allowed' : 'network',
+        error: name === 'NotAllowedError' ? 'not-allowed' : 'network',
       });
       this._cleanup();
     });
   }
 
-  stop() {
+  stop(): void {
     this._cleanup();
   }
 
-  abort() {
+  abort(): void {
     this._cleanup();
   }
 
-  private _cleanup() {
+  private _cleanup(): void {
+    const wasActive = !this.stopped;
     this.stopped = true;
     this.closed = true;
+    if (this.openTimer) {
+      clearTimeout(this.openTimer);
+      this.openTimer = null;
+    }
     if (this.workletNode) {
+      this.workletNode.port.onmessage = null;
       this.workletNode.disconnect();
       this.workletNode = null;
     }
-    if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = null;
-    }
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.stream = null;
     if (this.audioCtx) {
-      this.audioCtx.close().catch(() => {});
+      void this.audioCtx.close().catch(() => undefined);
       this.audioCtx = null;
     }
     if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
-    this.onend?.();
+    if (wasActive) this.onend?.();
   }
 
-  private async _init() {
+  private async _init(): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    if (this.stopped) return this._cleanup();
+    if (this.stopped) {
+      this._cleanup();
+      return;
+    }
 
-    this.audioCtx = new (window.AudioContext ||
-      (window as any).webkitAudioContext)({
-      sampleRate: 16000,
-    });
-
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextClass) throw new Error('AudioContext is unavailable');
+    this.audioCtx = new AudioContextClass({ sampleRate: 16_000 });
     await this.audioCtx.audioWorklet.addModule('/stt-processor.js');
-    if (this.stopped) return this._cleanup();
+    if (this.stopped) {
+      this._cleanup();
+      return;
+    }
 
     const source = this.audioCtx.createMediaStreamSource(this.stream);
     this.workletNode = new AudioWorkletNode(this.audioCtx, 'stt-processor');
     source.connect(this.workletNode);
-    this.workletNode.connect(this.audioCtx.destination); // Keep Safari worklet alive
+    this.workletNode.connect(this.audioCtx.destination);
 
-    const wsUrl = getWsApiUrl('/stt/stream');
-    this.ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(getWsApiUrl('/stt/stream'));
+    this.ws = ws;
+    this.openTimer = setTimeout(() => {
+      if (this.stopped || ws.readyState === WebSocket.OPEN) return;
+      this.onerror?.({ error: 'network' });
+      this._cleanup();
+    }, WEBSOCKET_OPEN_TIMEOUT_MS);
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
       if (this.stopped) return;
-      this.workletNode!.port.onmessage = (e) => {
-        if (e.data instanceof ArrayBuffer) {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(e.data);
-          }
+      if (this.openTimer) clearTimeout(this.openTimer);
+      this.openTimer = null;
+      this.workletNode!.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+        if (event.data instanceof ArrayBuffer && ws.readyState === WebSocket.OPEN) {
+          ws.send(event.data);
         }
       };
     };
 
-    this.ws.onmessage = (e) => {
+    ws.onmessage = (event: MessageEvent<string>) => {
       if (this.stopped) return;
       try {
-        const data = JSON.parse(e.data);
-        if (data.isFinal === undefined || typeof data.text !== 'string') return;
-        const transcript = data.text.trim();
+        const data: unknown = JSON.parse(event.data);
+        if (!data || typeof data !== 'object') return;
+        const record = data as Record<string, unknown>;
+        if (typeof record.isFinal !== 'boolean' || typeof record.text !== 'string') {
+          return;
+        }
+        const transcript = record.text.trim();
         if (!transcript) return;
         if (!this.hasEmittedStart) {
           this.hasEmittedStart = true;
           this.onspeechstart?.();
         }
-        if (data.isFinal && transcript !== this.lastFinalTranscript) {
+        if (record.isFinal && transcript !== this.lastFinalTranscript) {
           this.finalParts.push(transcript);
           this.lastFinalTranscript = transcript;
         }
         const finalResults = this.finalParts.map((finalTranscript) => ({
-          0: { transcript: finalTranscript, confidence: 1.0 },
+          0: { transcript: finalTranscript, confidence: 1 },
           isFinal: true,
         }));
-        const event = {
+        this.onresult?.({
           resultIndex: 0,
-          results: data.isFinal
+          results: record.isFinal
             ? finalResults
             : [
                 ...finalResults,
                 {
-                  0: { transcript, confidence: 1.0 },
+                  0: { transcript, confidence: 1 },
                   isFinal: false,
                 },
               ],
-        };
-        this.onresult?.(event);
+        });
       } catch {
-        // ignore JSON parse errors
+        return;
       }
     };
 
-    this.ws.onerror = () => {
+    ws.onerror = () => {
       if (this.stopped) return;
       this.onerror?.({ error: 'network' });
+      this._cleanup();
     };
 
-    this.ws.onclose = () => {
+    ws.onclose = () => {
       if (this.stopped) return;
       this._cleanup();
     };

@@ -23,12 +23,12 @@ const localStorageMock = (function () {
     },
     clear: function () {
       store = {};
-    }
+    },
   };
 })();
 
 Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
+  value: localStorageMock,
 });
 
 // Mock IntersectionObserver
@@ -40,7 +40,7 @@ class MockIntersectionObserver {
 Object.defineProperty(window, 'IntersectionObserver', {
   writable: true,
   configurable: true,
-  value: MockIntersectionObserver
+  value: MockIntersectionObserver,
 });
 
 // Mock ResizeObserver
@@ -52,7 +52,7 @@ class MockResizeObserver {
 Object.defineProperty(window, 'ResizeObserver', {
   writable: true,
   configurable: true,
-  value: MockResizeObserver
+  value: MockResizeObserver,
 });
 
 // Mock WebGL canvas context for JSDOM

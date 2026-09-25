@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-set -e
-cd "$(dirname "$0")"
+set -euo pipefail
 
-echo "Running Backend Unit Tests (pytest)..."
-uv run pytest backend/tests
+ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "error: pnpm is required to run the test suite" >&2
+  exit 127
+fi
+if ! command -v uv >/dev/null 2>&1; then
+  echo "error: uv is required to run the test suite" >&2
+  exit 127
+fi
 
-echo ""
-echo "Running Frontend Unit Tests (vitest)..."
-pnpm --dir frontend run test:unit
-
-echo ""
-echo "========================================="
-echo "All unit tests passed successfully!"
-echo "========================================="
+exec pnpm --dir "$ROOT" run test "$@"

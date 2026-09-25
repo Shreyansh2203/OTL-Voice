@@ -3,7 +3,7 @@ Fusion Live Catalogue
 ======================
 Fetches projects, tasks, and team-member allocations directly from Oracle
 Fusion Cloud REST APIs on startup, caches them in a local SQLite database, and provides
-fast lookups by employee name.
+fast lookups by stable person id.
 Using SQLite allows multiple Uvicorn workers to share the catalogue without duplicating
 memory usage or fragmenting state.
 The catalogue auto-refreshes on a configurable interval (default: 6 hours).
@@ -18,6 +18,7 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -98,19 +99,33 @@ def _build_index(
 ) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = {}
     seen_projects: dict[str, set[str]] = {}
+    identity_names: dict[str, set[str]] = {}
     if assignments_data is None:
         assignments_data = []
 
-    def _add_to_index(key: str, entry: dict) -> None:
-        k = key.strip().lower()
-        if not k:
+    def _add_to_index(person_id: str, entry: dict, person_name: str = "") -> None:
+        key = person_id.strip().casefold()
+        name = person_name.strip().casefold()
+        if not key:
             return
-        if k not in index:
-            index[k] = []
-            seen_projects[k] = set()
-        if entry["project_number"] not in seen_projects[k]:
-            seen_projects[k].add(entry["project_number"])
-            index[k].append(entry)
+        identity_names.setdefault(key, set())
+        if name:
+            identity_names[key].add(name)
+        if key not in index:
+            index[key] = []
+            seen_projects[key] = set()
+        project_identity = str(
+            entry.get("project_id") or entry.get("project_number") or ""
+        )
+        if project_identity not in seen_projects[key]:
+            seen_projects[key].add(project_identity)
+            index[key].append({**entry, "person_id": person_id.strip()})
+
+    assignments_by_project: dict[str, list[dict]] = {}
+    for assignment in assignments_data:
+        project_id = str(assignment.get("ProjectId") or "").strip()
+        if project_id:
+            assignments_by_project.setdefault(project_id, []).append(assignment)
 
     for proj in projects_data:
         proj_entry = {
@@ -125,46 +140,38 @@ def _build_index(
             person_id = str(
                 member.get("HCMPersonId") or member.get("PersonId") or ""
             ).strip()
-            member_name = str(
+            person_name = str(
                 member.get("PersonName") or member.get("TeamMemberName") or ""
             ).strip()
-            member_entry = {
-                **proj_entry,
-                "role": member.get("ProjectRole", "Team Member"),
-            }
-            if person_id:
-                _add_to_index(person_id, member_entry)
-            if member_name:
-                _add_to_index(member_name, member_entry)
+            _add_to_index(
+                person_id,
+                {**proj_entry, "role": member.get("ProjectRole", "Team Member")},
+                person_name,
+            )
 
-        for assign in assignments_data:
-            if str(assign.get("ProjectId")) == proj_entry["project_id"]:
-                person_id = str(assign.get("ResourceHCMPersonId") or "").strip()
-                res_name = str(assign.get("ResourceName") or "").strip()
-                assign_entry = {
-                    **proj_entry,
-                    "role": "Resource Assignment",
-                }
-                if person_id:
-                    _add_to_index(person_id, assign_entry)
-                if res_name:
-                    _add_to_index(res_name, assign_entry)
+        for assignment in assignments_by_project.get(proj_entry["project_id"], []):
+            person_id = str(assignment.get("ResourceHCMPersonId") or "").strip()
+            person_name = str(assignment.get("ResourceName") or "").strip()
+            _add_to_index(
+                person_id,
+                {**proj_entry, "role": "Resource Assignment"},
+                person_name,
+            )
 
-        mgr_id = str(proj.get("manager_id") or "").strip()
-        mgr_name = str(proj.get("manager") or "").strip()
-        mgr_entry = {
-            **proj_entry,
-            "role": "Project Manager",
-        }
-        if mgr_id:
-            _add_to_index(mgr_id, mgr_entry)
-        if mgr_name:
-            _add_to_index(mgr_name, mgr_entry)
+        _add_to_index(
+            str(proj.get("manager_id") or "").strip(),
+            {**proj_entry, "role": "Project Manager"},
+            str(proj.get("manager") or "").strip(),
+        )
 
+    for person_id, names in identity_names.items():
+        if len(names) > 1:
+            index.pop(person_id, None)
     return index
 
 
 def _do_load_catalogue() -> None:
+    correlation_id = uuid.uuid4().hex
     lock_path = _DB_PATH.with_suffix(".lock")
     try:
         if lock_path.exists():
@@ -183,7 +190,10 @@ def _do_load_catalogue() -> None:
         logger.warning("Catalogue load already in progress by another worker")
         return
     except Exception:
-        logger.exception("Failed to acquire loading lock")
+        logger.error(
+            "Failed to acquire catalogue load lock (correlation_id=%s)",
+            correlation_id,
+        )
         return
     conn = _get_db()
     try:
@@ -192,7 +202,10 @@ def _do_load_catalogue() -> None:
         )
         conn.commit()
     except Exception:
-        logger.exception("Failed to set loading state")
+        logger.error(
+            "Failed to set catalogue loading state (correlation_id=%s)",
+            correlation_id,
+        )
         try:
             os.unlink(lock_path)
         except Exception:
@@ -209,8 +222,12 @@ def _do_load_catalogue() -> None:
             timeout=httpx.Timeout(60.0, connect=15.0),
             headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
         )
-    except Exception as e:
-        logger.error("Cannot create Fusion API client: %s", e)
+    except Exception as exc:
+        logger.error(
+            "Cannot create Fusion API client (%s, correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
         try:
             os.unlink(lock_path)
         except Exception:
@@ -305,7 +322,9 @@ def _do_load_catalogue() -> None:
                 except Exception as exc:
                     details_complete = False
                     logger.error(
-                        "Project details fetch generated an exception: %s", exc
+                        "Project detail fetch failed (%s, correlation_id=%s)",
+                        type(exc).__name__,
+                        correlation_id,
                     )
                 if (i + 1) % 10 == 0:
                     logger.info(
@@ -332,7 +351,7 @@ def _do_load_catalogue() -> None:
         logger.info("Fetched %d resource assignments.", len(assignments))
         logger.info("Building project index...")
         person_index = _build_index(enriched, assignments_data=assignments)
-        _save_catalogue(conn, enriched, person_index)
+        _save_catalogue(conn, enriched, person_index, correlation_id=correlation_id)
 
         elapsed = time.time() - start
         logger.info(
@@ -342,9 +361,19 @@ def _do_load_catalogue() -> None:
             elapsed,
         )
     except _CatalogueFetchError as exc:
-        logger.error("Keeping existing Fusion catalogue: %s", exc)
-    except Exception:
-        logger.exception("Failed to load Fusion catalogue; keeping existing catalogue")
+        logger.error(
+            "Keeping existing Fusion catalogue after fetch failure "
+            "(error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to load Fusion catalogue; keeping existing catalogue "
+            "(error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
     finally:
         client.close()
         _set_loading_false(conn, lock_path)
@@ -368,7 +397,11 @@ def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
 
 
 def _save_catalogue(
-    conn: sqlite3.Connection, enriched: list[dict], person_index: dict[str, list[dict]]
+    conn: sqlite3.Connection,
+    enriched: list[dict],
+    person_index: dict[str, list[dict]],
+    *,
+    correlation_id: str | None = None,
 ) -> None:
     try:
         conn.execute("BEGIN IMMEDIATE TRANSACTION")
@@ -392,8 +425,12 @@ def _save_catalogue(
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loaded', 'true')"
         )
         conn.commit()
-    except Exception:
-        logger.exception("Failed to save catalogue to database")
+    except Exception as exc:
+        logger.error(
+            "Failed to save catalogue to database (error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id or uuid.uuid4().hex,
+        )
         try:
             conn.rollback()
         except Exception:
@@ -420,15 +457,36 @@ def get_project_by_id(project_id: str) -> dict | None:
 
 
 def _find_person_projects(person_id: str, full_name: str = "") -> list[dict]:
+    stable_id = str(person_id or "").strip().casefold()
+    if not stable_id:
+        return []
     conn = _get_db()
-    for key in [person_id.strip().lower(), full_name.strip().lower()]:
-        if not key:
-            continue
-        cur = conn.execute("SELECT projects FROM person_index WHERE name = ?", (key,))
-        row = cur.fetchone()
-        if row:
-            return json.loads(row[0])
-    return []
+    row = conn.execute(
+        "SELECT projects FROM person_index WHERE name = ?", (stable_id,)
+    ).fetchone()
+    if row is None:
+        return []
+    try:
+        projects = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(projects, list):
+        return []
+    if any(
+        not isinstance(project, dict)
+        or (
+            project.get("person_id") is not None
+            and str(project.get("person_id")).strip().casefold() != stable_id
+        )
+        for project in projects
+    ):
+        return []
+    if (
+        any("person_id" not in project for project in projects)
+        and not stable_id.isdigit()
+    ):
+        return []
+    return [project for project in projects if isinstance(project, dict)]
 
 
 def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
@@ -486,10 +544,13 @@ def is_catalogue_loaded() -> bool:
 def list_assignments_for_worker(
     employee_number: str, full_name: str = ""
 ) -> list[dict[str, Any]] | None:
+    stable_id = str(employee_number or "").strip()
+    if not stable_id:
+        return []
     if not is_catalogue_loaded():
         logger.warning("Catalogue not loaded")
         return None
-    assigned = _find_person_projects(employee_number, full_name)
+    assigned = _find_person_projects(stable_id)
     if not assigned:
         return []
     return _transform_assignments(assigned)
@@ -498,9 +559,7 @@ def list_assignments_for_worker(
 async def alist_assignments_for_worker(
     employee_number: str, full_name: str = ""
 ) -> list[dict[str, Any]] | None:
-    return await asyncio.to_thread(
-        list_assignments_for_worker, employee_number, full_name
-    )
+    return await asyncio.to_thread(list_assignments_for_worker, employee_number)
 
 
 def catalogue_age_seconds() -> float | None:

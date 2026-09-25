@@ -31,7 +31,7 @@ describe('MessageBubble', () => {
     const message: ChatMessage = {
       role: 'assistant',
       content: 'I will run a tool',
-      toolCalls: [{ name: 'myTool', state: 'running' }],
+      toolCalls: [{ name: 'myTool', status: 'running' }],
     };
     render(<MessageBubble message={message} />);
     expect(screen.getByText('myTool')).toBeInTheDocument();

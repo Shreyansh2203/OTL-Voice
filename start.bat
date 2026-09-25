@@ -2,84 +2,58 @@
 setlocal
 cd /d "%~dp0"
 
-echo Starting the Timesheet Assistant...
-
-REM Check if Docker is running
+where docker >nul 2>&1
+if errorlevel 1 (
+  echo error: Docker is required for the production stack 1>&2
+  exit /b 127
+)
 docker info >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Docker daemon is not running. Please start Docker Desktop and try again.
-    pause
-    exit /b 1
+if errorlevel 1 (
+  echo error: Docker daemon is not running 1>&2
+  exit /b 1
+)
+if not exist "%~dp0.env" (
+  echo error: .env is missing; create it from .env.example 1>&2
+  exit /b 2
 )
 
-if not exist ".env" (
-    echo [ERROR] .env file is missing. Please copy .env.example to .env and configure it.
-    pause
-    exit /b 1
-)
-
-REM Check if subcommands were provided
+set "COMPOSE_FILE=%~dp0deploy\docker-compose.yml"
 set "ACTION=%~1"
-if /I "%ACTION%"=="down"    goto :do_down
-if /I "%ACTION%"=="stop"    goto :do_stop
-if /I "%ACTION%"=="logs"    goto :do_logs
-if /I "%ACTION%"=="status"  goto :do_status
-if /I "%ACTION%"=="ps"      goto :do_status
-if /I "%ACTION%"=="shell"   goto :do_shell
+if not defined ACTION set "ACTION=up"
+if /I "%ACTION%"=="up" goto :up
+if /I "%ACTION%"=="down" goto :down
+if /I "%ACTION%"=="stop" goto :stop
+if /I "%ACTION%"=="logs" goto :logs
+if /I "%ACTION%"=="status" goto :status
+if /I "%ACTION%"=="ps" goto :status
+if /I "%ACTION%"=="shell" goto :shell
 
-cd deploy
-docker compose up -d --build
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to start the application via docker compose.
-    pause
-    exit /b 1
-)
+echo usage: %~nx0 {up^|down^|stop^|logs^|status^|ps^|shell} 1>&2
+exit /b 2
 
-echo.
-echo =======================================================
-echo Success! The application is running in the background.
-echo Waiting for the server to be fully ready...
-echo =======================================================
+:up
+docker compose -f "%COMPOSE_FILE%" up -d --build
+set "EXIT_CODE=%ERRORLEVEL%"
+if not "%EXIT_CODE%"=="0" exit /b %EXIT_CODE%
+echo Application started at http://localhost
+exit /b 0
 
-REM Wait a few seconds for services to bind
-ping 127.0.0.1 -n 6 >nul
+:down
+docker compose -f "%COMPOSE_FILE%" down
+exit /b %ERRORLEVEL%
 
-echo Opening your web browser to http://localhost ...
-start http://localhost
+:stop
+docker compose -f "%COMPOSE_FILE%" stop
+exit /b %ERRORLEVEL%
 
-echo.
-echo =======================================================
-echo Application is running at:
-echo   Web App:  http://localhost
-echo   API Docs: http://localhost/docs
-echo =======================================================
-echo.
-pause
-goto :eof
+:logs
+docker compose -f "%COMPOSE_FILE%" logs -f
+exit /b %ERRORLEVEL%
 
-:do_down
-cd deploy
-docker compose down
-goto :eof
+:status
+docker compose -f "%COMPOSE_FILE%" ps
+exit /b %ERRORLEVEL%
 
-:do_stop
-cd deploy
-docker compose stop
-goto :eof
-
-:do_logs
-cd deploy
-docker compose logs -f
-goto :eof
-
-:do_status
-cd deploy
-docker compose ps
-goto :eof
-
-:do_shell
-cd deploy
-docker compose exec app bash
-goto :eof
-
-endlocal
+:shell
+docker compose -f "%COMPOSE_FILE%" exec app sh
+exit /b %ERRORLEVEL%

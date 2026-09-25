@@ -1,15 +1,63 @@
 ---
 - name: Provision OTL-Voice Production Server
   hosts: all
-  become: yes
+  become: true
   vars:
     project_dir: /opt/otl-voice
-    image_name: ghcr.io/shreyansh2203/otl-voice:latest
+    image_name: "{{ otl_image | default('ghcr.io/shreyansh2203/otl-voice:1.0.0') }}"
+    app_uid: 10001
+    app_gid: 10001
+    nginx_cert_dir: /etc/nginx/certs
+
+  pre_tasks:
+    - name: Require a versioned or digest-pinned GHCR image
+      assert:
+        that:
+          - image_name is match('^ghcr\\.io/[^:@]+(:[^@]+)?(@sha256:[0-9a-f]{64})?$')
+          - "'latest' not in image_name"
+        fail_msg: "Set otl_image to a versioned GHCR tag or sha256 digest; mutable tags are not accepted."
+
+    - name: Check deployment environment file
+      stat:
+        path: "{{ project_dir }}/.env"
+      register: deployment_env
+
+    - name: Require deployment environment file
+      assert:
+        that:
+          - deployment_env.stat.exists
+        fail_msg: "Create {{ project_dir }}/.env with secrets injected by the secret manager before provisioning."
+
+    - name: Check TLS certificate and key
+      stat:
+        path: "{{ project_dir }}/certs/{{ item }}"
+      loop:
+        - fullchain.pem
+        - privkey.pem
+      register: tls_files
+
+    - name: Require TLS certificate and key
+      assert:
+        that:
+          - tls_files.results[0].stat.exists
+          - tls_files.results[1].stat.exists
+        fail_msg: "Provision {{ project_dir }}/certs/fullchain.pem and privkey.pem before starting the proxy."
+
+    - name: Check OTL readiness token
+      stat:
+        path: "{{ project_dir }}/secrets/readiness_token"
+      register: readiness_token
+
+    - name: Require OTL readiness token
+      assert:
+        that:
+          - readiness_token.stat.exists
+        fail_msg: "Provision a renewable session token at {{ project_dir }}/secrets/readiness_token."
 
   tasks:
     - name: Update apt cache
       apt:
-        update_cache: yes
+        update_cache: true
 
     - name: Install required packages
       apt:
@@ -19,21 +67,96 @@
           - python3-docker
         state: present
 
-    - name: Create project directory
+    - name: Create project directories
       file:
-        path: "{{ project_dir }}/nginx"
+        path: "{{ item.path }}"
         state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ project_dir }}"
+          owner: root
+          group: root
+          mode: "0750"
+        - path: "{{ project_dir }}/data"
+          owner: "{{ app_uid }}"
+          group: "{{ app_gid }}"
+          mode: "0750"
+        - path: "{{ project_dir }}/idempotency"
+          owner: "{{ app_uid }}"
+          group: "{{ app_gid }}"
+          mode: "0750"
+        - path: "{{ project_dir }}/certs"
+          owner: root
+          group: root
+          mode: "0700"
+        - path: "{{ project_dir }}/secrets"
+          owner: root
+          group: root
+          mode: "0700"
+        - path: "{{ nginx_cert_dir }}"
+          owner: root
+          group: root
+          mode: "0700"
 
-    - name: Copy Nginx configuration
+    - name: Install deployment environment permissions
+      file:
+        path: "{{ project_dir }}/.env"
+        state: file
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install OTL readiness token permissions
+      file:
+        path: "{{ project_dir }}/secrets/readiness_token"
+        state: file
+        owner: "{{ app_uid }}"
+        group: "{{ app_gid }}"
+        mode: "0400"
+
+    - name: Install deployment preflight helper
+      copy:
+        src: ../preflight.py
+        dest: "{{ project_dir }}/preflight.py"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Validate deployment secrets without logging values
+      command: >-
+        python3 {{ project_dir }}/preflight.py
+        --env-file {{ project_dir }}/.env
+        --mode production
+      changed_when: false
+      no_log: true
+
+    - name: Copy Nginx TLS configuration
       copy:
         src: ../nginx/otl.conf
         dest: /etc/nginx/sites-available/otl
+        owner: root
+        group: root
+        mode: "0644"
 
     - name: Use host-local application upstream
       replace:
         path: /etc/nginx/sites-available/otl
         regexp: 'server app:8000;'
         replace: 'server 127.0.0.1:8000;'
+
+    - name: Install TLS certificate and key
+      copy:
+        src: "{{ project_dir }}/certs/{{ item }}"
+        dest: "{{ nginx_cert_dir }}/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - fullchain.pem
+        - privkey.pem
 
     - name: Enable Nginx site
       file:
@@ -46,43 +169,60 @@
         path: /etc/nginx/sites-enabled/default
         state: absent
 
-    - name: Restart Nginx
-      service:
-        name: nginx
-        state: restarted
-        enabled: yes
-
-    - name: Pull latest Docker image
+    - name: Pull versioned OTL-Voice image
       docker_image:
         name: "{{ image_name }}"
         source: pull
-
-    - name: Create project data directory
-      file:
-        path: "{{ project_dir }}/data"
-        state: directory
-        owner: "10001"
-        mode: "0750"
-
-    - name: Check deployment environment file
-      stat:
-        path: "{{ project_dir }}/.env"
-      register: deployment_env
-
-    - name: Require deployment environment file
-      assert:
-        that:
-          - deployment_env.stat.exists
-        fail_msg: "Create {{ project_dir }}/.env before provisioning."
+        force_source: true
 
     - name: Run OTL-Voice container
       docker_container:
         name: otl_app
         image: "{{ image_name }}"
         state: started
-        restart_policy: always
-        ports:
+        recreate: true
+        restart_policy: unless-stopped
+        user: "10001:10001"
+        pull: true
+        published_ports:
           - "127.0.0.1:8000:8000"
         volumes:
           - "{{ project_dir }}/data:/app/data"
-        env_file: "{{ project_dir }}/.env"
+          - "{{ project_dir }}/idempotency:/app/data/idempotency"
+          - "{{ project_dir }}/secrets/readiness_token:/run/secrets/readiness_token:ro"
+        env_file:
+          - "{{ project_dir }}/.env"
+        environment:
+          SESSION_COOKIE_SECURE: "true"
+          SESSION_COOKIE_SAMESITE: "lax"
+          DEV_MODE: "false"
+          TEST_MODE: "false"
+          CSP_DEV_MODE: "false"
+          REDIS_REQUIRED: "true"
+          ALLOW_IN_MEMORY_SESSIONS: "false"
+          TRUSTED_PROXY_CIDRS: "127.0.0.1/32"
+          IDEMPOTENCY_DB_PATH: /app/data/idempotency/idempotency.sqlite3
+          READINESS_BASE_URL: http://127.0.0.1:8000
+          READINESS_URL: http://127.0.0.1:8000/api/health
+          READINESS_REQUIRE_OTL: "true"
+          READINESS_OTL_URL: http://127.0.0.1:8000/api/health/otl
+          READINESS_AUTH_TOKEN_FILE: /run/secrets/readiness_token
+        read_only: true
+        tmpfs:
+          - /tmp:rw,noexec,nosuid,size=64m
+        cap_drop:
+          - ALL
+        security_opt:
+          - no-new-privileges:true
+        pids_limit: 256
+      no_log: true
+
+    - name: Validate Nginx configuration
+      command: nginx -t
+      changed_when: false
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: true

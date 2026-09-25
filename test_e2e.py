@@ -1,47 +1,36 @@
-import os
+"""Run the frontend Playwright package script from any working directory."""
 
-os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret-key-32-bytes-minimum")
-os.environ["TEST_MODE"] = "true"
-os.environ["SESSION_COOKIE_SECURE"] = "false"
+from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
+from collections.abc import Sequence
+from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from backend.main import app
+ROOT = Path(__file__).resolve().parent
 
 
-def run_test():
-    print("--- STARTING END-TO-END TEST ---\n")
-    client = TestClient(app)
+def main(argv: Sequence[str] | None = None) -> int:
+    pnpm = shutil.which("pnpm")
+    if pnpm is None:
+        print("error: 'pnpm' is required to run E2E tests", file=sys.stderr)
+        return 127
+    frontend = ROOT / "frontend"
+    if not (frontend / "package.json").is_file():
+        print("error: frontend/package.json is missing", file=sys.stderr)
+        return 2
 
-    print("1. Authenticating as Person 10021 via POST /api/auth/login")
-    res_login = client.post(
-        "/api/auth/login",
-        json={"personNumber": "10021", "password": os.getenv("AUTH_PASSWORD", "test-password")},
-    )
-    
-    if res_login.status_code != 200:
-        print(f"FAIL: Login returned {res_login.status_code} - {res_login.text}")
-        sys.exit(1)
-    
-    print("SUCCESS: Logged in securely and received session cookies.\n")
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    command = [pnpm, "--dir", str(frontend), "run", "test:e2e", *arguments]
+    print("==> pnpm --dir frontend run test:e2e", flush=True)
+    try:
+        result = subprocess.run(command, cwd=ROOT, check=False)
+    except OSError as exc:
+        print(f"error: could not start {pnpm!r}: {exc}", file=sys.stderr)
+        return 127
+    return result.returncode if result.returncode >= 0 else 128 - result.returncode
 
-    print("2. Testing AI Chat Connection via POST /api/chat")
-    res_chat = client.post("/api/chat", json={"messages": [{"role": "user", "content": "Hello, are you there?"}]})
-    
-    if res_chat.status_code != 200:
-        print(f"FAIL: Chat returned {res_chat.status_code} - {res_chat.text}")
-        sys.exit(1)
-
-    print("SUCCESS: Chat connected. Streaming output from Oracle Cloud:\n")
-    print("===================================================")
-    for chunk in res_chat.iter_bytes():
-        if chunk:
-            print(chunk.decode('utf-8'), end="", flush=True)
-    print("\n===================================================")
-    
-    print("\n--- TEST COMPLETE ---")
 
 if __name__ == "__main__":
-    run_test()
+    raise SystemExit(main())

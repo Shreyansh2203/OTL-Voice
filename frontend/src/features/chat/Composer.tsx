@@ -16,9 +16,12 @@ export interface ComposerProps {
   ) => void;
   onStopMic?: () => void;
   errorMsg?: string | null;
+  notice?: string | null;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
   handsFree?: boolean;
   onRegisterTrigger?: (trigger: () => void) => void;
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
 }
 
 export default function Composer({
@@ -29,12 +32,16 @@ export default function Composer({
   onStartMic,
   onStopMic,
   errorMsg = null,
+  notice = null,
   voiceState = "idle",
   handsFree = false,
   onRegisterTrigger,
+  draft,
+  onDraftChange,
 }: ComposerProps) {
-  const [text, setText] = useState("");
-  const textRef = useRef("");
+  const [localText, setLocalText] = useState("");
+  const text = draft ?? localText;
+  const textRef = useRef(text);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
@@ -50,7 +57,8 @@ export default function Composer({
 
   const updateText = (value: string) => {
     textRef.current = value;
-    setText(value);
+    setLocalText(value);
+    onDraftChange?.(value);
   };
 
   useEffect(() => {
@@ -75,8 +83,9 @@ export default function Composer({
   }, []);
 
   useEffect(() => {
-    if (!handsFree || errorMsg || !listening) clearSilenceTimer();
-  }, [handsFree, errorMsg, listening]);
+    const blockingError = errorMsg && !notice;
+    if (!handsFree || blockingError || !listening) clearSilenceTimer();
+  }, [errorMsg, handsFree, listening, notice]);
 
   const finishMic = () => {
     micSessionRef.current += 1;
@@ -234,6 +243,9 @@ export default function Composer({
           <ShinyText text={statusLabel} disabled={false} speed={2} className="status-label-shiny" />
         </div>
       )}
+      <label className="composer-label" htmlFor="chat-message">
+        Message
+      </label>
       <div
         className={`prompt-bar-container ${listening ? "listening" : ""} ${
           voiceState === "speaking" ? "speaking" : ""
@@ -252,6 +264,7 @@ export default function Composer({
             </button>
           )}
           <textarea
+            id="chat-message"
             value={text}
             onChange={(e) => {
               if (listening || micActiveRef.current) finishMic();

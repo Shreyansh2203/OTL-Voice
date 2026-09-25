@@ -1,59 +1,80 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LoginView from './LoginView';
 import * as api from '../../api/client';
-vi.mock('../../api/client', () => ({
-  login: vi.fn(),
-}));
+
+vi.mock('../../api/client', () => ({ login: vi.fn() }));
+
 describe('LoginView', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.mocked(api.login).mockReset();
   });
-  it('renders correctly', () => {
-    render(<LoginView onLogin={vi.fn()} />);
+
+  it('renders a local, asset-free login experience', () => {
+    const { container } = render(<LoginView onLogin={vi.fn()} />);
+
     expect(
-      screen.getByText('Sign in with your employee credentials.')
+      screen.getByRole('heading', { name: 'Welcome back' })
     ).toBeInTheDocument();
+    expect(screen.getByLabelText('Person number')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(container.innerHTML).not.toMatch(/https?:\/\//i);
   });
-  it('submits the form successfully', async () => {
+
+  it('submits the visible employee credentials', async () => {
     const onLogin = vi.fn();
-    const mockIdentity = {
+    const identity = {
       username: '7',
       fullName: 'Mala Kumari',
       employeeId: '7',
     };
-    vi.mocked(api.login).mockResolvedValue(mockIdentity);
+    vi.mocked(api.login).mockResolvedValue(identity);
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
-    fireEvent.change(input, { target: { value: '7' } });
-    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
-    fireEvent.submit(form);
-    expect(api.login).toHaveBeenCalledWith('7', '');
-    await waitFor(() => {
-      expect(onLogin).toHaveBeenCalledWith(mockIdentity);
+
+    fireEvent.change(screen.getByLabelText('Person number'), {
+      target: { value: '7' },
     });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Sign in/i }));
+
+    expect(api.login).toHaveBeenCalledWith('7', 'secret');
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith(identity));
   });
-  it('displays error when login fails', async () => {
+
+  it('shows authentication errors without completing login', async () => {
     const onLogin = vi.fn();
     vi.mocked(api.login).mockRejectedValue(new Error('Invalid credentials'));
     render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
-    fireEvent.change(input, { target: { value: 'wrong' } });
-    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
-    fireEvent.submit(form);
-    const errorElement = await screen.findByRole('alert');
-    expect(errorElement).toHaveTextContent('Invalid credentials');
+
+    fireEvent.change(screen.getByLabelText('Person number'), {
+      target: { value: '7' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'wrong' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Sign in/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Invalid credentials'
+    );
     expect(onLogin).not.toHaveBeenCalled();
   });
-  it('displays generic error for unknown errors', async () => {
-    const onLogin = vi.fn();
-    vi.mocked(api.login).mockRejectedValue('some weird error');
-    render(<LoginView onLogin={onLogin} />);
-    const input = screen.getByPlaceholderText('Person Number (e.g. 7)');
-    fireEvent.change(input, { target: { value: 'wrong' } });
-    const form = screen.getByRole('button', { name: 'Sign In' }).closest('form')!;
-    fireEvent.submit(form);
-    const errorElement = await screen.findByRole('alert');
-    expect(errorElement).toHaveTextContent('Sign-in failed.');
+
+  it('does not expose unexpected error details', async () => {
+    vi.mocked(api.login).mockRejectedValue('internal detail');
+    render(<LoginView onLogin={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Person number'), {
+      target: { value: '7' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Sign in/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed.');
   });
 });

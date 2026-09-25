@@ -156,28 +156,16 @@ def test_logout_clears_cookies(auth_client):
     assert auth_client.get("/api/auth/session").status_code == 401
 
 
-def test_logout_bearer_token_revocation(client):
+def test_bearer_token_is_rejected(client):
     from backend.core import auth
     from backend.models import Employee
 
     emp = Employee(employee_id="999", username="revokeme", full_name="Revoke Me")
     token = auth.create_session(emp)
+    headers = {"Authorization": f"Bearer {token}"}
 
-    # Verify token works via Bearer header
-    res = client.get("/api/auth/session", headers={"Authorization": f"Bearer {token}"})
-    assert res.status_code == 200
-
-    # Logout providing Bearer header
-    res_logout = client.post(
-        "/api/auth/logout", headers={"Authorization": f"Bearer {token}"}
-    )
-    assert res_logout.status_code == 200
-
-    # Now token should be revoked and reject access
-    res_after = client.get(
-        "/api/auth/session", headers={"Authorization": f"Bearer {token}"}
-    )
-    assert res_after.status_code == 401
+    assert client.get("/api/auth/session", headers=headers).status_code == 401
+    assert client.post("/api/auth/logout", headers=headers).status_code == 200
 
 
 def test_admin_fail_closed_when_key_unset(auth_client):

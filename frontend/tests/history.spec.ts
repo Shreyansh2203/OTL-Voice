@@ -1,91 +1,97 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-test.describe('Timecard History UI', () => {
-  test.beforeEach(async ({ page }) => {
-    // Mock authentication session
-    await page.route('**/api/auth/session', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          username: 'E100', employeeId: 'E100',
-          fullName: 'Playwright Tester',
-          authenticated: true
-        })
-      });
-    });
-
-    // Mock the backend timecards endpoint to return fake history data
-    await page.route('**/api/otl/timecards*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          items: [
-            {
-              timeRecordEventRequestId: "1001",
-              timeRecordEvent: [
-                {
-                  startTime: "2025-01-14T09:00:00.000Z",
-                  stopTime: "2025-01-14T17:00:00.000Z",
-                  measure: 8,
-                  eventStatus: "SUBMITTED",
-                  timeRecordEventAttribute: [
-                    { attributeName: "Comment", attributeValue: "Project: Mock Architecture | Task: Design" }
-                  ]
-                }
-              ]
-            },
-            {
-              timeRecordEventRequestId: "1002",
-              timeRecordEvent: [
-                {
-                  startTime: "2025-01-15T10:00:00.000Z",
-                  stopTime: "2025-01-15T15:00:00.000Z",
-                  measure: 5,
-                  eventStatus: "APPROVED",
-                  timeRecordEventAttribute: [
-                    { attributeName: "Comment", attributeValue: "Project: Mock Implementation" }
-                  ]
-                }
-              ]
-            }
-          ]
-        })
-      });
-    });
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('otl_voice_on', 'false');
   });
+  await page.route(
+    (url) => url.pathname.startsWith('/api/'),
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/auth/session') {
+        await route.fulfill({
+          json: {
+            username: '7',
+            employeeId: '7',
+            fullName: 'Playwright Tester',
+          },
+        });
+        return;
+      }
+      if (path === '/api/health' || path === '/api/health/otl') {
+        await route.fulfill({ json: { ok: true, status: 'connected' } });
+        return;
+      }
+      if (path === '/api/chat') {
+        await route.fulfill({
+          contentType: 'text/event-stream',
+          body: 'data: {"done":true}\n\n',
+        });
+        return;
+      }
+      if (path === '/api/otl/timecards') {
+        await route.fulfill({
+          json: {
+            items: [
+              {
+                timeRecordEventRequestId: '1001',
+                timeRecordEvent: [
+                  {
+                    startTime: '2025-01-14T09:00:00.000Z',
+                    stopTime: '2025-01-14T17:00:00.000Z',
+                    measure: 8,
+                    eventStatus: 'SUBMITTED',
+                    timeRecordEventAttribute: [
+                      {
+                        attributeName: 'Comment',
+                        attributeValue:
+                          'Project: Mock Architecture | Task: Design',
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                timeRecordEventRequestId: '1002',
+                timeRecordEvent: [
+                  {
+                    startTime: '2025-01-15T10:00:00.000Z',
+                    stopTime: '2025-01-15T15:00:00.000Z',
+                    measure: 5,
+                    eventStatus: 'APPROVED',
+                    timeRecordEventAttribute: [
+                      {
+                        attributeName: 'Comment',
+                        attributeValue: 'Project: Mock Implementation',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        });
+        return;
+      }
+      if (path === '/api/tts') {
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
+      await route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
+    }
+  );
+});
 
-  test('should display historical timecards correctly', async ({ page }) => {
-    // Stub the chat & TTS endpoints so the initial kickoff resolves quickly
-    await page.route('**/api/chat', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: 'data: {"done":true}\n\n',
-      });
-    });
-    await page.route('**/api/tts', async (route) => {
-      await route.fulfill({ status: 204, body: '' });
-    });
+test('renders submitted and approved history with parsed details', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Navigate to History' }).click();
 
-    await page.goto('/');
-
-    // Wait for the initial chat stream to settle before interacting with tabs
-    await page.waitForLoadState('networkidle');
-
-    // Navigate to History tab — use force click to handle transient detach
-    const historyTab = page.locator('button', { hasText: 'History' });
-    await historyTab.waitFor({ state: 'visible' });
-    await historyTab.click();
-
-    // Verify that the table rows are rendered
-    await expect(page.getByText('Mock Architecture')).toBeVisible();
-    await expect(page.getByText('8', { exact: true })).toBeVisible();
-    await expect(page.getByText('SUBMITTED', { exact: false }).first()).toBeVisible();
-
-    await expect(page.getByText('Mock Implementation')).toBeVisible();
-    await expect(page.getByText('5', { exact: true })).toBeVisible();
-    await expect(page.getByText('APPROVED', { exact: false }).first()).toBeVisible();
-  });
+  await expect(page.getByText('Mock Architecture')).toBeVisible();
+  await expect(page.getByText('8', { exact: true })).toBeVisible();
+  await expect(page.getByText(/SUBMITTED/i).first()).toBeVisible();
+  await expect(page.getByText('Mock Implementation')).toBeVisible();
+  await expect(page.getByText('5', { exact: true })).toBeVisible();
+  await expect(page.getByText(/APPROVED/i).first()).toBeVisible();
 });

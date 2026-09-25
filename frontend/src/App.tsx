@@ -8,7 +8,6 @@ import {
 import * as api from './api/client';
 import { LoginView } from './features/auth';
 import { ChatView } from './features/chat';
-import NeuralTunnel from './components/ui/NeuralTunnel';
 import ErrorBoundary from './components/ErrorBoundary';
 import type { Identity } from './types';
 
@@ -20,23 +19,24 @@ function AppContent() {
     retry: false,
     refetchOnWindowFocus: false,
   });
+  const [sessionRevoked, setSessionRevoked] = useState(false);
   const handleLogin = useCallback(
     (user: Identity) => {
+      setSessionRevoked(false);
       qc.setQueryData(['session'], user);
     },
     [qc]
   );
   const handleLogout = useCallback(async () => {
-    try {
-      await api.logout();
-      qc.setQueryData(['session'], null);
-    } catch (err) {
-      void err;
-    }
+    await api.logout();
+    qc.clear();
+    qc.setQueryData(['session'], null);
+    setSessionRevoked(true);
   }, [qc]);
   const handleSessionExpired = useCallback(() => {
-    localStorage.removeItem('otl_session');
+    qc.clear();
     qc.setQueryData(['session'], null);
+    setSessionRevoked(true);
   }, [qc]);
   useEffect(() => {
     if (!identity) return;
@@ -51,6 +51,9 @@ function AppContent() {
     }, baseInterval + jitter);
     return () => clearInterval(interval);
   }, [identity, handleSessionExpired]);
+  if (sessionRevoked) {
+    return <LoginView onLogin={handleLogin} />;
+  }
   if (isLoading) {
     return (
       <div className="centered">
@@ -76,6 +79,7 @@ function AppContent() {
   return (
     <ChatView
       username={identity.fullName}
+      employeeNumber={identity.employeeId}
       onLogout={handleLogout}
       onSessionExpired={handleSessionExpired}
     />
@@ -96,11 +100,16 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: -1, backgroundColor: '#050014' }}>
-          <ErrorBoundary fallback={<div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at center, #1b0a33 0%, #050014 70%)' }} />}>
-            <NeuralTunnel speed={1.2} />
-          </ErrorBoundary>
-        </div>
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: -1,
+            background:
+              'radial-gradient(ellipse at top, #1b0a33 0%, #0b0618 55%, #050014 100%)',
+          }}
+        />
         <AppContent />
       </QueryClientProvider>
     </ErrorBoundary>

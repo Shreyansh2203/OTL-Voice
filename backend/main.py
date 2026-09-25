@@ -5,23 +5,185 @@ import inspect
 import logging
 import mimetypes
 import os
+import re
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
+import sentry_sdk
 from dotenv import load_dotenv
 
 load_dotenv()
 
-import sentry_sdk
 
-if os.getenv("SENTRY_DSN"):
+_SENSITIVE_EVENT_PATHS = (
+    "/api/auth/",
+    "/api/chat",
+    "/api/tts",
+    "/api/stt/",
+    "/api/otl/",
+)
+_SENSITIVE_KEYS = {
+    "authorization",
+    "cookie",
+    "cookies",
+    "setcookie",
+    "password",
+    "passwd",
+    "secret",
+    "credential",
+    "credentials",
+    "apikey",
+    "privatekey",
+    "token",
+    "jwt",
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "personnumber",
+    "employeenumber",
+    "phonenumber",
+    "employeeid",
+    "userid",
+    "username",
+    "email",
+    "ipaddress",
+    "body",
+    "data",
+    "headers",
+    "query",
+    "querystring",
+    "chat",
+    "messages",
+    "content",
+    "transcript",
+    "prompt",
+    "text",
+    "audio",
+}
+_REDACTIONS = (
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)basic\s+[A-Za-z0-9+/=]+"),
+    re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    re.compile(
+        r"(?i)(password|passwd|token|jwt|cookie|authorization)\s*[:=]\s*[^\s,;]+"
+    ),
+    re.compile(r"(?<!\d)\d{6,}(?!\d)"),
+)
+
+
+def _redact_text(value: str) -> str:
+    redacted = value
+    for pattern in _REDACTIONS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def _normalized_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _scrub_sentry_value(value: Any, key: str | None = None) -> Any:
+    if key is not None and _normalized_key(key) in _SENSITIVE_KEYS:
+        return "[FILTERED]"
+    if isinstance(value, dict):
+        return {
+            str(child_key): _scrub_sentry_value(child_value, str(child_key))
+            for child_key, child_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_scrub_sentry_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_sentry_value(item) for item in value)
+    if isinstance(value, str):
+        return _redact_text(value)
+    return value
+
+
+def _event_path(event: dict[str, Any]) -> str:
+    request = event.get("request")
+    if isinstance(request, dict) and isinstance(request.get("url"), str):
+        return urlsplit(request["url"]).path
+    transaction = event.get("transaction")
+    return transaction if isinstance(transaction, str) else ""
+
+
+def _sentry_scrub_event(event: Any, hint: Any) -> Any | None:
+    if not isinstance(event, dict):
+        return None
+    if any(path in _event_path(event) for path in _SENSITIVE_EVENT_PATHS):
+        return None
+    for field in (
+        "attachments",
+        "breadcrumbs",
+        "contexts",
+        "extra",
+        "logs",
+        "modules",
+        "user",
+    ):
+        event.pop(field, None)
+    event.pop("tags", None)
+    request = event.get("request")
+    if isinstance(request, dict):
+        for field in ("cookies", "data", "env", "headers", "query_string"):
+            request.pop(field, None)
+        raw_url = request.get("url")
+        if isinstance(raw_url, str):
+            parsed = urlsplit(raw_url)
+            request["url"] = urlunsplit(
+                (parsed.scheme, parsed.netloc, _redact_text(parsed.path), "", "")
+            )
+    stacktrace = event.get("stacktrace")
+    frames = stacktrace.get("frames", []) if isinstance(stacktrace, dict) else []
+    for frame in frames:
+        if isinstance(frame, dict):
+            frame.pop("vars", None)
+    scrubbed = _scrub_sentry_value(event)
+    return scrubbed if isinstance(scrubbed, dict) else None
+
+
+def _sentry_scrub_transaction(event: Any, hint: Any) -> Any | None:
+    del hint
+    if not isinstance(event, dict):
+        return None
+    if any(path in _event_path(event) for path in _SENSITIVE_EVENT_PATHS):
+        return None
+    return _scrub_sentry_value(event)
+
+
+def _sentry_scrub_breadcrumb(crumb: Any, hint: Any) -> None:
+    del crumb, hint
+    return None
+
+
+def _sentry_sample_rate(name: str, default: float, maximum: float) -> float:
+    try:
+        return max(0.0, min(maximum, float(os.getenv(name, str(default)))))
+    except ValueError:
+        return default
+
+
+def _initialize_sentry() -> None:
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
     sentry_sdk.init(
-        dsn=os.getenv("SENTRY_DSN"),
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
+        dsn=dsn,
+        send_default_pii=False,
+        include_local_variables=False,
+        traces_sample_rate=_sentry_sample_rate("SENTRY_TRACES_SAMPLE_RATE", 0.05, 0.1),
+        profiles_sample_rate=0.0,
+        before_send=_sentry_scrub_event,
+        before_send_transaction=_sentry_scrub_transaction,
+        before_breadcrumb=_sentry_scrub_breadcrumb,
     )
+
+
+_initialize_sentry()
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,12 +199,14 @@ from .api.v1.timecards import (
     _strict_assignment,
 )
 from .core import auth
-from .core.config import cors_origins
+from .core.config import cors_origins, is_test_mode
 
 _cors_origins = cors_origins
 from .core.limiter import (
+    RateLimiterUnavailable,
     auth_rate_limiter,
     rate_limiter,
+    resolve_client_ip,
     ws_tracker,
 )
 from .services import (
@@ -142,14 +306,14 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", CSRF_HEADER_NAME],
+    allow_headers=["Content-Type", CSRF_HEADER_NAME],
     expose_headers=["X-CSRF-Token"],
 )
 
 
 @app.middleware("http")
 async def csrf_protection(request: Request, call_next):
-    if os.getenv("TEST_MODE", "false").strip().lower() == "true":
+    if is_test_mode():
         return await call_next(request)
     if request.method in ("GET", "HEAD", "OPTIONS") or request.url.path in (
         "/api/health",
@@ -159,26 +323,23 @@ async def csrf_protection(request: Request, call_next):
         csrf_token = request.cookies.get(CSRF_COOKIE_NAME)
         if not csrf_token:
             csrf_token = _generate_csrf_token()
-            response.set_cookie(
-                key=CSRF_COOKIE_NAME,
-                value=csrf_token,
-                httponly=False,
-                secure=auth.cookie_secure(),
-                samesite="lax",
-                max_age=int(os.getenv("SESSION_TTL_SECONDS", str(8 * 60 * 60))),
-                path="/",
-            )
+            auth.set_csrf_cookie(response, csrf_token, CSRF_COOKIE_NAME)
         response.headers["X-CSRF-Token"] = csrf_token
         return response
+    if request.headers.get("Authorization"):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Bearer authentication is not supported."},
+        )
     if request.headers.get("upgrade", "").lower() == "websocket":
-        return await call_next(request)
-    if request.headers.get("Authorization", "").startswith("Bearer "):
         return await call_next(request)
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
     header_token = request.headers.get(CSRF_HEADER_NAME)
     if (
         not cookie_token
         or not header_token
+        or len(cookie_token) > 256
+        or len(header_token) > 256
         or not secrets.compare_digest(cookie_token, header_token)
     ):
         return JSONResponse(
@@ -234,49 +395,32 @@ async def add_security_headers(request: Request, call_next):
 
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
-    if os.getenv("TEST_MODE", "false").strip().lower() == "true":
+    if is_test_mode():
         return await call_next(request)
     if request.url.path in ("/api/health", "/api/health/otl"):
         return await call_next(request)
 
-    client_ip = request.client.host if request.client else "unknown"
-    trusted_proxy_ips = [
-        ip.strip()
-        for ip in os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",")
-        if ip.strip()
-    ]
-    client_host = request.client.host if request.client else ""
-    trust_proxy = "*" in trusted_proxy_ips or client_host in trusted_proxy_ips
-
-    if trust_proxy:
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            ips = [ip.strip() for ip in forwarded_for.split(",")]
-            for ip in reversed(ips):
-                if ip not in trusted_proxy_ips and ip != "*":
-                    client_ip = ip
-                    break
-        elif real_ip := request.headers.get("X-Real-IP"):
-            client_ip = real_ip.strip()
-        elif forwarded := request.headers.get("Forwarded"):
-            for part in forwarded.split(";"):
-                part = part.strip()
-                if part.startswith("for="):
-                    client_ip = part[4:].strip('"')
-                    break
-
-    if request.url.path.startswith("/api/auth/"):
-        if not await auth_rate_limiter.is_allowed(client_ip):
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests. Please try again later."},
-            )
-    else:
-        if not await rate_limiter.is_allowed(client_ip):
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests. Please try again later."},
-            )
+    client_ip = resolve_client_ip(
+        request.client.host if request.client else None,
+        request.headers.get("X-Forwarded-For"),
+        request.headers.get("X-Real-IP"),
+    )
+    limiter = (
+        auth_rate_limiter if request.url.path.startswith("/api/auth/") else rate_limiter
+    )
+    try:
+        allowed = await limiter.is_allowed(client_ip)
+    except RateLimiterUnavailable:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Rate limiting is temporarily unavailable."},
+            headers={"Retry-After": "1"},
+        )
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Please try again later."},
+        )
     return await call_next(request)
 
 

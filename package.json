@@ -1,12 +1,15 @@
 {
-  "name": "otl-voice-root",
+  "name": "otl-timesheet-assistant",
   "version": "1.0.0",
   "private": true,
+  "description": "Developer commands for the OCI-backed Oracle Time and Labor assistant.",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
-    "dev:backend": "set \"UV_PROJECT_ENVIRONMENT=.venv2\" && uv run uvicorn backend.main:app --reload --reload-include \".env\"",
-    "dev:frontend": "cd frontend && pnpm run dev",
-    "dev": "uv run python dev_runner.py"
+    "dev": "uv run --frozen python dev_runner.py",
+    "test": "uv run --frozen python test_all.py",
+    "test:backend": "uv run --frozen pytest --cov=backend --cov-report=term-missing",
+    "test:frontend": "pnpm --dir frontend run test:coverage",
+    "test:e2e": "uv run --frozen python test_e2e.py"
   },
   "dependencies": {}
 }

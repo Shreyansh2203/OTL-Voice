@@ -329,7 +329,7 @@ describe('useSpeechInput with Web Speech API', () => {
       })
     );
     expect(onFinal).toHaveBeenLastCalledWith('4 hours on Alpha');
-    expect(result.current.errorMsg).toBeNull();
+    expect(result.current.errorMsg).toMatch(/Browser speech is active after your consent/i);
   });
 
   it.each([
@@ -349,7 +349,7 @@ describe('useSpeechInput with Web Speech API', () => {
       })
     );
     expect(onFinal).toHaveBeenCalledWith(text);
-    expect(result.current.errorMsg).toBeNull();
+    expect(result.current.errorMsg).toMatch(/Browser speech is active after your consent/i);
   });
 });
 
