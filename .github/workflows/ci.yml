@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload backend coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: |
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload frontend reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-reports
           path: |
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload container logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-logs
           path: otl-container.log
@@ -295,7 +295,7 @@ jobs:
 
       - name: Upload Playwright reports and logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-matrix-${{ matrix.browser || 'all' }}
           path: |
