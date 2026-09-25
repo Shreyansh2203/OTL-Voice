@@ -11,7 +11,7 @@ COPY frontend/ ./frontend/
 RUN pnpm --filter otl-timesheet-pwa exec tsc -b tsconfig.app.json tsconfig.node.json \
     && pnpm --filter otl-timesheet-pwa exec vite build
 
-FROM python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+FROM python:3.14.7-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
