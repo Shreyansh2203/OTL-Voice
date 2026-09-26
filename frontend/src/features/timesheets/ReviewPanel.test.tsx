@@ -51,7 +51,9 @@ describe('ReviewPanel', () => {
   });
 
   it('renders every editable response field and the daily total', () => {
-    render(<ReviewPanel entries={[makeEntry()]} manual onSessionExpired={vi.fn()} />);
+    render(
+      <ReviewPanel entries={[makeEntry()]} manual onSessionExpired={vi.fn()} />
+    );
 
     expect(screen.getByText('Review Timesheet')).toBeInTheDocument();
     expect(screen.getByText(/1 entry · 2\.5h total/)).toBeInTheDocument();
@@ -71,7 +73,9 @@ describe('ReviewPanel', () => {
       'Payroll time type',
       'Expenditure type',
       'Currency code',
-    ].forEach((label) => expect(screen.getByLabelText(label)).toBeInTheDocument());
+    ].forEach((label) =>
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    );
     expect(screen.getByLabelText('Hours')).toHaveAttribute('max', '24');
     expect(screen.getByLabelText('Hours')).toHaveAttribute('step', '0.25');
   });
@@ -98,7 +102,9 @@ describe('ReviewPanel', () => {
     fireEvent.change(screen.getByLabelText('Task details'), {
       target: { value: 'Corrected task' },
     });
-    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '1.25' } });
+    fireEvent.change(screen.getByLabelText('Hours'), {
+      target: { value: '1.25' },
+    });
     fireEvent.change(screen.getByLabelText('Date'), {
       target: { value: '2026-09-26' },
     });
@@ -155,10 +161,14 @@ describe('ReviewPanel', () => {
       screen.getByRole('link', { name: /real date in YYYY-MM-DD format/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /quarter, half, or whole-hour increments/i })
+      screen.getByRole('link', {
+        name: /quarter, half, or whole-hour increments/i,
+      })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Task details must be 80 characters or fewer/i })
+      screen.getByRole('link', {
+        name: /Task details must be 80 characters or fewer/i,
+      })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', {
@@ -250,7 +260,9 @@ describe('ReviewPanel', () => {
         succeeded: 1,
         failed: 0,
       });
-    render(<ReviewPanel entries={[first, second]} onSessionExpired={vi.fn()} />);
+    render(
+      <ReviewPanel entries={[first, second]} onSessionExpired={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
     expect(await screen.findByText('Not Fully Confirmed')).toBeInTheDocument();
@@ -273,7 +285,12 @@ describe('ReviewPanel', () => {
     vi.mocked(api.submitTimecard).mockRejectedValue(
       new api.ApiError(401, 'Session expired')
     );
-    render(<ReviewPanel entries={[makeEntry()]} onSessionExpired={onSessionExpired} />);
+    render(
+      <ReviewPanel
+        entries={[makeEntry()]}
+        onSessionExpired={onSessionExpired}
+      />
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
 
@@ -283,7 +300,10 @@ describe('ReviewPanel', () => {
   it('adds and removes draft entries without losing existing values', () => {
     const onSessionExpired = vi.fn();
     const { rerender } = render(
-      <ReviewPanel entries={[makeEntry()]} onSessionExpired={onSessionExpired} />
+      <ReviewPanel
+        entries={[makeEntry()]}
+        onSessionExpired={onSessionExpired}
+      />
     );
     expect(screen.getByLabelText('Hours')).toHaveValue(2.5);
 
@@ -296,7 +316,10 @@ describe('ReviewPanel', () => {
     expect(screen.getByLabelText('Hours')).toHaveValue(2.5);
 
     rerender(
-      <ReviewPanel entries={[makeEntry({ hours: 3.75 })]} onSessionExpired={onSessionExpired} />
+      <ReviewPanel
+        entries={[makeEntry({ hours: 3.75 })]}
+        onSessionExpired={onSessionExpired}
+      />
     );
     expect(screen.getByLabelText('Hours')).toHaveValue(3.75);
   });

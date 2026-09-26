@@ -169,15 +169,25 @@ describe('Composer', () => {
     const send = vi.fn();
     const stop = vi.fn();
     // Test with handsFree=false so it does NOT auto-submit on silence even if triggered manually
-    render(<Composer disabled={false} supported handsFree={false} onSend={send} onStopMic={stop} 
-      onStartMic={(onFinal) => { final = onFinal; }} />);
-      
+    render(
+      <Composer
+        disabled={false}
+        supported
+        handsFree={false}
+        onSend={send}
+        onStopMic={stop}
+        onStartMic={(onFinal) => {
+          final = onFinal;
+        }}
+      />
+    );
+
     fireEvent.click(screen.getByTitle('Speak'));
     expect(final).toBeDefined();
-    
+
     act(() => final('Hello world.'));
     act(() => vi.advanceTimersByTime(1000));
-    
+
     expect(screen.getByRole('textbox')).toHaveValue('Hello world.');
     expect(send).not.toHaveBeenCalled();
   });
@@ -186,16 +196,27 @@ describe('Composer', () => {
     let final: any;
     const send = vi.fn();
     const stop = vi.fn();
-    render(<Composer disabled={false} supported onSend={send} onStopMic={stop}
-      onStartMic={(onFinal) => { final = onFinal; }} />);
-      
+    render(
+      <Composer
+        disabled={false}
+        supported
+        onSend={send}
+        onStopMic={stop}
+        onStartMic={(onFinal) => {
+          final = onFinal;
+        }}
+      />
+    );
+
     fireEvent.click(screen.getByTitle('Speak'));
     act(() => final('Part one.'));
-    
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Part one manually edited.' } });
-    
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Part one manually edited.' },
+    });
+
     act(() => final('Late echo.'));
-    
+
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     expect(send).toHaveBeenCalledWith('Part one manually edited.', false);
   });
@@ -206,15 +227,26 @@ describe('Composer', () => {
     const stop = vi.fn();
     const send = vi.fn();
     // Use an auto-trigger to test this so we don't send on manual stop
-    render(<Composer disabled={false} supported handsFree onSend={send} onStopMic={stop}
-      onStartMic={(onFinal, onInterim) => { final = onFinal; interim = onInterim; }} />);
-      
+    render(
+      <Composer
+        disabled={false}
+        supported
+        handsFree
+        onSend={send}
+        onStopMic={stop}
+        onStartMic={(onFinal, onInterim) => {
+          final = onFinal;
+          interim = onInterim;
+        }}
+      />
+    );
+
     fireEvent.click(screen.getByTitle('Speak')); // Start mic manually
     act(() => final('Two hours')); // final with no punctuation = 1800ms
     act(() => interim('Two hours random noise'));
     act(() => interim(''));
     act(() => vi.advanceTimersByTime(2500));
-    
+
     expect(screen.getByRole('textbox')).toHaveValue('Two hours');
     expect(send).not.toHaveBeenCalled();
   });
@@ -224,16 +256,26 @@ describe('Composer', () => {
     let final: any;
     const stop = vi.fn();
     const send = vi.fn();
-    render(<Composer disabled={false} supported handsFree onSend={send} onStopMic={stop}
-      onStartMic={(onFinal) => { final = onFinal; }} />);
-      
+    render(
+      <Composer
+        disabled={false}
+        supported
+        handsFree
+        onSend={send}
+        onStopMic={stop}
+        onStartMic={(onFinal) => {
+          final = onFinal;
+        }}
+      />
+    );
+
     fireEvent.click(screen.getByTitle('Speak'));
     act(() => final('Two hours'));
     fireEvent.click(screen.getByTitle('Speak')); // manual stop
-    
+
     act(() => final('Unwanted words'));
     act(() => vi.advanceTimersByTime(2500));
-    
+
     expect(stop).toHaveBeenCalledOnce();
     expect(screen.getByRole('textbox')).toHaveValue('Two hours');
     expect(send).not.toHaveBeenCalled();
@@ -243,8 +285,14 @@ describe('Composer', () => {
     vi.useFakeTimers();
     let final: (text: string) => void = () => {};
     const send = vi.fn();
-    const props = { disabled: false, supported: true, onSend: send,
-      onStartMic: (onFinal: (text: string) => void) => { final = onFinal; } };
+    const props = {
+      disabled: false,
+      supported: true,
+      onSend: send,
+      onStartMic: (onFinal: (text: string) => void) => {
+        final = onFinal;
+      },
+    };
     const { rerender } = render(<Composer {...props} handsFree />);
     fireEvent.click(screen.getByTitle('Speak'));
     act(() => final('Two hours'));

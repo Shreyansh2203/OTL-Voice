@@ -75,6 +75,8 @@ describe('LoginView', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Sign in/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sign-in failed.'
+    );
   });
 });

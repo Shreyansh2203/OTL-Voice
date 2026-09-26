@@ -139,7 +139,9 @@ export default function ChatShell({
           <button
             className="nav-item"
             onClick={onVoiceToggle}
-            aria-label={voiceOn ? 'Disable voice responses' : 'Enable voice responses'}
+            aria-label={
+              voiceOn ? 'Disable voice responses' : 'Enable voice responses'
+            }
             aria-pressed={voiceOn}
           >
             <span className="nav-item-content">

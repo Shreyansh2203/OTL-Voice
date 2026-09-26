@@ -20,7 +20,9 @@ describe('ErrorBoundary', () => {
   });
 
   it('catches render error and displays default fallback', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     render(
       <ErrorBoundary>
         <ProblemChild shouldThrow={true} />
@@ -33,7 +35,9 @@ describe('ErrorBoundary', () => {
   });
 
   it('renders custom fallback ReactNode', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     render(
       <ErrorBoundary fallback={<div>Custom Error UI</div>}>
         <ProblemChild shouldThrow={true} />
@@ -44,7 +48,9 @@ describe('ErrorBoundary', () => {
   });
 
   it('renders custom fallback render function and handles reset', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     const onReset = vi.fn();
     render(
       <ErrorBoundary

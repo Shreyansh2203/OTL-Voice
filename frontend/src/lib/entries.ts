@@ -79,23 +79,32 @@ function hasValidTimes(value: Record<string, unknown>): boolean {
   const stopTime = value.stopTime;
   if (startTime === undefined && stopTime === undefined) return true;
   if (!isValidTime(startTime) || !isValidTime(stopTime)) return false;
-  const startMinutes = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3));
-  const stopMinutes = Number(stopTime.slice(0, 2)) * 60 + Number(stopTime.slice(3));
+  const startMinutes =
+    Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3));
+  const stopMinutes =
+    Number(stopTime.slice(0, 2)) * 60 + Number(stopTime.slice(3));
   const hours = value.hours;
   if (typeof hours !== 'number') return false;
-  return stopMinutes > startMinutes && stopMinutes - startMinutes === hours * 60;
+  return (
+    stopMinutes > startMinutes && stopMinutes - startMinutes === hours * 60
+  );
 }
 
 function isValidEntry(value: unknown): value is TimecardEntry {
   if (!isRecord(value)) return false;
-  if (Object.keys(value).some((field) => !ENTRY_FIELDS.has(field))) return false;
+  if (Object.keys(value).some((field) => !ENTRY_FIELDS.has(field)))
+    return false;
   if (!REQUIRED_TEXT_FIELDS.every((field) => isNonEmptyString(value[field]))) {
     return false;
   }
   if (typeof value.taskDetails !== 'string' || value.taskDetails.length > 80) {
     return false;
   }
-  if (!OPTIONAL_TEXT_FIELDS.every((field) => value[field] === undefined || isNonEmptyString(value[field]))) {
+  if (
+    !OPTIONAL_TEXT_FIELDS.every(
+      (field) => value[field] === undefined || isNonEmptyString(value[field])
+    )
+  ) {
     return false;
   }
   if (
@@ -106,7 +115,10 @@ function isValidEntry(value: unknown): value is TimecardEntry {
   ) {
     return false;
   }
-  if (Math.round(value.hours / HOUR_INCREMENT) * HOUR_INCREMENT !== value.hours) {
+  if (
+    Math.round(value.hours / HOUR_INCREMENT) * HOUR_INCREMENT !==
+    value.hours
+  ) {
     return false;
   }
   if (!isValidDate(value.date) || value.currencyCode !== 'USD') return false;
@@ -128,7 +140,9 @@ function parseCandidate(candidate: string): TimecardEntry[] | null {
     if (data.entries.length === 0 || data.entries.length > MAX_PARSED_ENTRIES) {
       return null;
     }
-    return data.entries.every(isValidEntry) ? (data.entries as TimecardEntry[]) : null;
+    return data.entries.every(isValidEntry)
+      ? (data.entries as TimecardEntry[])
+      : null;
   } catch {
     return null;
   }

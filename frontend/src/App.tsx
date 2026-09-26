@@ -13,7 +13,12 @@ import type { Identity } from './types';
 
 function AppContent() {
   const qc = useQueryClient();
-  const { data: identity, isLoading, isError, refetch } = useQuery({
+  const {
+    data: identity,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['session'],
     queryFn: api.getSession,
     retry: false,

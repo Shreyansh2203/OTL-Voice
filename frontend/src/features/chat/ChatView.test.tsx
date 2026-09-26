@@ -96,20 +96,14 @@ describe('ChatView', () => {
   });
 
   it('streams a user reply and renders it without spoken audio when voice is off', async () => {
-    vi.mocked(api.chatStream).mockImplementation(
-      async (history, onEvent) => {
-        if (history.some((message) => message.content === 'My message')) {
-          onEvent({ delta: 'Response from the assistant' });
-          onEvent({ done: true });
-        }
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      if (history.some((message) => message.content === 'My message')) {
+        onEvent({ delta: 'Response from the assistant' });
+        onEvent({ done: true });
       }
-    );
+    });
     render(
-      <ChatView
-        username="7"
-        onLogout={vi.fn()}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
     await waitFor(() => expect(api.chatStream).toHaveBeenCalledTimes(1));
 
@@ -119,21 +113,21 @@ describe('ChatView', () => {
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
 
     expect(screen.getByText('My message')).toBeInTheDocument();
-    expect(await screen.findByText('Response from the assistant')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Response from the assistant')
+    ).toBeInTheDocument();
     expect(api.tts).not.toHaveBeenCalled();
   });
 
   it('opens the complete manual form when assistant JSON is malformed', async () => {
-    vi.mocked(api.chatStream).mockImplementation(
-      async (history, onEvent) => {
-        if (history.some((message) => message.content === 'Capture')) {
-          onEvent({
-            delta: 'I could not finalize this.\n```json\n{"entries":[\n```',
-          });
-          onEvent({ done: true });
-        }
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      if (history.some((message) => message.content === 'Capture')) {
+        onEvent({
+          delta: 'I could not finalize this.\n```json\n{"entries":[\n```',
+        });
+        onEvent({ done: true });
       }
-    );
+    });
     render(
       <ChatView
         username="Test User"
@@ -163,24 +157,18 @@ describe('ChatView', () => {
   });
 
   it('renders a valid assistant payload as a fully editable review', async () => {
-    vi.mocked(api.chatStream).mockImplementation(
-      async (history, onEvent) => {
-        if (history.some((message) => message.content === 'Record it')) {
-          onEvent({
-            delta: `Review before approval.\n\`\`\`json\n${JSON.stringify({
-              entries: [validEntry],
-            })}\n\`\`\``,
-          });
-          onEvent({ done: true });
-        }
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      if (history.some((message) => message.content === 'Record it')) {
+        onEvent({
+          delta: `Review before approval.\n\`\`\`json\n${JSON.stringify({
+            entries: [validEntry],
+          })}\n\`\`\``,
+        });
+        onEvent({ done: true });
       }
-    );
+    });
     render(
-      <ChatView
-        username="7"
-        onLogout={vi.fn()}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
     await waitFor(() => expect(api.chatStream).toHaveBeenCalledTimes(1));
 
@@ -199,7 +187,9 @@ describe('ChatView', () => {
       'Regular Time'
     );
     expect(
-      screen.queryByText(/The assistant did not return a valid timesheet payload/i)
+      screen.queryByText(
+        /The assistant did not return a valid timesheet payload/i
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -214,11 +204,7 @@ describe('ChatView', () => {
     );
 
     render(
-      <ChatView
-        username="7"
-        onLogout={vi.fn()}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
 
     expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue(
@@ -246,11 +232,7 @@ describe('ChatView', () => {
       })
     );
     render(
-      <ChatView
-        username="7"
-        onLogout={vi.fn()}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
     expect(screen.getByText('old private message')).toBeInTheDocument();
 
@@ -278,11 +260,7 @@ describe('ChatView', () => {
       JSON.stringify({ owner: '7', messages: [], draft: 'private' })
     );
     render(
-      <ChatView
-        username="7"
-        onLogout={onLogout}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={onLogout} onSessionExpired={vi.fn()} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
@@ -302,19 +280,15 @@ describe('ChatView', () => {
       JSON.stringify({ owner: '7', messages: [], draft: 'private' })
     );
     render(
-      <ChatView
-        username="7"
-        onLogout={onLogout}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={onLogout} onSessionExpired={vi.fn()} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
 
-    expect(await screen.findByText(/sign out could not be confirmed/i)).toBeInTheDocument();
     expect(
-      localStorage.getItem('otl_conversation_v1')
-    ).not.toBeNull();
+      await screen.findByText(/sign out could not be confirmed/i)
+    ).toBeInTheDocument();
+    expect(localStorage.getItem('otl_conversation_v1')).not.toBeNull();
   });
 
   it('aborts streams and releases audio, microphone, and TTS resources on unmount', async () => {
@@ -327,11 +301,7 @@ describe('ChatView', () => {
         })
     );
     const { unmount } = render(
-      <ChatView
-        username="7"
-        onLogout={vi.fn()}
-        onSessionExpired={vi.fn()}
-      />
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
     );
     await waitFor(() => expect(streamSignal).toBeDefined());
 

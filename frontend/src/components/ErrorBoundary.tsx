@@ -2,7 +2,8 @@ import { Component, ErrorInfo, ReactNode } from 'react';
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
-  fallback?: ReactNode | ((props: { error: Error; reset: () => void }) => ReactNode);
+  fallback?:
+    ReactNode | ((props: { error: Error; reset: () => void }) => ReactNode);
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   onReset?: () => void;
 }
@@ -12,7 +13,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -34,7 +38,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render(): ReactNode {
     if (this.state.hasError) {
       if (typeof this.props.fallback === 'function' && this.state.error) {
-        return this.props.fallback({ error: this.state.error, reset: this.reset });
+        return this.props.fallback({
+          error: this.state.error,
+          reset: this.reset,
+        });
       }
       if (this.props.fallback !== undefined) {
         return this.props.fallback as ReactNode;
@@ -54,11 +61,25 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             fontFamily: 'system-ui, sans-serif',
           }}
         >
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem', color: '#fff' }}>
+          <h2
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              marginBottom: '0.75rem',
+              color: '#fff',
+            }}
+          >
             Application Error
           </h2>
-          <p style={{ fontSize: '0.875rem', marginBottom: '1.5rem', opacity: 0.9 }}>
-            {this.state.error?.message || 'An unexpected rendering error occurred.'}
+          <p
+            style={{
+              fontSize: '0.875rem',
+              marginBottom: '1.5rem',
+              opacity: 0.9,
+            }}
+          >
+            {this.state.error?.message ||
+              'An unexpected rendering error occurred.'}
           </p>
           <button
             type="button"

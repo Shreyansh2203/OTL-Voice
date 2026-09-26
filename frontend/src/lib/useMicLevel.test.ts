@@ -4,7 +4,9 @@ import { useMicLevel } from './useMicLevel';
 
 function installMocks() {
   const trackStop = vi.fn();
-  const stream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
+  const stream = {
+    getTracks: () => [{ stop: trackStop }],
+  } as unknown as MediaStream;
   const getUserMedia = vi.fn().mockResolvedValue(stream);
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,

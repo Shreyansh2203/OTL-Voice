@@ -180,11 +180,16 @@ describe('cookie and CSRF client flow', () => {
     expect(headersFor(fetchMock.mock.calls[1]).get('X-CSRF-Token')).toBe(
       'logout-token'
     );
-    expect((fetchMock.mock.calls[1][1] as RequestInit).credentials).toBe('include');
+    expect((fetchMock.mock.calls[1][1] as RequestInit).credentials).toBe(
+      'include'
+    );
   });
 
   it('surfaces non-authentication session failures', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'down' }, 500)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(response({ detail: 'down' }, 500))
+    );
 
     await expect(getSession()).rejects.toBeInstanceOf(ApiError);
   });

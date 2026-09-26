@@ -89,54 +89,54 @@ export default function TimecardHistory({
             </tr>
           </thead>
           <tbody className="timecard-body">
-             {items.map((item: TimecardItem, idx: number) => {
-               const event = item.timeRecordEvent?.[0];
-               const attrs =
-                 event?.timeRecordEventAttribute || item.timeRecordEventAttribute || [];
-               const commentAttr = attrs.find(
-                 (a: TimeAttribute) => a.attributeName === 'Comment'
-               );
-               const comment = commentAttr ? commentAttr.attributeValue : 'N/A';
-               const startTime = event?.startTime || item.startTime;
-               let dateStr = 'Unknown Date';
-               if (startTime) {
-                 const dateObj = new Date(startTime);
-                 if (!isNaN(dateObj.getTime())) {
-                    dateStr = formatDateInAppTimezone(dateObj);
-                 }
-               }
-               const statusValue =
-                 event?.eventStatus ||
-                 item.eventStatus ||
-                 item.timeStatuses?.[0]?.displayValue ||
-                 item.timeStatuses?.[0]?.statusCode ||
-                 'Unknown';
-               const status = String(statusValue);
-               const isApproved = status.toUpperCase() === 'APPROVED';
-               const measure = event?.measure ?? item.measure ?? '—';
-               return (
-                 <motion.tr
-                   key={idx}
-                   className="timecard-row"
-                   initial={{ opacity: 0, y: 10 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ duration: 0.3, delay: idx * 0.05 }}
-                 >
-                   <td className="timecard-cell">{dateStr}</td>
-                   <td className="timecard-cell">{comment}</td>
-                   <td className="timecard-cell">
-                     <span
-                       className={`badge ${isApproved ? 'badge-success' : 'badge-warning'}`}
-                     >
-                       {status}
-                     </span>
-                   </td>
-                   <td className="timecard-cell timecard-cell-num">
-                     {measure}
-                   </td>
-                 </motion.tr>
-               );
-             })}
+            {items.map((item: TimecardItem, idx: number) => {
+              const event = item.timeRecordEvent?.[0];
+              const attrs =
+                event?.timeRecordEventAttribute ||
+                item.timeRecordEventAttribute ||
+                [];
+              const commentAttr = attrs.find(
+                (a: TimeAttribute) => a.attributeName === 'Comment'
+              );
+              const comment = commentAttr ? commentAttr.attributeValue : 'N/A';
+              const startTime = event?.startTime || item.startTime;
+              let dateStr = 'Unknown Date';
+              if (startTime) {
+                const dateObj = new Date(startTime);
+                if (!isNaN(dateObj.getTime())) {
+                  dateStr = formatDateInAppTimezone(dateObj);
+                }
+              }
+              const statusValue =
+                event?.eventStatus ||
+                item.eventStatus ||
+                item.timeStatuses?.[0]?.displayValue ||
+                item.timeStatuses?.[0]?.statusCode ||
+                'Unknown';
+              const status = String(statusValue);
+              const isApproved = status.toUpperCase() === 'APPROVED';
+              const measure = event?.measure ?? item.measure ?? '—';
+              return (
+                <motion.tr
+                  key={idx}
+                  className="timecard-row"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: idx * 0.05 }}
+                >
+                  <td className="timecard-cell">{dateStr}</td>
+                  <td className="timecard-cell">{comment}</td>
+                  <td className="timecard-cell">
+                    <span
+                      className={`badge ${isApproved ? 'badge-success' : 'badge-warning'}`}
+                    >
+                      {status}
+                    </span>
+                  </td>
+                  <td className="timecard-cell timecard-cell-num">{measure}</td>
+                </motion.tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

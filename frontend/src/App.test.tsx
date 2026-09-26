@@ -5,14 +5,7 @@ import {
   fireEvent,
   act,
 } from '@testing-library/react';
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-} from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 import * as api from './api/client';
 vi.mock('./api/client', () => ({

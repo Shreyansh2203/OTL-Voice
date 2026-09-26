@@ -114,7 +114,10 @@ export class OciSpeechRecognition {
       if (this.openTimer) clearTimeout(this.openTimer);
       this.openTimer = null;
       this.workletNode!.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-        if (event.data instanceof ArrayBuffer && ws.readyState === WebSocket.OPEN) {
+        if (
+          event.data instanceof ArrayBuffer &&
+          ws.readyState === WebSocket.OPEN
+        ) {
           ws.send(event.data);
         }
       };
@@ -126,7 +129,10 @@ export class OciSpeechRecognition {
         const data: unknown = JSON.parse(event.data);
         if (!data || typeof data !== 'object') return;
         const record = data as Record<string, unknown>;
-        if (typeof record.isFinal !== 'boolean' || typeof record.text !== 'string') {
+        if (
+          typeof record.isFinal !== 'boolean' ||
+          typeof record.text !== 'string'
+        ) {
           return;
         }
         const transcript = record.text.trim();

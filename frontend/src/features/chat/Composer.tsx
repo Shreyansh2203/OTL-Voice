@@ -1,9 +1,9 @@
-import { KeyboardEvent, useState, useRef, useEffect } from "react";
-import ShinyText from "../../components/ui/ShinyText";
-import { MicIcon, SendIcon, StopIcon } from "../../components/ui/icons";
-import VoiceOrb from "../../components/ui/VoiceOrb";
-import { playMicStart, playMicStop } from "../../lib/audio";
-import { useMicLevel } from "../../lib/useMicLevel";
+import { KeyboardEvent, useState, useRef, useEffect } from 'react';
+import ShinyText from '../../components/ui/ShinyText';
+import { MicIcon, SendIcon, StopIcon } from '../../components/ui/icons';
+import VoiceOrb from '../../components/ui/VoiceOrb';
+import { playMicStart, playMicStop } from '../../lib/audio';
+import { useMicLevel } from '../../lib/useMicLevel';
 export interface ComposerProps {
   disabled: boolean;
   onSend: (text: string, isVoice?: boolean) => void;
@@ -17,7 +17,7 @@ export interface ComposerProps {
   onStopMic?: () => void;
   errorMsg?: string | null;
   notice?: string | null;
-  voiceState?: "idle" | "listening" | "thinking" | "speaking";
+  voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
   handsFree?: boolean;
   onRegisterTrigger?: (trigger: () => void) => void;
   draft?: string;
@@ -33,20 +33,23 @@ export default function Composer({
   onStopMic,
   errorMsg = null,
   notice = null,
-  voiceState = "idle",
+  voiceState = 'idle',
   handsFree = false,
   onRegisterTrigger,
   draft,
   onDraftChange,
 }: ComposerProps) {
-  const [localText, setLocalText] = useState("");
+  const [localText, setLocalText] = useState('');
   const text = draft ?? localText;
   const textRef = useRef(text);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
   const ringRef = useRef<HTMLSpanElement | null>(null);
-  const micLevel = useMicLevel((_level) => { if (ringRef.current) ringRef.current.style.transform = `scale(${1 + _level * 0.5})`; });
+  const micLevel = useMicLevel((_level) => {
+    if (ringRef.current)
+      ringRef.current.style.transform = `scale(${1 + _level * 0.5})`;
+  });
 
   // A sentence that already sounds complete needs less confirmation silence
   // than one that trails off mid-thought — mirrors how a human listener
@@ -104,12 +107,12 @@ export default function Composer({
       finishMic();
     }
     onSend(trimmed, false);
-    updateText("");
+    updateText('');
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) return;
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
     }
@@ -137,7 +140,7 @@ export default function Composer({
       return;
     }
 
-    const playerStopEvent = new CustomEvent("otl:barge-in");
+    const playerStopEvent = new CustomEvent('otl:barge-in');
     window.dispatchEvent(playerStopEvent);
     void playMicStart();
     void micLevel.start();
@@ -146,7 +149,8 @@ export default function Composer({
     let acceptedDraft = baseDraft;
     const session = ++micSessionRef.current;
     micActiveRef.current = true;
-    const isCurrent = () => micSessionRef.current === session && micActiveRef.current;
+    const isCurrent = () =>
+      micSessionRef.current === session && micActiveRef.current;
 
     // Adaptive end-of-speech wait: short once the sentence already sounds
     // finished, longer if the person trailed off mid-thought. This is a
@@ -156,7 +160,9 @@ export default function Composer({
       clearSilenceTimer();
 
       const draft = textRef.current.trim();
-      const wait = TERMINAL_PUNCTUATION.test(draft) ? SILENCE_MS_COMPLETE : SILENCE_MS_TRAILING;
+      const wait = TERMINAL_PUNCTUATION.test(draft)
+        ? SILENCE_MS_COMPLETE
+        : SILENCE_MS_TRAILING;
       silenceTimerRef.current = setTimeout(() => {
         if (!isCurrent()) return;
         const toSend = textRef.current.trim();
@@ -165,7 +171,7 @@ export default function Composer({
           // Always auto-send if hands-free mode is enabled (which it is by default in ChatView)
           if (handsFreeRef.current) {
             onSendRef.current(toSend, true);
-            updateText("");
+            updateText('');
           }
         }
       }, wait);
@@ -174,20 +180,26 @@ export default function Composer({
     onStartMicRef.current?.(
       (finalTranscript) => {
         if (!isCurrent() || !finalTranscript) return;
-        const fullSpoken = (baseDraft ? baseDraft + " " + finalTranscript : finalTranscript).trim();
+        const fullSpoken = (
+          baseDraft ? baseDraft + ' ' + finalTranscript : finalTranscript
+        ).trim();
         acceptedDraft = fullSpoken;
         updateText(fullSpoken);
         resetSilenceTimer();
       },
       (interimTranscript) => {
         if (!isCurrent()) return;
-        const preview = (baseDraft ? baseDraft + " " + (interimTranscript || "") : (interimTranscript || "")).trim();
+        const preview = (
+          baseDraft
+            ? baseDraft + ' ' + (interimTranscript || '')
+            : interimTranscript || ''
+        ).trim();
         updateText(interimTranscript ? preview : acceptedDraft);
         clearSilenceTimer();
       },
       () => {
         if (!isCurrent()) return;
-        const evt = new CustomEvent("otl:barge-in");
+        const evt = new CustomEvent('otl:barge-in');
         window.dispatchEvent(evt);
       }
     );
@@ -210,22 +222,22 @@ export default function Composer({
   }, [onRegisterTrigger]);
 
   const getPlaceholder = () => {
-    if (voiceState === "speaking") {
-      return "Assistant speaking… Tap the mic to interrupt.";
+    if (voiceState === 'speaking') {
+      return 'Assistant speaking… Tap the mic to interrupt.';
     }
-    if (voiceState === "thinking") {
-      return "Thinking… Tap the mic to interrupt.";
+    if (voiceState === 'thinking') {
+      return 'Thinking… Tap the mic to interrupt.';
     }
     if (listening) {
-      return "Listening… Speak naturally or type…";
+      return 'Listening… Speak naturally or type…';
     }
-    return "Type or speak your reply…";
+    return 'Type or speak your reply…';
   };
 
   const getStatusLabel = () => {
-    if (voiceState === "speaking") return "Speaking";
-    if (voiceState === "thinking") return "Thinking";
-    if (listening) return "Listening";
+    if (voiceState === 'speaking') return 'Speaking';
+    if (voiceState === 'thinking') return 'Thinking';
+    if (listening) return 'Listening';
     return null;
   };
   const statusLabel = getStatusLabel();
@@ -233,32 +245,41 @@ export default function Composer({
   return (
     <div className="composer-wrapper">
       {errorMsg && (
-        <div className="error small" role="status" style={{ marginBottom: 8, padding: "6px 12px" }}>
+        <div
+          className="error small"
+          role="status"
+          style={{ marginBottom: 8, padding: '6px 12px' }}
+        >
           {errorMsg}
         </div>
       )}
       {statusLabel && (
         <div className="voice-status-row" role="status" aria-live="polite">
           <VoiceOrb state={voiceState} ringRef={ringRef} size={12} />
-          <ShinyText text={statusLabel} disabled={false} speed={2} className="status-label-shiny" />
+          <ShinyText
+            text={statusLabel}
+            disabled={false}
+            speed={2}
+            className="status-label-shiny"
+          />
         </div>
       )}
       <label className="composer-label" htmlFor="chat-message">
         Message
       </label>
       <div
-        className={`prompt-bar-container ${listening ? "listening" : ""} ${
-          voiceState === "speaking" ? "speaking" : ""
+        className={`prompt-bar-container ${listening ? 'listening' : ''} ${
+          voiceState === 'speaking' ? 'speaking' : ''
         }`}
       >
         <div className="prompt-bar">
           {supported && (
             <button
               type="button"
-              className={`icon-btn mic ${listening ? "active" : ""}`}
+              className={`icon-btn mic ${listening ? 'active' : ''}`}
               onClick={toggleMic}
-              title={listening ? "Stop recording" : "Speak"}
-              aria-label={listening ? "Stop recording" : "Speak"}
+              title={listening ? 'Stop recording' : 'Speak'}
+              aria-label={listening ? 'Stop recording' : 'Speak'}
             >
               {listening ? <StopIcon /> : <MicIcon />}
             </button>

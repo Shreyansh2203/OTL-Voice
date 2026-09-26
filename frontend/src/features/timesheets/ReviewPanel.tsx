@@ -28,7 +28,10 @@ type EntryField = keyof TimecardEntry;
 type FieldErrors = Record<string, string>;
 
 function createRequestId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
@@ -117,7 +120,8 @@ function validateEntry(entry: TimecardEntry, index: number): FieldErrors {
   }
   (['startTime', 'stopTime'] as const).forEach((field) => {
     if (entry[field] && !isValidTime(entry[field] as string)) {
-      errors[`${index}-${field}`] = 'Enter a valid 24-hour time in HH:MM format.';
+      errors[`${index}-${field}`] =
+        'Enter a valid 24-hour time in HH:MM format.';
     }
   });
   if (entry.stopTime && !entry.startTime) {
@@ -153,7 +157,8 @@ function validateEntry(entry: TimecardEntry, index: number): FieldErrors {
     errors[`${index}-hours`] =
       `Hours cannot exceed ${MAX_ENTRY_HOURS} for one entry.`;
   } else if (
-    Math.round(entry.hours / HOUR_INCREMENT) * HOUR_INCREMENT !== entry.hours
+    Math.round(entry.hours / HOUR_INCREMENT) * HOUR_INCREMENT !==
+    entry.hours
   ) {
     errors[`${index}-hours`] =
       'Hours must use quarter, half, or whole-hour increments.';
@@ -178,7 +183,13 @@ interface EditableFieldProps {
   children: ReactNode;
 }
 
-function EditableField({ id, label, error, className = '', children }: EditableFieldProps) {
+function EditableField({
+  id,
+  label,
+  error,
+  className = '',
+  children,
+}: EditableFieldProps) {
   return (
     <div className={`review-field ${className}`.trim()}>
       <label htmlFor={id}>{label}</label>
@@ -234,7 +245,8 @@ function ReviewPanelContent({
     [draftEntries]
   );
   const totalHours = activeEntries.reduce(
-    (sum, entry) => sum + (Number.isFinite(entry.hours) ? (entry.hours ?? 0) : 0),
+    (sum, entry) =>
+      sum + (Number.isFinite(entry.hours) ? (entry.hours ?? 0) : 0),
     0
   );
   const locked = result !== null;
@@ -285,7 +297,9 @@ function ReviewPanelContent({
     setError(null);
     setErrors({});
     setDraftEntries((current) =>
-      current.length === 1 ? [newEntry()] : current.filter((_, i) => i !== index)
+      current.length === 1
+        ? [newEntry()]
+        : current.filter((_, i) => i !== index)
     );
   };
 
@@ -408,15 +422,19 @@ function ReviewPanelContent({
           <h3>{heading}</h3>
         </div>
         <span className="approval-meta">
-          {activeEntries.length} {activeEntries.length === 1 ? 'entry' : 'entries'} ·{' '}
-          {totalHours}h total
+          {activeEntries.length}{' '}
+          {activeEntries.length === 1 ? 'entry' : 'entries'} · {totalHours}h
+          total
         </span>
         <p className="approval-description">{description}</p>
       </div>
 
       {errorItems.length > 0 && (
         <div className="validation-summary" role="alert" tabIndex={-1}>
-          <strong>Correct {errorItems.length === 1 ? 'this field' : 'these fields'} before submitting:</strong>
+          <strong>
+            Correct {errorItems.length === 1 ? 'this field' : 'these fields'}{' '}
+            before submitting:
+          </strong>
           <ul>
             {errorItems.map(([key, message]) => {
               const [index, field] = key.split('-');
@@ -445,75 +463,135 @@ function ReviewPanelContent({
             <fieldset className="review-entry" key={entry.requestId}>
               <legend>Entry {entryNumber}</legend>
               <div className="review-field-grid">
-                <EditableField label="Employee name" {...fieldProps('employeeName')}>
+                <EditableField
+                  label="Employee name"
+                  {...fieldProps('employeeName')}
+                >
                   <input
                     id={field('employeeName')}
                     value={entry.employeeName ?? ''}
-                    onChange={(event) => updateEntry(index, 'employeeName', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'employeeName', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('employeeName')]}
-                    aria-describedby={errors[field('employeeName')] ? `${field('employeeName')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('employeeName')]
+                        ? `${field('employeeName')}-error`
+                        : undefined
+                    }
                     autoComplete="name"
                   />
                 </EditableField>
-                <EditableField label="Employee number" {...fieldProps('employeeNumber')}>
+                <EditableField
+                  label="Employee number"
+                  {...fieldProps('employeeNumber')}
+                >
                   <input
                     id={field('employeeNumber')}
                     value={entry.employeeNumber ?? ''}
-                    onChange={(event) => updateEntry(index, 'employeeNumber', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'employeeNumber', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('employeeNumber')]}
-                    aria-describedby={errors[field('employeeNumber')] ? `${field('employeeNumber')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('employeeNumber')]
+                        ? `${field('employeeNumber')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Project number" {...fieldProps('projectNo')}>
+                <EditableField
+                  label="Project number"
+                  {...fieldProps('projectNo')}
+                >
                   <input
                     id={field('projectNo')}
                     value={entry.projectNo ?? ''}
-                    onChange={(event) => updateEntry(index, 'projectNo', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'projectNo', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('projectNo')]}
-                    aria-describedby={errors[field('projectNo')] ? `${field('projectNo')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('projectNo')]
+                        ? `${field('projectNo')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Project name" {...fieldProps('projectName')}>
+                <EditableField
+                  label="Project name"
+                  {...fieldProps('projectName')}
+                >
                   <input
                     id={field('projectName')}
                     value={entry.projectName ?? ''}
-                    onChange={(event) => updateEntry(index, 'projectName', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'projectName', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('projectName')]}
-                    aria-describedby={errors[field('projectName')] ? `${field('projectName')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('projectName')]
+                        ? `${field('projectName')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
                 <EditableField label="Work order" {...fieldProps('workOrder')}>
                   <input
                     id={field('workOrder')}
                     value={entry.workOrder ?? ''}
-                    onChange={(event) => updateEntry(index, 'workOrder', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'workOrder', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('workOrder')]}
-                    aria-describedby={errors[field('workOrder')] ? `${field('workOrder')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('workOrder')]
+                        ? `${field('workOrder')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Project ID (optional)" {...fieldProps('projectId')}>
+                <EditableField
+                  label="Project ID (optional)"
+                  {...fieldProps('projectId')}
+                >
                   <input
                     id={field('projectId')}
                     value={entry.projectId ?? ''}
-                    onChange={(event) => updateEntry(index, 'projectId', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'projectId', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('projectId')]}
-                    aria-describedby={errors[field('projectId')] ? `${field('projectId')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('projectId')]
+                        ? `${field('projectId')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Task ID (optional)" {...fieldProps('taskId')}>
+                <EditableField
+                  label="Task ID (optional)"
+                  {...fieldProps('taskId')}
+                >
                   <input
                     id={field('taskId')}
                     value={entry.taskId ?? ''}
-                    onChange={(event) => updateEntry(index, 'taskId', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'taskId', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('taskId')]}
-                    aria-describedby={errors[field('taskId')] ? `${field('taskId')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('taskId')]
+                        ? `${field('taskId')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
                 <EditableField label="Date" {...fieldProps('date')}>
@@ -521,32 +599,56 @@ function ReviewPanelContent({
                     id={field('date')}
                     type="date"
                     value={entry.date ?? ''}
-                    onChange={(event) => updateEntry(index, 'date', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'date', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('date')]}
-                    aria-describedby={errors[field('date')] ? `${field('date')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('date')]
+                        ? `${field('date')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Start time (optional)" {...fieldProps('startTime')}>
+                <EditableField
+                  label="Start time (optional)"
+                  {...fieldProps('startTime')}
+                >
                   <input
                     id={field('startTime')}
                     type="time"
                     value={entry.startTime ?? ''}
-                    onChange={(event) => updateEntry(index, 'startTime', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'startTime', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('startTime')]}
-                    aria-describedby={errors[field('startTime')] ? `${field('startTime')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('startTime')]
+                        ? `${field('startTime')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
-                <EditableField label="Stop time (optional)" {...fieldProps('stopTime')}>
+                <EditableField
+                  label="Stop time (optional)"
+                  {...fieldProps('stopTime')}
+                >
                   <input
                     id={field('stopTime')}
                     type="time"
                     value={entry.stopTime ?? ''}
-                    onChange={(event) => updateEntry(index, 'stopTime', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'stopTime', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('stopTime')]}
-                    aria-describedby={errors[field('stopTime')] ? `${field('stopTime')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('stopTime')]
+                        ? `${field('stopTime')}-error`
+                        : undefined
+                    }
                   />
                 </EditableField>
                 <EditableField label="Hours" {...fieldProps('hours')}>
@@ -582,10 +684,16 @@ function ReviewPanelContent({
                       step={HOUR_INCREMENT}
                       inputMode="decimal"
                       value={Number.isFinite(entry.hours) ? entry.hours : ''}
-                      onChange={(event) => updateEntry(index, 'hours', event.target.value)}
+                      onChange={(event) =>
+                        updateEntry(index, 'hours', event.target.value)
+                      }
                       disabled={locked || busy}
                       aria-invalid={!!errors[field('hours')]}
-                      aria-describedby={errors[field('hours')] ? `${field('hours')}-error` : undefined}
+                      aria-describedby={
+                        errors[field('hours')]
+                          ? `${field('hours')}-error`
+                          : undefined
+                      }
                     />
                     <button
                       type="button"
@@ -609,11 +717,16 @@ function ReviewPanelContent({
                     </button>
                   </div>
                 </EditableField>
-                <EditableField label="Payroll time type" {...fieldProps('payrollTimeType')}>
+                <EditableField
+                  label="Payroll time type"
+                  {...fieldProps('payrollTimeType')}
+                >
                   <input
                     id={field('payrollTimeType')}
                     value={entry.payrollTimeType ?? ''}
-                    onChange={(event) => updateEntry(index, 'payrollTimeType', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'payrollTimeType', event.target.value)
+                    }
                     disabled={locked || busy}
                     list={`${entryNumber}-payroll-options`}
                   />
@@ -628,11 +741,16 @@ function ReviewPanelContent({
                     <option value="Unpaid Leave" />
                   </datalist>
                 </EditableField>
-                <EditableField label="Expenditure type" {...fieldProps('expenditureType')}>
+                <EditableField
+                  label="Expenditure type"
+                  {...fieldProps('expenditureType')}
+                >
                   <input
                     id={field('expenditureType')}
                     value={entry.expenditureType ?? ''}
-                    onChange={(event) => updateEntry(index, 'expenditureType', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'expenditureType', event.target.value)
+                    }
                     disabled={locked || busy}
                     list={`${entryNumber}-expenditure-options`}
                   />
@@ -642,25 +760,44 @@ function ReviewPanelContent({
                     <option value="Dev" />
                   </datalist>
                 </EditableField>
-                <EditableField label="Currency code" {...fieldProps('currencyCode')}>
+                <EditableField
+                  label="Currency code"
+                  {...fieldProps('currencyCode')}
+                >
                   <input
                     id={field('currencyCode')}
                     value={entry.currencyCode ?? ''}
-                    onChange={(event) => updateEntry(index, 'currencyCode', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'currencyCode', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('currencyCode')]}
-                    aria-describedby={errors[field('currencyCode')] ? `${field('currencyCode')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('currencyCode')]
+                        ? `${field('currencyCode')}-error`
+                        : undefined
+                    }
                     maxLength={3}
                   />
                 </EditableField>
-                <EditableField className="review-field-wide" label="Task details" {...fieldProps('taskDetails')}>
+                <EditableField
+                  className="review-field-wide"
+                  label="Task details"
+                  {...fieldProps('taskDetails')}
+                >
                   <textarea
                     id={field('taskDetails')}
                     value={entry.taskDetails ?? ''}
-                    onChange={(event) => updateEntry(index, 'taskDetails', event.target.value)}
+                    onChange={(event) =>
+                      updateEntry(index, 'taskDetails', event.target.value)
+                    }
                     disabled={locked || busy}
                     aria-invalid={!!errors[field('taskDetails')]}
-                    aria-describedby={errors[field('taskDetails')] ? `${field('taskDetails')}-error` : undefined}
+                    aria-describedby={
+                      errors[field('taskDetails')]
+                        ? `${field('taskDetails')}-error`
+                        : undefined
+                    }
                     maxLength={80}
                     rows={2}
                   />
@@ -685,14 +822,21 @@ function ReviewPanelContent({
         <div className="error" role="alert">
           {error}
           {submitAttempted && !result && (
-            <span className="small"> No submission is being reported as successful. Retrying unchanged entries reuses the same request key.</span>
+            <span className="small">
+              {' '}
+              No submission is being reported as successful. Retrying unchanged
+              entries reuses the same request key.
+            </span>
           )}
         </div>
       )}
 
       {result ? (
         <>
-          <div className={`result ${result.failed ? 'warn' : 'ok'}`} aria-live="polite">
+          <div
+            className={`result ${result.failed ? 'warn' : 'ok'}`}
+            aria-live="polite"
+          >
             <strong>
               Server confirmed {result.succeeded} of {result.results.length}{' '}
               timecards
@@ -729,7 +873,10 @@ function ReviewPanelContent({
                       <td>
                         {entry?.projectName || '—'}
                         {entry?.projectNo != null && (
-                          <span className="muted small"> ({entry.projectNo})</span>
+                          <span className="muted small">
+                            {' '}
+                            ({entry.projectNo})
+                          </span>
                         )}
                       </td>
                       <td>{entry?.date || '—'}</td>

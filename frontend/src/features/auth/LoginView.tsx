@@ -34,7 +34,10 @@ export default function LoginView({
   return (
     <main className={styles.container}>
       <div className={styles.innerLayout}>
-        <section className={styles.fluffSection} aria-labelledby="login-heading">
+        <section
+          className={styles.fluffSection}
+          aria-labelledby="login-heading"
+        >
           <div className={styles.brandMark} aria-hidden="true">
             <span>OTL</span>
           </div>
@@ -104,9 +107,15 @@ export default function LoginView({
           </div>
           <div className={`${styles.timeCard} ${styles.timeCardSecondary}`}>
             <span className={styles.cardLabel}>REVIEW CHECK</span>
-            <div className={styles.fieldLine}>Date <span>25 Sep 2026</span></div>
-            <div className={styles.fieldLine}>Hours <span>4.0</span></div>
-            <div className={styles.fieldLine}>Project <span>Apollo</span></div>
+            <div className={styles.fieldLine}>
+              Date <span>25 Sep 2026</span>
+            </div>
+            <div className={styles.fieldLine}>
+              Hours <span>4.0</span>
+            </div>
+            <div className={styles.fieldLine}>
+              Project <span>Apollo</span>
+            </div>
           </div>
           <div className={styles.artCaption}>
             <span>Speak naturally</span>

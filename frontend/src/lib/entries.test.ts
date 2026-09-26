@@ -50,7 +50,9 @@ describe('entries utilities', () => {
     expect(extractEntries('{"entries":[]}')).toBeNull();
     expect(
       extractEntries(
-        JSON.stringify({ entries: Array.from({ length: 101 }, () => validEntry) })
+        JSON.stringify({
+          entries: Array.from({ length: 101 }, () => validEntry),
+        })
       )
     ).toBeNull();
     expect(

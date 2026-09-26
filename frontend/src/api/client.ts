@@ -90,7 +90,12 @@ function parseSubmitResponse(value: unknown): SubmitResponse {
       'The server returned an invalid submission confirmation. Retry safely.'
     );
   if (!isRecord(value) || !Array.isArray(value.results)) throw invalid();
-  const { submitted: rawSubmitted, succeeded: rawSucceeded, failed: rawFailed, results } = value;
+  const {
+    submitted: rawSubmitted,
+    succeeded: rawSucceeded,
+    failed: rawFailed,
+    results,
+  } = value;
   const submitted = rawSubmitted as number;
   const succeeded = rawSucceeded as number;
   const failed = rawFailed as number;
@@ -110,8 +115,11 @@ function parseSubmitResponse(value: unknown): SubmitResponse {
       !isRecord(item) ||
       !Number.isInteger(item.index) ||
       typeof item.ok !== 'boolean' ||
-      (item.id !== undefined && typeof item.id !== 'string' && typeof item.id !== 'number') ||
-      (item.recordNumber !== undefined && typeof item.recordNumber !== 'string') ||
+      (item.id !== undefined &&
+        typeof item.id !== 'string' &&
+        typeof item.id !== 'number') ||
+      (item.recordNumber !== undefined &&
+        typeof item.recordNumber !== 'string') ||
       (item.recordName !== undefined && typeof item.recordName !== 'string') ||
       (item.status !== undefined && !Number.isInteger(item.status)) ||
       (item.error !== undefined && typeof item.error !== 'string')
@@ -119,7 +127,8 @@ function parseSubmitResponse(value: unknown): SubmitResponse {
       throw invalid();
     }
     const index = item.index as number;
-    if (index < 0 || index >= results.length || seen.has(index)) throw invalid();
+    if (index < 0 || index >= results.length || seen.has(index))
+      throw invalid();
     seen.add(index);
     return {
       index,
@@ -147,7 +156,11 @@ export function defaultHeaders(): Record<string, string> {
   return headers;
 }
 
-function jsonInit(method: string, body?: unknown, signal?: AbortSignal): RequestInit {
+function jsonInit(
+  method: string,
+  body?: unknown,
+  signal?: AbortSignal
+): RequestInit {
   const headers = defaultHeaders();
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   return {
@@ -241,10 +254,13 @@ export async function login(
   password = ''
 ): Promise<Identity> {
   await primeCsrf();
-  const response = await fetch(`${API}/auth/login`, jsonInit('POST', {
-    username,
-    password,
-  }));
+  const response = await fetch(
+    `${API}/auth/login`,
+    jsonInit('POST', {
+      username,
+      password,
+    })
+  );
   captureCsrfToken(response);
   if (!response.ok) throw await parseError(response);
   const data: unknown = await response.json();
@@ -381,9 +397,7 @@ export async function getHealth(): Promise<{ status: string }> {
   return response.json();
 }
 
-export async function getHealthOtl(
-  signal?: AbortSignal
-): Promise<{
+export async function getHealthOtl(signal?: AbortSignal): Promise<{
   ok: boolean;
   username?: string;
 }> {

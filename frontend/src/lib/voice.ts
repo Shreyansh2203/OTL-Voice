@@ -114,7 +114,9 @@ export function useSpeechInput() {
         if (!BrowserSpeech) {
           isListeningRef.current = false;
           setListening(false);
-          setErrorMsg('OCI speech is unavailable. Type your reply or try again.');
+          setErrorMsg(
+            'OCI speech is unavailable. Type your reply or try again.'
+          );
           return;
         }
         browserFallbackPendingRef.current = true;
@@ -341,7 +343,8 @@ export function useSpeechInput() {
       const useTestBrowserSpeech =
         import.meta.env.MODE === 'test' ||
         speechWindow.__OTL_E2E_BROWSER_SPEECH__ === true;
-      if (useTestBrowserSpeech && BrowserSpeech) launchEngine(BrowserSpeech, true);
+      if (useTestBrowserSpeech && BrowserSpeech)
+        launchEngine(BrowserSpeech, true);
       else launchEngine(OciSpeechRecognition, false);
     },
     [stop, supported]
@@ -405,7 +408,9 @@ export function useAudioPlayer() {
   }, [release]);
 
   const play = useCallback(
-    (blob: Blob): Promise<{
+    (
+      blob: Blob
+    ): Promise<{
       success: boolean;
       autoplayBlocked?: boolean;
       interrupted?: boolean;

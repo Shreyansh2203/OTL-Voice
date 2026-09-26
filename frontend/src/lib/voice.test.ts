@@ -223,15 +223,11 @@ describe('useSpeechInput with Web Speech API', () => {
     const first = speechResult(' I worked 4 hours ');
     const second = speechResult('on Alpha');
     act(() => mockRecognitionInstance.onresult({ results: [first] }));
-    act(() =>
-      mockRecognitionInstance.onresult({ results: [first, second] })
-    );
+    act(() => mockRecognitionInstance.onresult({ results: [first, second] }));
     expect(onFinal).toHaveBeenLastCalledWith('I worked 4 hours on Alpha');
     expect(onFinal).toHaveBeenCalledTimes(2);
     onSpeechStart.mockClear();
-    act(() =>
-      mockRecognitionInstance.onresult({ results: [first, second] })
-    );
+    act(() => mockRecognitionInstance.onresult({ results: [first, second] }));
     expect(onSpeechStart).not.toHaveBeenCalled();
     expect(onFinal).toHaveBeenCalledTimes(2);
     expect(onInterim).not.toHaveBeenCalled();
@@ -329,7 +325,9 @@ describe('useSpeechInput with Web Speech API', () => {
       })
     );
     expect(onFinal).toHaveBeenLastCalledWith('4 hours on Alpha');
-    expect(result.current.errorMsg).toMatch(/Browser speech is active after your consent/i);
+    expect(result.current.errorMsg).toMatch(
+      /Browser speech is active after your consent/i
+    );
   });
 
   it.each([
@@ -339,18 +337,23 @@ describe('useSpeechInput with Web Speech API', () => {
     ['3.5', undefined],
     ['yes', Number.NaN],
     ['4', Number.POSITIVE_INFINITY],
-  ])('keeps the short reply %s when confidence is %s', async (text, confidence) => {
-    const { result } = renderHook(() => useSpeechInput());
-    const onFinal = vi.fn();
-    await act(async () => result.current.start(onFinal));
-    act(() =>
-      mockRecognitionInstance.onresult({
-        results: [speechResult(text, true, confidence)],
-      })
-    );
-    expect(onFinal).toHaveBeenCalledWith(text);
-    expect(result.current.errorMsg).toMatch(/Browser speech is active after your consent/i);
-  });
+  ])(
+    'keeps the short reply %s when confidence is %s',
+    async (text, confidence) => {
+      const { result } = renderHook(() => useSpeechInput());
+      const onFinal = vi.fn();
+      await act(async () => result.current.start(onFinal));
+      act(() =>
+        mockRecognitionInstance.onresult({
+          results: [speechResult(text, true, confidence)],
+        })
+      );
+      expect(onFinal).toHaveBeenCalledWith(text);
+      expect(result.current.errorMsg).toMatch(
+        /Browser speech is active after your consent/i
+      );
+    }
+  );
 });
 
 describe('OciSpeechRecognition', () => {

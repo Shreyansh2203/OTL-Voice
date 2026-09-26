@@ -1,10 +1,10 @@
-import React, { useRef, useState, useEffect } from "react";
-import { motion, animate, useMotionValue } from "motion/react";
+import React, { useRef, useState, useEffect } from 'react';
+import { motion, animate, useMotionValue } from 'motion/react';
 
 interface SimpleMarqueeProps {
   children: React.ReactNode;
   className?: string;
-  direction?: "up" | "down" | "left" | "right";
+  direction?: 'up' | 'down' | 'left' | 'right';
   baseVelocity?: number;
   repeat?: number;
   easing?: (x: number) => number;
@@ -12,18 +12,18 @@ interface SimpleMarqueeProps {
 
 export default function SimpleMarquee({
   children,
-  className = "",
-  direction = "left",
+  className = '',
+  direction = 'left',
   baseVelocity = 50,
   repeat = 4,
-  easing
+  easing,
 }: SimpleMarqueeProps) {
   const [contentSize, setContentSize] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  
-  const isVertical = direction === "up" || direction === "down";
-  const factor = direction === "down" || direction === "right" ? 1 : -1;
-  
+
+  const isVertical = direction === 'up' || direction === 'down';
+  const factor = direction === 'down' || direction === 'right' ? 1 : -1;
+
   const position = useMotionValue(0);
 
   useEffect(() => {
@@ -31,7 +31,9 @@ export default function SimpleMarquee({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        setContentSize(isVertical ? entry.contentRect.height : entry.contentRect.width);
+        setContentSize(
+          isVertical ? entry.contentRect.height : entry.contentRect.width
+        );
       }
     });
     observer.observe(contentRef.current);
@@ -46,7 +48,7 @@ export default function SimpleMarquee({
       // To keep it smooth, let's just animate from 0 to factor * contentSize
       // Wait, if it moves from 0 to contentSize (factor=1), it means it moves down.
       // When it hits contentSize, it snaps back to 0. But to prevent flashing, we need the copies.
-      
+
       let from = 0;
       let to = factor * contentSize;
 
@@ -59,37 +61,48 @@ export default function SimpleMarquee({
       position.set(from);
 
       const controls = animate(position, [from, to], {
-        ease: easing || "linear",
+        ease: easing || 'linear',
         duration: contentSize / baseVelocity,
         repeat: Infinity,
-        repeatType: "loop"
+        repeatType: 'loop',
       });
       return controls.stop;
     }
   }, [contentSize, baseVelocity, factor, position, easing]);
 
-  const transformKey = isVertical ? "y" : "x";
+  const transformKey = isVertical ? 'y' : 'x';
 
-  // For down/right movement (factor = 1), we need an extra copy at the start 
+  // For down/right movement (factor = 1), we need an extra copy at the start
   // or we need to offset the whole container to hide the snap.
   // Actually, if we just render N copies, when it animates from -contentSize to 0,
   // we start looking at the -contentSize offset (which means it's pulled up by 1 copy),
   // and it moves to 0. This works perfectly as long as we have enough copies.
 
   return (
-    <div style={{ overflow: "hidden", display: "flex", flexDirection: isVertical ? "column" : "row" }} className={className}>
+    <div
+      style={{
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: isVertical ? 'column' : 'row',
+      }}
+      className={className}
+    >
       <motion.div
         style={{
-          display: "flex",
-          flexDirection: isVertical ? "column" : "row",
-          [transformKey]: position
+          display: 'flex',
+          flexDirection: isVertical ? 'column' : 'row',
+          [transformKey]: position,
         }}
       >
         {Array.from({ length: repeat }).map((_, i) => (
-          <div 
-            key={i} 
-            ref={i === 0 ? contentRef : null} 
-            style={{ display: "flex", flexDirection: isVertical ? "column" : "row", flexShrink: 0 }}
+          <div
+            key={i}
+            ref={i === 0 ? contentRef : null}
+            style={{
+              display: 'flex',
+              flexDirection: isVertical ? 'column' : 'row',
+              flexShrink: 0,
+            }}
           >
             {children}
           </div>

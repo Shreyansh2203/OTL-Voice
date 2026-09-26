@@ -31,7 +31,9 @@ class FakeWebSocket {
 const trackStop = vi.fn();
 
 function installBrowserMocks() {
-  const stream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
+  const stream = {
+    getTracks: () => [{ stop: trackStop }],
+  } as unknown as MediaStream;
   const getUserMedia = vi.fn().mockResolvedValue(stream);
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -52,7 +54,9 @@ function installBrowserMocks() {
     },
   });
   const worklet = {
-    port: { onmessage: null as ((event: MessageEvent<ArrayBuffer>) => void) | null },
+    port: {
+      onmessage: null as ((event: MessageEvent<ArrayBuffer>) => void) | null,
+    },
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
@@ -136,7 +140,9 @@ describe('OciSpeechRecognition', () => {
     const deniedError = vi.fn();
     denied.onerror = deniedError;
     denied.start();
-    await vi.waitFor(() => expect(deniedError).toHaveBeenCalledWith({ error: 'not-allowed' }));
+    await vi.waitFor(() =>
+      expect(deniedError).toHaveBeenCalledWith({ error: 'not-allowed' })
+    );
     denied.stop();
 
     browser.getUserMedia.mockResolvedValue(browser.stream);
@@ -168,9 +174,10 @@ describe('OciSpeechRecognition', () => {
   it('does not initialize audio after a pending microphone request is stopped', async () => {
     let resolveStream: ((stream: MediaStream) => void) | undefined;
     browser.getUserMedia.mockImplementationOnce(
-      () => new Promise<MediaStream>((resolve) => {
-        resolveStream = resolve;
-      })
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          resolveStream = resolve;
+        })
     );
     const recognition = new OciSpeechRecognition();
     const onend = vi.fn();

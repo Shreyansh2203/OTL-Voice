@@ -113,6 +113,9 @@ jobs:
       - name: Run ESLint
         run: pnpm --filter otl-timesheet-pwa run lint
 
+      - name: Verify frontend formatting
+        run: pnpm --filter otl-timesheet-pwa run format:check
+
       - name: Run frontend unit tests with coverage gate
         run: >-
           pnpm --filter otl-timesheet-pwa exec vitest run --coverage
