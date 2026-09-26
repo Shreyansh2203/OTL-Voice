@@ -6,7 +6,6 @@ import logging
 import mimetypes
 import os
 import re
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -69,7 +68,11 @@ _REDACTIONS = (
     re.compile(r"(?i)basic\s+[A-Za-z0-9+/=]+"),
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     re.compile(
-        r"(?i)(password|passwd|token|jwt|cookie|authorization)\s*[:=]\s*[^\s,;]+"
+        r"(?i)(password|passwd|token|jwt|cookie|authorization|secret|credential"
+        r"|api[-_]?key|private[-_]?key)\s*[:=]\s*[^\s,;]+"
+    ),
+    re.compile(
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
     ),
     re.compile(r"(?<!\d)\d{6,}(?!\d)"),
 )
@@ -340,7 +343,7 @@ async def csrf_protection(request: Request, call_next):
         or not header_token
         or len(cookie_token) > 256
         or len(header_token) > 256
-        or not secrets.compare_digest(cookie_token, header_token)
+        or not auth.constant_time_equals(cookie_token, header_token)
     ):
         return JSONResponse(
             status_code=403,

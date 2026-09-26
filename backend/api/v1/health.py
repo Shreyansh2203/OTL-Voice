@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -22,7 +21,9 @@ def _assert_admin(request: Request) -> None:
             detail="Admin key not configured",
         )
     key_value = key or ""
-    if not secrets.compare_digest(request.headers.get("X-Admin-Key") or "", key_value):
+    if not auth.constant_time_equals(
+        request.headers.get("X-Admin-Key") or "", key_value
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin key required.",

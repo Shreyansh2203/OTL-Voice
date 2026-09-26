@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from datetime import UTC, datetime, timedelta
@@ -434,3 +435,57 @@ async def test_current_session_maps_redis_failure_to_503():
         await auth.current_session(otl_session="opaque-session-token")
     assert exc.value.status_code == 503
     assert exc.value.detail == "Session validation is temporarily unavailable."
+
+
+def _raw_post_status(cookie: bytes, csrf_header: bytes) -> int:
+    from backend.main import app
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/api/auth/login",
+        "raw_path": b"/api/auth/login",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"app.example.com"),
+            (b"content-type", b"application/json"),
+            (b"content-length", b"2"),
+            (b"cookie", cookie),
+            (b"x-csrf-token", csrf_header),
+        ],
+        "client": ("198.51.100.7", 51234),
+        "server": ("app.example.com", 443),
+    }
+    sent: list[dict] = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    with (
+        patch.dict(os.environ, {"TEST_MODE": "false", "DEV_MODE": "false"}),
+        patch(
+            "backend.main.auth_rate_limiter.is_allowed",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        asyncio.run(app(scope, receive, send))
+    return sent[0]["status"]
+
+
+def test_csrf_rejects_non_ascii_tokens_instead_of_raising():
+    assert _raw_post_status(b"csrf_token=caf\xe9-bad", b"valid-ascii-token") == 403
+    assert _raw_post_status(b"csrf_token=valid-ascii-token", b"caf\xe9-bad") == 403
+    assert _raw_post_status(b"csrf_token=caf\xe9-bad", b"caf\xe9-bad") == 401
+
+
+def test_constant_time_equals_handles_non_ascii_and_rejects_mismatches():
+    assert auth.constant_time_equals("caf\u00e9-token", "caf\u00e9-token") is True
+    assert auth.constant_time_equals("caf\u00e9-token", "other-token") is False
+    assert auth.constant_time_equals("", "") is True

@@ -136,7 +136,7 @@ class LegacyDevelopmentVerifier:
 
     async def verify(self, identifier: str, credential: str) -> AuthVerification | None:
         normalized_identifier = identifier.strip()
-        if not normalized_identifier or not hmac.compare_digest(
+        if not normalized_identifier or not constant_time_equals(
             credential, self._password
         ):
             return None
@@ -462,6 +462,13 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("duplicate JSON key")
         result[key] = value
     return result
+
+
+def constant_time_equals(left: str, right: str) -> bool:
+    return secrets.compare_digest(
+        left.encode("utf-8", "surrogatepass"),
+        right.encode("utf-8", "surrogatepass"),
+    )
 
 
 def _b64encode(value: bytes) -> str:

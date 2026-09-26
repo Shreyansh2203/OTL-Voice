@@ -4,6 +4,29 @@ from unittest.mock import patch
 from backend import main
 
 
+def test_sentry_redacts_credential_shaped_free_text():
+    redacted = main._redact_text(
+        "secret=abcd1234efgh credential: hunter2xyz api_key=SUPERSECRET "
+        "private_key=abc123 password=p@ssw0rd"
+    )
+    assert "abcd1234efgh" not in redacted
+    assert "hunter2xyz" not in redacted
+    assert "SUPERSECRET" not in redacted
+    assert "abc123" not in redacted
+    assert "p@ssw0rd" not in redacted
+
+
+def test_sentry_redacts_inline_pem_private_key_blocks():
+    pem = (
+        "-----BEGIN PRIVATE KEY-----\n"
+        "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ\n"
+        "-----END PRIVATE KEY-----"
+    )
+    redacted = main._redact_text(f"signing failed for key:\n{pem}")
+    assert "BEGIN PRIVATE KEY" not in redacted
+    assert "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ" not in redacted
+
+
 def test_sentry_scrubber_removes_sensitive_request_and_local_data():
     event = {
         "request": {
