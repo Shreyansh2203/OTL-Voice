@@ -24,6 +24,18 @@ def client():
 
 
 @pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    # auth_rate_limiter allows 10 requests per 60s against module-level state that
+    # outlives a single test, so requests from earlier tests can exhaust the budget
+    # for the testclient IP and turn a later expected-200 login into a 429.
+    from backend.core.limiter import auth_rate_limiter, rate_limiter
+
+    for limiter in (auth_rate_limiter, rate_limiter):
+        limiter._local_requests.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_otl_client():
     with (
         patch("backend.main.otl_client") as mock,
