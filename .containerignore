@@ -7,12 +7,34 @@ __pycache__/
 *.py[cod]
 .git/
 .gitignore
+.github/
 .env
+.env.*
+!.env.example
 *.pem
+*.key
+*.p12
+*.pfx
+certs/
+secrets/
 .streamlit/secrets.toml
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
+
+# Test, coverage, and browser-automation output must never enter the context.
+.coverage
+coverage.xml
+htmlcov/
+coverage/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+test-results/
+playwright-report/
+*.tsbuildinfo
 
 # Node / frontend: install and build happen inside the image, so never copy the
 # host's node_modules or dist into the build context.
@@ -29,3 +51,6 @@ deploy/
 # ship the host's copy (it holds locally-created employees).
 data/
 *.db
+*.sqlite
+*.sqlite3
+*.sqlite3-*
