@@ -1,11 +1,66 @@
 # OTL Timesheet Assistant
 
-OTL Timesheet Assistant is a voice-first, single-origin web application for recording Oracle Fusion Cloud Time and Labour (OTL) entries. A React/Vite PWA talks to a FastAPI service that authenticates the user, resolves Fusion assignments, streams OCI Generative AI and speech responses, validates a proposed timecard, and submits it only after an explicit review and approval.
+[![CI](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/ci.yml/badge.svg)](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/codeql.yml/badge.svg)](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python: 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-009688.svg)](https://fastapi.tiangolo.com)
+[![React: 18](https://img.shields.io/badge/React-18-61dafb.svg)](frontend/package.json)
+[![TypeScript: 5.9](https://img.shields.io/badge/TypeScript-5.9-3178C6.svg)](frontend/package.json)
+[![Vite: 6](https://img.shields.io/badge/Vite-6-646CFF.svg)](frontend/vite.config.ts)
+[![Docker: GHCR](https://img.shields.io/badge/docker-gHCR-2496ED?logo=docker&logoColor=white)](https://github.com/Shreyansh2203/OTL-Voice/pkgs/container/otl-voice)
 
-The repository is intentionally usable without live Oracle or OCI credentials for unit, container, and browser smoke tests. Live integration tests are opt-in and require a separately provisioned test identity.
+## The problem
+
+Recording time in Oracle Fusion Cloud Time and Labour is a form-filling exercise, and
+it happens at the worst possible moment: end of shift, on a phone, with the details
+scattered across assignment records. Choosing the right project, task, work order, and
+expenditure type from a long catalogue is slow and easy to get wrong, and a wrong
+entry surfaces days later as a payroll exception or an unpaid shift.
+
+Fusion offers no conversational or voice entry path, and the context needed to fill
+the form correctly — which projects and tasks a person is actually assigned to — is
+not something the form will look up for you.
+
+## What it does
+
+Ask for the shift in plain language. A React/Vite PWA talks to a FastAPI service that
+authenticates the user, resolves their real Fusion assignments, streams an OCI
+Generative AI and Speech response, and returns a structured timecard proposal.
+
+Nothing is written to Oracle until you read it and approve it. The proposal is
+validated server-side against your assignments, the payroll-time and expenditure-type
+allowlists, and the daily and per-entry hour limits before submission, and every write
+carries an idempotency key so a retried request cannot create a duplicate timecard.
+
+The app is a single origin: an installable PWA served by the same TLS-terminated
+service that holds the API, with an HttpOnly session cookie. The browser never reads
+the session token.
+
+The repository is intentionally usable without live Oracle or OCI credentials for unit,
+container, and browser smoke tests. Live integration tests are opt-in and require a
+separately provisioned test identity.
+
+## Tech stack
+
+| Layer | Technology | Role |
+| --- | --- | --- |
+| API | FastAPI, Uvicorn, Pydantic | Routes, dependency-injected session resolution, request validation |
+| Auth | OIDC (RS256 via JWKS) or per-user scrypt, PyJWT | Two explicit production identity modes, cookie-only sessions, Redis-backed revocation |
+| Oracle | `httpx` client for Fusion HCM/PPM REST, OCI SDK for GenAI and Speech | Assignment catalogue, timecard reads/writes, speech-to-text and LLM streaming |
+| Storage | SQLite (WAL) for the assignment catalogue and the idempotency store | Durable write deduplication; both volumes are operator-provisioned |
+| Rate limiting | `redis.asyncio` with a dev-only in-memory fallback | Per-IP request limits and per-user WebSocket caps |
+| Errors | Sentry SDK with a credential-scrubbing `before_send` | Sensitive flows dropped, request bodies/cookies/local vars stripped |
+| Frontend | React 18, TypeScript 5.9, Vite 6, TanStack Query, Workbox | Voice/text chat, assignment picker, review panel, installable PWA shell |
+| Native | Capacitor 8 | Optional iOS and Android shells around the same PWA |
+| Quality | Ruff, mypy, pytest + coverage, ESLint, Vitest + coverage, Playwright + axe, CodeQL | Gates enforced in `make verify` and CI |
+| Delivery | Docker + GHCR, release-please, Dependabot, Ansible, nginx | Pinned images with SBOM/provenance/Trivy scan, protected production handoff |
 
 ## Contents
 
+- [The problem](#the-problem)
+- [What it does](#what-it-does)
+- [Tech stack](#tech-stack)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
@@ -246,9 +301,11 @@ Native signing, store submission, and certificate issuance are intentionally ope
 ### GHCR image and release flow
 
 - Pull requests and pushes to `main` run CI.
-- Release-please creates the release/tag.
-- `.github/workflows/image.yml` builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. No `:latest` image is published.
-- `.github/workflows/cd.yml` is an explicit, protected Ansible deployment handoff. Supply a versioned tag or, preferably, an `@sha256:` image digest. The old Render hook is not part of the deployment path.
+- Release-please creates the release/tag. It uses the `simple` strategy, so the
+  released version lives in the root `version.txt`; `release-please-config.json`
+  pins the changelog path and release-PR title.
+- `.github/workflows/image.yml` builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
+- `.github/workflows/cd.yml` is an explicit, protected Ansible deployment handoff. Supply a versioned tag or, preferably, an `@sha256:` image digest, and reject `latest` in the same way. The old Render hook is not part of the deployment path.
 
 ### Compose (TLS-first production)
 
