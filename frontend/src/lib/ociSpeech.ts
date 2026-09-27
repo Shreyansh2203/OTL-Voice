@@ -90,6 +90,15 @@ export class OciSpeechRecognition {
         .webkitAudioContext;
     if (!AudioContextClass) throw new Error('AudioContext is unavailable');
     this.audioCtx = new AudioContextClass({ sampleRate: 16_000 });
+    // A context created outside a user gesture stays suspended on iOS, and a
+    // suspended context pulls no samples, so the socket would look connected
+    // while nothing was ever sent.
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+    if (this.audioCtx.state !== 'running') {
+      throw new Error('The audio context could not be started');
+    }
     await this.audioCtx.audioWorklet.addModule('/stt-processor.js');
     if (this.stopped) {
       this._cleanup();
@@ -97,7 +106,13 @@ export class OciSpeechRecognition {
     }
 
     const source = this.audioCtx.createMediaStreamSource(this.stream);
-    this.workletNode = new AudioWorkletNode(this.audioCtx, 'stt-processor');
+    this.workletNode = new AudioWorkletNode(this.audioCtx, 'stt-processor', {
+      // The worklet cannot read the context rate on its own, so it has to be
+      // told. Without this it assumes 16 kHz and its resampler never runs, so a
+      // platform that forces the hardware rate (iOS/Android WebView) streams
+      // 48 kHz audio to a 16 kHz recogniser and the transcript is unintelligible.
+      processorOptions: { sampleRate: this.audioCtx.sampleRate },
+    });
     source.connect(this.workletNode);
     this.workletNode.connect(this.audioCtx.destination);
 

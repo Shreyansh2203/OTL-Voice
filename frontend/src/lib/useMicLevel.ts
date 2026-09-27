@@ -74,6 +74,14 @@ export function useMicLevel(onLevel?: (level: number) => void) {
           window.AudioContext || (window as any).webkitAudioContext
         )();
         ctxRef.current = ctx;
+        // Mirrors lib/audio.ts: a context created outside a user gesture stays
+        // suspended on iOS and an analyser on it reports a flat zero forever.
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+        if (ctx.state !== 'running') {
+          throw new Error('The audio context could not be started');
+        }
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;

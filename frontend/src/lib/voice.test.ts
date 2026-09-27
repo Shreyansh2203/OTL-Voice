@@ -381,8 +381,14 @@ describe('OciSpeechRecognition', () => {
       send() {}
     }
     class MockAudioContext {
+      state = 'running';
+      sampleRate = 48_000;
       audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
       destination = {};
+      resume() {
+        this.state = 'running';
+        return Promise.resolve();
+      }
       createMediaStreamSource() {
         return { connect: vi.fn() };
       }

@@ -41,7 +41,14 @@ function installBrowserMocks() {
   });
   const source = { connect: vi.fn() };
   const close = vi.fn().mockResolvedValue(undefined);
+  // 48 kHz models the platforms that refuse the requested 16 kHz and hand back
+  // the hardware rate instead.
   const audioContext = {
+    state: 'running',
+    sampleRate: 48_000,
+    resume: vi.fn(async () => {
+      audioContext.state = 'running';
+    }),
     audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     createMediaStreamSource: vi.fn(() => source),
     destination: {},
@@ -60,9 +67,11 @@ function installBrowserMocks() {
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
+  const workletNodeArgs: unknown[][] = [];
   Object.defineProperty(window, 'AudioWorkletNode', {
     configurable: true,
-    value: function AudioWorkletNode() {
+    value: function AudioWorkletNode(...args: unknown[]) {
+      workletNodeArgs.push(args);
       return worklet;
     },
   });
@@ -77,7 +86,15 @@ function installBrowserMocks() {
     configurable: true,
     value: Socket,
   });
-  return { sockets, stream, getUserMedia, audioContext, worklet, source };
+  return {
+    sockets,
+    stream,
+    getUserMedia,
+    audioContext,
+    worklet,
+    source,
+    workletNodeArgs,
+  };
 }
 
 describe('OciSpeechRecognition', () => {
@@ -187,6 +204,63 @@ describe('OciSpeechRecognition', () => {
     resolveStream?.(browser.stream);
     await Promise.resolve();
     expect(browser.audioContext.audioWorklet.addModule).not.toHaveBeenCalled();
+    expect(onend).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the worklet the rate the context actually runs at', async () => {
+    const recognition = new OciSpeechRecognition();
+    const onerror = vi.fn();
+    recognition.onerror = onerror;
+
+    recognition.start();
+    await vi.waitFor(() => expect(browser.sockets).toHaveLength(1));
+
+    // The worklet defaults to 16 kHz and only resamples when it is told the
+    // real rate, so a 48 kHz platform must not be assumed away.
+    const args = browser.workletNodeArgs[0] as [
+      unknown,
+      string,
+      { processorOptions?: { sampleRate?: number } },
+    ];
+    expect(args[1]).toBe('stt-processor');
+    expect(args[2].processorOptions?.sampleRate).toBe(48_000);
+    expect(onerror).not.toHaveBeenCalled();
+  });
+
+  it('resumes a context the platform left suspended', async () => {
+    browser.audioContext.state = 'suspended';
+    const recognition = new OciSpeechRecognition();
+    const onerror = vi.fn();
+    recognition.onerror = onerror;
+
+    recognition.start();
+    await vi.waitFor(() => expect(browser.sockets).toHaveLength(1));
+
+    expect(browser.audioContext.resume).toHaveBeenCalledTimes(1);
+    expect(browser.audioContext.state).toBe('running');
+    expect(onerror).not.toHaveBeenCalled();
+  });
+
+  it('refuses to stream when the context will not run', async () => {
+    browser.audioContext.state = 'suspended';
+    browser.audioContext.resume = vi.fn(async () => {
+      browser.audioContext.state = 'suspended';
+    });
+    const recognition = new OciSpeechRecognition();
+    const onerror = vi.fn();
+    const onend = vi.fn();
+    recognition.onerror = onerror;
+    recognition.onend = onend;
+
+    recognition.start();
+    await vi.waitFor(() =>
+      expect(onerror).toHaveBeenCalledWith({ error: 'network' })
+    );
+
+    // Better a visible error than a "Listening…" indicator with no audio.
+    expect(browser.sockets).toHaveLength(0);
+    expect(browser.audioContext.audioWorklet.addModule).not.toHaveBeenCalled();
+    expect(trackStop).toHaveBeenCalledTimes(1);
     expect(onend).toHaveBeenCalledTimes(1);
   });
 });

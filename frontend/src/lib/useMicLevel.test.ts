@@ -23,6 +23,10 @@ function installMocks() {
   const source = { connect: vi.fn() };
   const close = vi.fn().mockResolvedValue(undefined);
   const audioContext = {
+    state: 'running',
+    resume: vi.fn(async () => {
+      audioContext.state = 'running';
+    }),
     createMediaStreamSource: vi.fn(() => source),
     createAnalyser: vi.fn(() => analyser),
     close,
@@ -52,6 +56,7 @@ function installMocks() {
     getUserMedia,
     analyser,
     source,
+    audioContext,
     close,
     trackStop,
     requestAnimationFrame,
@@ -115,6 +120,43 @@ describe('useMicLevel', () => {
       await result.current.start();
     });
     expect(onLevel).toHaveBeenLastCalledWith(0);
+    expect(result.current.level).toBe(0);
+  });
+
+  it('resumes a context the platform left suspended', async () => {
+    const browser = installMocks();
+    browser.audioContext.state = 'suspended';
+    const { result } = renderHook(() => useMicLevel());
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(browser.audioContext.resume).toHaveBeenCalledTimes(1);
+    expect(browser.audioContext.state).toBe('running');
+    expect(result.current.levelRef.current).toBe(0);
+    await act(async () => browser.runFrame());
+    expect(result.current.level).toBeGreaterThan(0);
+    act(() => result.current.stop());
+  });
+
+  it('reports no level when the context refuses to run', async () => {
+    const browser = installMocks();
+    browser.audioContext.state = 'suspended';
+    browser.audioContext.resume = vi.fn(async () => {
+      browser.audioContext.state = 'suspended';
+    });
+    const onLevel = vi.fn();
+    const { result } = renderHook(() => useMicLevel(onLevel));
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    // A flat-zero orb reads as "not listening" rather than pretending to work.
+    expect(browser.audioContext.createAnalyser).not.toHaveBeenCalled();
+    expect(onLevel).toHaveBeenLastCalledWith(0);
+    expect(browser.close).toHaveBeenCalledTimes(1);
     expect(result.current.level).toBe(0);
   });
 });
