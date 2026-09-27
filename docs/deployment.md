@@ -22,14 +22,16 @@ The application port is never published directly in the Compose production file.
 
 ## Image publication
 
-`.github/workflows/image.yml` runs for a version tag, a published release, or manual dispatch. It:
+`.github/workflows/image.yml` runs once per published release, or on manual dispatch with an explicit `image_tag`. It does not also fire on the tag push, because release-please creates the release and its tag in one step and a manual tag push would otherwise build, publish, and scan the same version twice. The job is:
 
 - logs in to GHCR using the workflow token;
 - builds the multi-stage image from the root lockfiles;
 - publishes a semver tag, release tag, and commit-SHA tag (never `latest`);
 - emits an SBOM and provenance attestations through Buildx;
-- runs a high/critical Trivy image scan;
-- fails the publication on unfixed high/critical findings according to policy.
+- runs a high/critical Trivy image scan on the published image;
+- fails the workflow on unfixed high/critical findings according to policy.
+
+The scan runs against the published image, so a failing finding fails the workflow rather than preventing the push. That ordering is deliberate: the SBOM and provenance attestations that the rest of the delivery path depends on can only be produced by a push-capable Buildx output, and a pre-push scan would either drop those attestations or scan a second build that is not guaranteed to be byte-identical to the one deployed. Treat a failed publish as unapproved and roll the digest forward; the semver tags are immutable, so the vulnerable image is never promoted to a newer version.
 
 Use an immutable `@sha256:` reference in Ansible. A human-readable version tag is useful for inventory but a digest is the strongest deployment pin.
 
