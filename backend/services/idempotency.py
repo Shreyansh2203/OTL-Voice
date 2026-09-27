@@ -19,6 +19,7 @@ DEFAULT_TTL_SECONDS = 24 * 60 * 60
 DEFAULT_LEASE_SECONDS = 2 * 60
 DEFAULT_WAIT_SECONDS = 35.0
 DEFAULT_POLL_SECONDS = 0.05
+MIN_INTERVAL_SECONDS = 0.01
 MAX_KEY_LENGTH = 128
 MAX_RESULT_STRING_LENGTH = 256
 _KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -227,13 +228,15 @@ class _MemoryBackend:
             return IdempotencyClaim(state="pending")
 
     def complete(self, key: str, token: str, result: dict[str, Any]) -> bool:
+        now = time.time()
         with self._lock:
             record = self._records.get(key)
             if (
                 record is None
                 or record.state != "pending"
                 or record.owner_token != token
-                or record.lease_until <= 0
+                or record.lease_until <= now
+                or record.expires_at <= now
             ):
                 return False
             record.state = "complete"
@@ -341,13 +344,15 @@ class _SQLiteBackend:
                     )
                 if float(lease_until) <= now:
                     token = uuid.uuid4().hex
-                    connection.execute(
+                    reclaimed = connection.execute(
                         "UPDATE idempotency_records SET owner_token = ?, lease_until = ? "
-                        "WHERE key = ?",
+                        "WHERE key = ? AND state = 'pending'",
                         (token, now + lease, key),
                     )
                     connection.commit()
-                    return IdempotencyClaim(state="claimed", token=token)
+                    if reclaimed.rowcount == 1:
+                        return IdempotencyClaim(state="claimed", token=token)
+                    return IdempotencyClaim(state="pending")
                 connection.commit()
                 return IdempotencyClaim(state="pending")
         except sqlite3.Error as exc:
@@ -389,6 +394,16 @@ class _SQLiteBackend:
 
 
 class IdempotencyStore:
+    """Durable write-deduplication store for timecard submissions.
+
+    ``ttl_seconds`` is how long a finished result stays replayable. ``lease_seconds``
+    is the independent crash-recovery window for a *claimed but unfinished* write: while
+    the lease is live every other caller is refused, and once it expires the claim is
+    stale and may be reclaimed. The lease is therefore clamped into ``(0, ttl_seconds]``
+    so it can never exceed the lifetime of the record it protects and can never
+    resurrect a record that has already expired.
+    """
+
     def __init__(
         self,
         path: str | Path | None = None,
@@ -398,8 +413,10 @@ class IdempotencyStore:
         wait_seconds: float = DEFAULT_WAIT_SECONDS,
         poll_seconds: float = DEFAULT_POLL_SECONDS,
     ) -> None:
-        self.ttl_seconds = max(0.01, float(ttl_seconds))
-        self.lease_seconds = max(self.ttl_seconds, float(lease_seconds))
+        self.ttl_seconds = max(MIN_INTERVAL_SECONDS, float(ttl_seconds))
+        self.lease_seconds = min(
+            max(MIN_INTERVAL_SECONDS, float(lease_seconds)), self.ttl_seconds
+        )
         self.wait_seconds = max(0.0, float(wait_seconds))
         self.poll_seconds = max(0.001, float(poll_seconds))
         if path is None:

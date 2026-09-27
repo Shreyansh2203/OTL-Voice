@@ -6,7 +6,9 @@ import pytest
 from backend.services.idempotency import (
     IdempotencyKeyError,
     IdempotencyStore,
+    get_idempotency_store,
     idempotency_key_for_entry,
+    reset_idempotency_store,
     sanitize_idempotency_result,
     scoped_idempotency_key,
     validate_idempotency_key,
@@ -21,6 +23,24 @@ def _store(path, **kwargs):
         wait_seconds=kwargs.pop("wait_seconds", 1),
         poll_seconds=kwargs.pop("poll_seconds", 0.005),
     )
+
+
+class _FrozenClock:
+    def __init__(self, start: float) -> None:
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    frozen = _FrozenClock(1_700_000_000.0)
+    monkeypatch.setattr(time, "time", frozen)
+    return frozen
 
 
 def test_request_id_validation_and_aliases(tmp_path):
@@ -146,3 +166,129 @@ def test_sanitizer_only_returns_public_fields():
         "error": "Oracle rejected this timecard entry.",
         "requestId": "request-123",
     }
+
+
+def _store_path(tmp_path, backend, name):
+    return str(tmp_path / name) if backend == "sqlite" else ":memory:"
+
+
+def test_lease_is_independent_of_and_shorter_than_ttl(tmp_path):
+    store = _store(tmp_path / "idempotency.db", ttl_seconds=86400, lease_seconds=120)
+
+    assert store.ttl_seconds == 86400
+    assert store.lease_seconds == 120
+
+    clamped = _store(tmp_path / "clamped.db", ttl_seconds=60, lease_seconds=3600)
+    assert clamped.lease_seconds == 60
+
+    floored = _store(tmp_path / "floored.db", ttl_seconds=60, lease_seconds=0)
+    assert floored.lease_seconds == pytest.approx(0.01)
+
+
+def test_default_store_lease_is_the_crash_recovery_window(monkeypatch, tmp_path):
+    monkeypatch.setenv("IDEMPOTENCY_DB_PATH", str(tmp_path / "env.db"))
+    monkeypatch.setenv("IDEMPOTENCY_TTL_SECONDS", "86400")
+    monkeypatch.setenv("IDEMPOTENCY_LEASE_SECONDS", "45")
+    reset_idempotency_store()
+    try:
+        store = get_idempotency_store()
+        assert store.lease_seconds == 45
+        assert store.ttl_seconds == 86400
+    finally:
+        reset_idempotency_store()
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "memory"])
+def test_live_lease_rejects_concurrent_duplicate(clock, tmp_path, backend):
+    store = _store(
+        _store_path(tmp_path, backend, "live.db"),
+        ttl_seconds=3600,
+        lease_seconds=120,
+    )
+    key = scoped_idempotency_key("employee-123", "request-live-lease")
+
+    first = store.claim(key, "payload")
+    duplicate = store.claim(key, "payload")
+    conflicting = store.claim(key, "other-payload")
+
+    assert first.state == "claimed"
+    assert first.token is not None
+    assert duplicate.state == "pending"
+    assert conflicting.state == "conflict"
+    assert store.lease_seconds == 120
+    assert store.complete(key, first.token, {"ok": True, "id": "record-live"})
+
+    replay = store.claim(key, "payload")
+    assert replay.state == "replay"
+    assert replay.result is not None
+    assert replay.result["id"] == "record-live"
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "memory"])
+def test_expired_lease_is_reclaimed_after_a_crashed_write(clock, tmp_path, backend):
+    store = _store(
+        _store_path(tmp_path, backend, "stale.db"),
+        ttl_seconds=3600,
+        lease_seconds=120,
+    )
+    key = scoped_idempotency_key("employee-123", "request-stale-lease")
+
+    crashed = store.claim(key, "payload")
+    assert crashed.state == "claimed"
+    assert crashed.token is not None
+    assert store.claim(key, "payload").state == "pending"
+
+    clock.advance(121)
+
+    retry = store.claim(key, "payload")
+    assert retry.state == "claimed"
+    assert retry.token is not None
+    assert retry.token != crashed.token
+    assert not store.complete(key, crashed.token, {"ok": True, "id": "stale"})
+    assert store.complete(key, retry.token, {"ok": True, "id": "record-recovered"})
+
+    replay = store.claim(key, "payload")
+    assert replay.state == "replay"
+    assert replay.result is not None
+    assert replay.result["id"] == "record-recovered"
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "memory"])
+def test_completed_result_outlives_the_lease(clock, tmp_path, backend):
+    store = _store(
+        _store_path(tmp_path, backend, "durable.db"),
+        ttl_seconds=3600,
+        lease_seconds=120,
+    )
+    key = scoped_idempotency_key("employee-123", "request-durable-lease")
+
+    claim = store.claim(key, "payload")
+    assert claim.token is not None
+    assert store.complete(key, claim.token, {"ok": True, "id": "record-durable"})
+
+    clock.advance(300)
+
+    replay = store.claim(key, "payload")
+    assert replay.state == "replay"
+    assert replay.result is not None
+    assert replay.result["id"] == "record-durable"
+    assert replay.result["replayed"] is True
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "memory"])
+def test_expired_lease_never_reopens_a_conflicting_payload(clock, tmp_path, backend):
+    store = _store(
+        _store_path(tmp_path, backend, "hash-guard.db"),
+        ttl_seconds=3600,
+        lease_seconds=120,
+    )
+    key = scoped_idempotency_key("employee-123", "request-hash-guard")
+
+    assert store.claim(key, "payload-a").state == "claimed"
+
+    clock.advance(121)
+
+    conflict = store.claim(key, "payload-b")
+    assert conflict.state == "conflict"
+    assert conflict.result is not None
+    assert conflict.result["status"] == 409
