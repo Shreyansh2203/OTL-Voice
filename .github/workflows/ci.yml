@@ -357,7 +357,15 @@ jobs:
           done
           curl -fsS http://127.0.0.1:5173/ >/dev/null
           export PLAYWRIGHT_SKIP_WEBSERVER=1
-          timeout --foreground --kill-after=15s 12m pnpm --filter otl-timesheet-pwa exec playwright test --project=chromium --project=firefox --project=webkit --reporter=line
+          set +e
+          timeout --foreground --kill-after=15s 12m pnpm --filter otl-timesheet-pwa exec playwright test --project=chromium --project=firefox --project=webkit --reporter=line,github 2>&1 | tee /tmp/otl-playwright.log
+          playwright_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$playwright_status" -ne 0 ]; then
+            echo "::error title=Playwright matrix failed::playwright test exited ${playwright_status}; see /tmp/otl-playwright.log in the playwright-matrix-all artifact"
+            tail -n 120 /tmp/otl-playwright.log
+          fi
+          exit "$playwright_status"
 
       - name: Upload Playwright reports and logs
         if: always()
@@ -369,5 +377,6 @@ jobs:
             frontend/test-results/
             /tmp/otl-backend.log
             /tmp/otl-vite.log
+            /tmp/otl-playwright.log
           if-no-files-found: ignore
           retention-days: 14
