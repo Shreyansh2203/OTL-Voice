@@ -370,4 +370,4 @@ Native signing, store submission, and certificate issuance are intentionally ope
 
 ## Contributing and releases
 
-Use Conventional Commit messages, keep lockfiles synchronized with package manifests, and include tests for behavior changes. CodeQL, Dependabot, release-please, the GHCR publisher, and the Ansible deployment target are part of the supported delivery path. Never include credentials, private keys, session cookies, or raw employee/chat data in an issue, pull request, artifact, or log.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the commit convention, the quality gates, how to run the suite with and without live credentials, and the security controls a change must not weaken. In short: use Conventional Commit messages, keep lockfiles synchronized with package manifests, and include tests for behavior changes. CodeQL, Dependabot, release-please, the GHCR publisher, and the Ansible deployment target are part of the supported delivery path. Never include credentials, private keys, session cookies, or raw employee/chat data in an issue, pull request, artifact, or log.
