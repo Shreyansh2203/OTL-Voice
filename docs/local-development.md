@@ -47,6 +47,12 @@ pnpm --dir frontend run dev
 
 Open `http://127.0.0.1:5173`. Vite proxies `/api` to FastAPI. The development server is for one operator; do not expose it to an untrusted network.
 
+### Stopping the runner
+
+The runner installs `SIGINT` and `SIGTERM` handlers and stops both child processes from a `finally` block, so the services are torn down even when the run ends because of an unrelated failure. It sets a shutdown-in-progress flag before it touches either process, and the signal handler returns without raising while that flag is set. That closes the window where a Ctrl+C arriving during cleanup could interrupt the cleanup that had already started and leave an orphaned uvicorn or Vite process. A second Ctrl+C during the drain is therefore ignored; if a child refuses to stop, the runner escalates to a hard kill after its own timeout.
+
+`backend/tests/test_dev_runner.py` covers the handler, the drain, the unrelated-exception unwind, a partially started pair, and handler restoration.
+
 ## Local Docker development
 
 The explicit HTTP-only development stack is:
