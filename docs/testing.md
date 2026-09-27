@@ -22,12 +22,12 @@ The root workspace lockfile is canonical. Do not use `uv lock` or an unlocked pn
 
 ```bash
 uv run ruff check .
-uv run ruff format --check backend
+uv run ruff format --check backend deploy
 uv run mypy backend
-uv run pytest backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=65
+uv run pytest backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80
 ```
 
-The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 65% gate is a minimum regression floor; critical modules should be raised as they receive focused tests.
+The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 80% gate matches what the suite genuinely measures today (81.5% at the time of writing) rather than sitting far below it, so a regression is caught and improving coverage is rewarded. Raise it as tests land, and never reach the number by excluding code or adding a coverage pragma.
 
 ## Frontend
 
@@ -36,11 +36,13 @@ pnpm --dir frontend run typecheck
 pnpm --dir frontend run lint
 pnpm --dir frontend run build
 pnpm --dir frontend exec vitest run --coverage \
-  --coverage.thresholds.statements=75 \
-  --coverage.thresholds.lines=75 \
-  --coverage.thresholds.functions=75 \
-  --coverage.thresholds.branches=70
+  --coverage.thresholds.statements=80 \
+  --coverage.thresholds.lines=80 \
+  --coverage.thresholds.functions=82 \
+  --coverage.thresholds.branches=75
 ```
+
+The thresholds mirror the four numbers Vitest reports, so a single failing metric names itself. Branches are held to a lower floor than statements because branch coverage counts defensive guards, optional-chaining chains, and prop defaults that are not worth a test each.
 
 CI performs an additional strict TypeScript invocation over `frontend/src` and `frontend/tests`, so a test-only type error cannot be hidden by the application tsconfig exclusions. The frontend job uploads JSON/HTML coverage and the built PWA.
 

@@ -258,15 +258,17 @@ The repository uses locked dependencies and explicit coverage gates:
 ```bash
 uv lock --check
 uv run ruff check .
-uv run ruff format --check backend
+uv run ruff format --check backend deploy
 uv run mypy backend
-uv run pytest backend/tests --cov=backend --cov-fail-under=65
+uv run pytest backend/tests --cov=backend --cov-fail-under=80
 pnpm install --frozen-lockfile
 pnpm --dir frontend run typecheck
 pnpm --dir frontend run lint
-pnpm --dir frontend exec vitest run --coverage --coverage.thresholds.statements=75 --coverage.thresholds.branches=70
+pnpm --dir frontend exec vitest run --coverage
 pnpm --dir frontend run build
 ```
+
+The backend gate is 80% and the frontend Vitest thresholds are 80% for statements and lines, 82% for functions, and 75% for branches. Every raise is earned with tests; excluding code or adding coverage pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 CI additionally typechecks frontend test files and runs the complete Playwright matrix (Chromium, Firefox, and WebKit). Install browsers before a local matrix run:
 

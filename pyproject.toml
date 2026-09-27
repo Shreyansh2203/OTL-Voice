@@ -81,7 +81,7 @@ relative_files = true
 
 [tool.coverage.report]
 # Change this gate by editing fail_under; verify it with `uv run --frozen coverage report` (or `uv run --frozen coverage report --fail-under=<percent>`).
-fail_under = 65
+fail_under = 80
 precision = 1
 show_missing = true
 skip_covered = true
