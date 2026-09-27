@@ -30,6 +30,8 @@ pnpm install --frozen-lockfile
 
 The root `pnpm-lock.yaml` is the only workspace lockfile. Run pnpm from the repository root so the workspace importer and the frontend package are resolved together. Do not create or commit a second `frontend/pnpm-lock.yaml`; a nested lock can omit platform-specific Rollup packages and reintroduce Windows/CI drift. Builds use the root workspace lock through `pnpm --filter otl-timesheet-pwa`, and `make lock-check` performs an offline-safe consistency check.
 
+The dev dependency group also carries `tzdata` on Windows. Python's `zoneinfo` reads the operating system's zone database, and a bare Windows install has none, so without it an IANA `APP_TIMEZONE` fails to resolve and the application quietly falls back to the host timezone. Installing the locked dev group (`uv sync --locked --all-groups`) is what makes the setting work on Windows; the production Debian image is unaffected. See [configuration.md](configuration.md#business-timezone).
+
 Set a random `SESSION_SECRET_KEY` before starting a shared development instance. For tests, `TEST_MODE=true` prevents live catalogue and integration calls; it is not a production configuration.
 
 ## Native development

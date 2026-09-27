@@ -69,7 +69,7 @@ The shared `AUTH_PASSWORD`/development fallback is not an acceptable production 
 | `FUSION_HOST_URL` | Optional tenant host override for HCM/PPM clients. |
 | `FUSION_PPM_BASE_URL` | Optional PPM REST base URL. |
 | `FUSION_API_VERSION` | API version when not embedded in the explicit URLs. |
-| `APP_TIMEZONE` | Business timezone used for date/time mapping. |
+| `APP_TIMEZONE` | Business timezone used for date/time mapping. See below. |
 | `OTL_TIMEOUT_SECONDS` | HTTP timeout; keep bounded. |
 | `DEFAULT_START_HOUR` | Default start used when a reviewed entry omits one. |
 | `MAX_TIMECARD_HOURS_PER_ENTRY` | Server-side per-entry limit; default 12 hours. |
@@ -79,6 +79,14 @@ The shared `AUTH_PASSWORD`/development fallback is not an acceptable production 
 | `STRICT_ASSIGNMENT` | Keep true in production so entries must match the person's assignment. |
 
 The Fusion service account should be able to read the required worker and assignment data and perform only the required timecard operations. Validate the exact roles and business-unit scope with the tenant administrator; Oracle role names and API privileges vary by release.
+
+### Business timezone
+
+`APP_TIMEZONE` takes an IANA zone name such as `Asia/Kolkata`. The application resolves it with `zoneinfo` and stamps every submitted `startTime`/`stopTime` with that zone's UTC offset, so the value reaches Fusion in the business zone's own offset rather than the server's.
+
+If the name cannot be resolved, the application logs a warning and falls back to the host timezone. That is a deliberate availability choice, not a validation path, and it is easy to miss: a misconfigured zone produces plausible times in the wrong offset. Treat the warning as a configuration error.
+
+Resolution needs a zone database. Linux and the pinned Debian production image ship one, so production is unaffected. A bare Windows workstation does not, which is why `tzdata` is a dev dependency scoped to `sys_platform == 'win32'`; installing the locked dev group is what makes `APP_TIMEZONE` resolve during Windows development. The frontend reads the same zone from `VITE_APP_TIMEZONE`, falling back to the browser's own zone, so set both when they must agree. `backend/tests/test_business_timezone.py` asserts the offset actually reaches the submitted timecard and that the fallback warns.
 
 ## OCI Generative AI and Speech
 
