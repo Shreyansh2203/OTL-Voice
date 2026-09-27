@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .oci_genai import GenAIChatClient
+from .otl_client import _business_timezone
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "prompt.txt"
 
@@ -71,7 +72,7 @@ def build_system_prompt(
     assignments: list[dict[str, Any]] | None = None,
     recent_history: str = "",
 ) -> str:
-    date_str = datetime.now().astimezone().strftime("%A, %Y-%m-%d")
+    date_str = datetime.now(_business_timezone()).strftime("%A, %Y-%m-%d")
     prompt = load_prompt_template()
     prompt = prompt.replace("{{USERNAME}}", _sanitize_template_value(username))
     prompt = prompt.replace(

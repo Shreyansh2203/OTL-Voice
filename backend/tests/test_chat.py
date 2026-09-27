@@ -1,5 +1,7 @@
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+from backend.services import chat as chat_module
 from backend.services.chat import (
     _client,
     _sse,
@@ -8,6 +10,21 @@ from backend.services.chat import (
     render_assignments,
     stream_sse,
 )
+from backend.services.otl_client import map_entry_to_otl
+
+_FROZEN_INSTANT = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
+class _FrozenBusinessClock:
+    def now(self, tz=None):
+        return _FROZEN_INSTANT.astimezone(tz) if tz is not None else _FROZEN_INSTANT
+
+
+def _freeze_business_clock(monkeypatch, tz):
+    monkeypatch.setattr(chat_module, "_business_timezone", lambda: tz)
+    monkeypatch.setattr(chat_module, "datetime", _FrozenBusinessClock())
+    monkeypatch.setattr("backend.services.otl_client._business_timezone", lambda: tz)
+    monkeypatch.setattr("backend.services.otl_client.datetime", _FrozenBusinessClock())
 
 
 def test_render_assignments():
@@ -60,9 +77,7 @@ def test_load_prompt_template(mock_prompt_path):
 @patch("backend.services.chat.datetime")
 def test_build_system_prompt(mock_datetime, mock_load):
     mock_load.return_value = "{{USERNAME}} {{EMPLOYEE_NUMBER}} {{EMPLOYEE_NAME}} {{CURRENT_DATE}} {{ASSIGNMENTS}}"
-    mock_datetime.now.return_value.astimezone.return_value.strftime.return_value = (
-        "Monday, 2026-01-01"
-    )
+    mock_datetime.now.return_value.strftime.return_value = "Monday, 2026-01-01"
     prompt = build_system_prompt("john_doe", "123", "John Doe")
     assert "john_doe" in prompt
     assert "123" in prompt
@@ -72,6 +87,24 @@ def test_build_system_prompt(mock_datetime, mock_load):
     prompt = build_system_prompt("", "", "", [{"workOrder": "WO2"}])
     assert "not provided" in prompt
     assert "WO2" in prompt
+
+
+def test_prompt_date_matches_the_timecard_date_in_the_business_timezone(monkeypatch):
+    monkeypatch.setattr(
+        chat_module, "load_prompt_template", lambda: "Date: {{CURRENT_DATE}}"
+    )
+    entry = {"employeeNumber": "123", "hours": 8, "workOrder": "WO1"}
+
+    for offset in (-8, 0, 5, 14):
+        business_tz = timezone(timedelta(hours=offset))
+        _freeze_business_clock(monkeypatch, business_tz)
+        business_now = _FROZEN_INSTANT.astimezone(business_tz)
+
+        prompt = build_system_prompt("john_doe", "123", "John Doe")
+        start_time = map_entry_to_otl(entry)["timeRecordEvent"][0]["startTime"]
+
+        assert prompt == f"Date: {business_now:%A}, {business_now:%Y-%m-%d}"
+        assert start_time.startswith(f"{business_now:%Y-%m-%d}")
 
 
 def test_sse():
