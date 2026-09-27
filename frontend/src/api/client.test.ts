@@ -7,6 +7,7 @@ import {
   logout,
   submitTimecard,
 } from './client';
+import type { TimecardEntry } from '../types';
 
 function response(body: unknown, status = 200, csrf?: string): Response {
   const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -98,6 +99,157 @@ describe('cookie and CSRF client flow', () => {
     expect(headersFor(fetchMock.mock.calls[2]).get('X-CSRF-Token')).toBe(
       'new-token'
     );
+  });
+
+  it('retries a write once after a 403 CSRF rejection and a rotated token', async () => {
+    // The server rotates the session and CSRF pair every ~15 minutes and
+    // answers the stale token with 403, not 401.
+    document.cookie = 'csrf_token=stale-token; path=/';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({ detail: 'CSRF token missing or invalid' }, 403)
+      )
+      .mockImplementationOnce(async () => {
+        const result = response({ ok: true }, 200, 'rotated-token');
+        document.cookie = 'csrf_token=rotated-token; path=/';
+        return result;
+      })
+      .mockResolvedValueOnce(
+        response({
+          submitted: 1,
+          succeeded: 1,
+          failed: 0,
+          results: [{ index: 0, ok: true, id: 9001 }],
+        })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      submitTimecard([
+        {
+          requestId: 'request-1',
+          employeeNumber: '7',
+          employeeName: 'Mala Kumari',
+          projectNo: 'PA-1',
+          projectName: 'Operations',
+          workOrder: 'WO-1',
+          taskDetails: 'Task',
+          hours: 1,
+          date: '2026-09-25',
+          currencyCode: 'USD',
+        },
+      ])
+    ).resolves.toMatchObject({ succeeded: 1 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(headersFor(fetchMock.mock.calls[0]).get('X-CSRF-Token')).toBe(
+      'stale-token'
+    );
+    expect(headersFor(fetchMock.mock.calls[2]).get('X-CSRF-Token')).toBe(
+      'rotated-token'
+    );
+  });
+
+  it('does not retry a read that the server answered 403', async () => {
+    document.cookie = 'csrf_token=tok; path=/';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(response({ detail: 'forbidden' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getSession()).rejects.toMatchObject({ status: 403 });
+    // A blanket 403 retry would double every read that legitimately fails
+    // authorisation; only state-changing requests get the CSRF recovery.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the per-row confirmation when nothing succeeded', async () => {
+    // The route answers 502 when every row failed retryably and 422 when they
+    // failed definitively, with the same body either way. Discarding it as a
+    // bare error would leave the user with no way to see or fix the bad rows.
+    const retryable = {
+      submitted: 1,
+      succeeded: 0,
+      failed: 1,
+      correlationId: 'abc123',
+      results: [
+        {
+          index: 0,
+          ok: false,
+          status: 500,
+          code: 'oracle_unavailable',
+          error: 'Oracle Cloud is temporarily unavailable.',
+          requestId: 'request-1',
+        },
+      ],
+    };
+    const definitive = {
+      ...retryable,
+      results: [
+        {
+          index: 0,
+          ok: false,
+          status: 400,
+          error: 'Oracle rejected this timecard entry.',
+          requestId: 'request-1',
+        },
+      ],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(retryable, 502))
+      .mockResolvedValueOnce(response(definitive, 422));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(submitTimecard([entry()])).resolves.toMatchObject({
+      submitted: 1,
+      succeeded: 0,
+      failed: 1,
+      results: [{ code: 'oracle_unavailable', status: 500 }],
+    });
+    await expect(submitTimecard([entry()])).resolves.toMatchObject({
+      results: [{ status: 400, code: undefined, replayed: undefined }],
+    });
+    // A POST is not a safe method, so a 5xx body is not retried.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('still rejects an error that carries no per-row confirmation', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(response({ detail: 'Invalid timecard entry.' }, 400));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(submitTimecard([entry()])).rejects.toMatchObject({
+      status: 400,
+      message: 'Invalid timecard entry.',
+    });
+  });
+
+  it('rejects a result row carrying an unknown code', async () => {
+    const body = {
+      submitted: 1,
+      succeeded: 0,
+      failed: 1,
+      results: [{ index: 0, ok: false, code: 'made_up' }],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    await expect(submitTimecard([entry()])).rejects.toBeInstanceOf(ApiError);
+  });
+
+  const entry = (): TimecardEntry => ({
+    requestId: 'request-1',
+    employeeNumber: '7',
+    employeeName: 'Mala Kumari',
+    projectId: 'PRJ-1',
+    projectNo: 'PA-1',
+    projectName: 'Operations',
+    workOrder: 'WO-1',
+    taskDetails: 'Task',
+    hours: 1,
+    date: '2026-09-25',
+    currencyCode: 'USD',
   });
 
   it('refreshes an expired session once and retries the session read', async () => {

@@ -14,7 +14,11 @@ import {
   MAX_ENTRY_HOURS,
   todayInAppTimezone,
 } from '../../lib/entries';
-import type { SubmitResponse, TimecardEntry } from '../../types';
+import type {
+  SubmitResponse,
+  SubmitResultRow,
+  TimecardEntry,
+} from '../../types';
 
 export interface ReviewPanelProps {
   entries: TimecardEntry[];
@@ -91,6 +95,41 @@ function isValidTime(value: string): boolean {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
   if (!match) return false;
   return Number(match[1]) <= 23 && Number(match[2]) <= 59;
+}
+
+/**
+ * Mirrors `services/idempotency.py::is_retryable_result`. A retryable failure is
+ * not memoised by the server, so re-sending the same requestId gives Oracle a
+ * real second attempt. Everything else was stored, so the same key can only ever
+ * replay it — that row needs a new key, and a new key needs a human to have
+ * checked that the first attempt did not reach Oracle.
+ */
+function isRetryableRow(row: SubmitResultRow): boolean {
+  if (row.ok) return false;
+  if (
+    row.code === 'submission_in_progress' ||
+    row.code === 'idempotency_claim_lost' ||
+    row.code === 'idempotency_unavailable' ||
+    row.code === 'oracle_unavailable'
+  ) {
+    return true;
+  }
+  if (row.code === 'request_id_conflict') return false;
+  const status = row.status ?? 500;
+  return status >= 500 || status === 409 || status === 429;
+}
+
+function rowOutcome(row: SubmitResultRow): string {
+  if (row.replayed) {
+    return 'Replayed from the server’s stored result — Oracle was not contacted.';
+  }
+  if (row.code === 'request_id_conflict') {
+    return 'This request key was already used with different data.';
+  }
+  if (isRetryableRow(row)) {
+    return 'Retrying the same request key gives Oracle another attempt.';
+  }
+  return 'The server keeps this request key’s result for 24 hours, so it cannot be retried under the same key.';
 }
 
 function validateEntry(entry: TimecardEntry, index: number): FieldErrors {
@@ -230,7 +269,7 @@ function ReviewPanelContent({
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const rotatedAfterErrorRef = useRef(new Set<string>());
+  const [newKeyPending, setNewKeyPending] = useState<number[] | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -249,14 +288,23 @@ function ReviewPanelContent({
       sum + (Number.isFinite(entry.hours) ? (entry.hours ?? 0) : 0),
     0
   );
-  const locked = result !== null;
+  const rowResult = (index: number): SubmitResultRow | undefined =>
+    result?.results.find((row) => row.index === index);
+  // Only a row the server confirmed is frozen. A row that failed is still the
+  // user's to correct, and freezing it is what turned a transient failure into
+  // a dead end.
+  const isConfirmed = (index: number) => rowResult(index)?.ok === true;
 
   const updateEntry = (index: number, field: EntryField, value: string) => {
     setError(null);
     setDraftEntries((current) =>
       current.map((entry, entryIndex) => {
         if (entryIndex !== index) return entry;
-        const next = {
+        // The request key is never rewritten here. A new key is a new
+        // idempotency key with no stored record, so the server would treat it as
+        // a first write and Oracle would be written a second time for a row that
+        // may already exist.
+        return {
           ...entry,
           [field]:
             field === 'hours'
@@ -265,15 +313,6 @@ function ReviewPanelContent({
                 : Number(value)
               : value,
         } as TimecardEntry;
-        if (
-          error &&
-          entry.requestId &&
-          !rotatedAfterErrorRef.current.has(entry.requestId)
-        ) {
-          next.requestId = createRequestId();
-          rotatedAfterErrorRef.current.add(entry.requestId);
-        }
-        return next;
       })
     );
     setErrors((current) => {
@@ -289,22 +328,45 @@ function ReviewPanelContent({
     setResult(null);
     setError(null);
     setErrors({});
+    setNewKeyPending(null);
     setDraftEntries((current) => [...current, newEntry()]);
   };
 
   const removeEntry = (index: number) => {
-    setResult(null);
     setError(null);
     setErrors({});
-    setDraftEntries((current) =>
-      current.length === 1
+    setNewKeyPending(null);
+    setDraftEntries(
+      draftEntries.length === 1
         ? [newEntry()]
-        : current.filter((_, i) => i !== index)
+        : draftEntries.filter((_, i) => i !== index)
+    );
+    if (!result) return;
+    if (draftEntries.length === 1) {
+      setResult(null);
+      return;
+    }
+    const kept = result.results
+      .filter((row) => row.index !== index)
+      .map((row) => ({
+        ...row,
+        index: row.index > index ? row.index - 1 : row.index,
+      }));
+    setResult(
+      kept.length === 0
+        ? null
+        : {
+            ...result,
+            submitted: kept.length,
+            succeeded: kept.filter((row) => row.ok).length,
+            failed: kept.filter((row) => !row.ok).length,
+            results: kept,
+          }
     );
   };
 
   const submit = useCallback(async () => {
-    if (locked || busy) return;
+    if (busy) return;
     const nextErrors = activeEntries.reduce<FieldErrors>(
       (all, entry, index) => ({ ...all, ...validateEntry(entry, index) }),
       {}
@@ -328,6 +390,7 @@ function ReviewPanelContent({
     }
     setBusy(true);
     setError(null);
+    setNewKeyPending(null);
     setSubmitAttempted(true);
     try {
       const response = await api.submitTimecard(activeEntries);
@@ -346,27 +409,35 @@ function ReviewPanelContent({
     } finally {
       if (mountedRef.current) setBusy(false);
     }
-  }, [activeEntries, busy, locked, onSessionExpired]);
+  }, [activeEntries, busy, onSessionExpired]);
 
-  const retryFailed = useCallback(async () => {
-    if (!result || result.failed === 0 || busy) return;
-    const failedIndices = result.results
-      .filter((row) => !row.ok)
-      .map((row) => row.index);
-    setBusy(true);
-    setError(null);
-    try {
-      const retry = await api.submitTimecard(
-        failedIndices.map((index) => activeEntries[index])
-      );
-      if (!mountedRef.current) return;
+  const failedIndices = useMemo(
+    () =>
+      result
+        ? result.results.filter((row) => !row.ok).map((row) => row.index)
+        : [],
+    [result]
+  );
+  const retryableIndices = useMemo(
+    () =>
+      result
+        ? result.results
+            .filter((row) => !row.ok && isRetryableRow(row))
+            .map((row) => row.index)
+        : [],
+    [result]
+  );
+  const stuckIndices = useMemo(
+    () => failedIndices.filter((index) => !retryableIndices.includes(index)),
+    [failedIndices, retryableIndices]
+  );
+
+  const mergeResults = useCallback(
+    (indices: number[], response: SubmitResponse) => {
       const replacements = new Map(
-        retry.results.map((row) => {
-          const targetIndex = failedIndices[row.index];
-          return [
-            targetIndex,
-            targetIndex === undefined ? row : { ...row, index: targetIndex },
-          ];
+        response.results.map((row) => {
+          const targetIndex = indices[row.index];
+          return [targetIndex, { ...row, index: targetIndex }];
         })
       );
       setResult((current) => {
@@ -376,25 +447,93 @@ function ReviewPanelContent({
         );
         return {
           ...current,
-          submitted: current.submitted + retry.submitted,
           succeeded: merged.filter((row) => row.ok).length,
           failed: merged.filter((row) => !row.ok).length,
           results: merged,
         };
       });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      if (err instanceof api.ApiError && err.status === 401) {
-        onSessionExpired();
-        return;
-      }
-      setError(
-        err instanceof Error ? err.message : 'The retry was not confirmed.'
+    },
+    []
+  );
+
+  /**
+   * Re-sends chosen rows under their existing request keys. This is the right
+   * action for a failure the server did not memoise, and a harmless replay for
+   * one it did, which the table then labels as replayed.
+   */
+  const retryWithSameKey = useCallback(
+    async (indices: number[]) => {
+      if (busy || indices.length === 0) return;
+      const targets = indices.filter(
+        (index) => index >= 0 && index < activeEntries.length
       );
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, [activeEntries, busy, onSessionExpired, result]);
+      if (targets.length === 0) return;
+      setNewKeyPending(null);
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await api.submitTimecard(
+          targets.map((index) => activeEntries[index])
+        );
+        if (!mountedRef.current) return;
+        mergeResults(targets, response);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (err instanceof api.ApiError && err.status === 401) {
+          onSessionExpired();
+          return;
+        }
+        setError(
+          err instanceof Error ? err.message : 'The retry was not confirmed.'
+        );
+      } finally {
+        if (mountedRef.current) setBusy(false);
+      }
+    },
+    [activeEntries, busy, mergeResults, onSessionExpired]
+  );
+
+  /**
+   * Resubmits chosen rows under fresh request keys. Required for a failure the
+   * server already stored, where the same key can only replay. The caller warns
+   * about the duplicate risk first.
+   */
+  const resubmitWithNewKey = useCallback(
+    async (indices: number[]) => {
+      if (busy || indices.length === 0) return;
+      const targets = indices.filter(
+        (index) => index >= 0 && index < activeEntries.length
+      );
+      if (targets.length === 0) return;
+      setNewKeyPending(null);
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await api.submitTimecard(
+          targets.map((index) => ({
+            ...activeEntries[index],
+            requestId: createRequestId(),
+          }))
+        );
+        if (!mountedRef.current) return;
+        mergeResults(targets, response);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (err instanceof api.ApiError && err.status === 401) {
+          onSessionExpired();
+          return;
+        }
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'The resubmission was not confirmed.'
+        );
+      } finally {
+        if (mountedRef.current) setBusy(false);
+      }
+    },
+    [activeEntries, busy, mergeResults, onSessionExpired]
+  );
 
   const errorItems = Object.entries(errors);
   const confirmed =
@@ -454,13 +593,14 @@ function ReviewPanelContent({
       <div className="review-entry-list">
         {activeEntries.map((entry, index) => {
           const entryNumber = index + 1;
+          const entryLocked = busy || isConfirmed(index);
           const field = (name: EntryField) => `${entryNumber}-${name}`;
           const fieldProps = (name: EntryField) => ({
             id: field(name),
             error: errors[field(name)],
           });
           return (
-            <fieldset className="review-entry" key={entry.requestId}>
+            <fieldset className="review-entry" key={index}>
               <legend>Entry {entryNumber}</legend>
               <div className="review-field-grid">
                 <EditableField
@@ -473,7 +613,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'employeeName', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('employeeName')]}
                     aria-describedby={
                       errors[field('employeeName')]
@@ -493,7 +633,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'employeeNumber', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('employeeNumber')]}
                     aria-describedby={
                       errors[field('employeeNumber')]
@@ -512,7 +652,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'projectNo', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('projectNo')]}
                     aria-describedby={
                       errors[field('projectNo')]
@@ -531,7 +671,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'projectName', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('projectName')]}
                     aria-describedby={
                       errors[field('projectName')]
@@ -547,7 +687,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'workOrder', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('workOrder')]}
                     aria-describedby={
                       errors[field('workOrder')]
@@ -566,7 +706,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'projectId', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('projectId')]}
                     aria-describedby={
                       errors[field('projectId')]
@@ -585,7 +725,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'taskId', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('taskId')]}
                     aria-describedby={
                       errors[field('taskId')]
@@ -602,7 +742,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'date', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('date')]}
                     aria-describedby={
                       errors[field('date')]
@@ -622,7 +762,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'startTime', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('startTime')]}
                     aria-describedby={
                       errors[field('startTime')]
@@ -642,7 +782,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'stopTime', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('stopTime')]}
                     aria-describedby={
                       errors[field('stopTime')]
@@ -671,7 +811,7 @@ function ReviewPanelContent({
                           )
                         )
                       }
-                      disabled={locked || busy}
+                      disabled={entryLocked}
                       aria-label={`Decrease hours for entry ${entryNumber}`}
                     >
                       −
@@ -687,7 +827,7 @@ function ReviewPanelContent({
                       onChange={(event) =>
                         updateEntry(index, 'hours', event.target.value)
                       }
-                      disabled={locked || busy}
+                      disabled={entryLocked}
                       aria-invalid={!!errors[field('hours')]}
                       aria-describedby={
                         errors[field('hours')]
@@ -710,7 +850,7 @@ function ReviewPanelContent({
                           )
                         )
                       }
-                      disabled={locked || busy}
+                      disabled={entryLocked}
                       aria-label={`Increase hours for entry ${entryNumber}`}
                     >
                       +
@@ -727,7 +867,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'payrollTimeType', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     list={`${entryNumber}-payroll-options`}
                   />
                   <datalist id={`${entryNumber}-payroll-options`}>
@@ -751,7 +891,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'expenditureType', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     list={`${entryNumber}-expenditure-options`}
                   />
                   <datalist id={`${entryNumber}-expenditure-options`}>
@@ -770,7 +910,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'currencyCode', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('currencyCode')]}
                     aria-describedby={
                       errors[field('currencyCode')]
@@ -791,7 +931,7 @@ function ReviewPanelContent({
                     onChange={(event) =>
                       updateEntry(index, 'taskDetails', event.target.value)
                     }
-                    disabled={locked || busy}
+                    disabled={entryLocked}
                     aria-invalid={!!errors[field('taskDetails')]}
                     aria-describedby={
                       errors[field('taskDetails')]
@@ -803,14 +943,16 @@ function ReviewPanelContent({
                   />
                 </EditableField>
               </div>
-              {activeEntries.length > 1 && (
+              {!isConfirmed(index) && (
                 <button
                   type="button"
                   className="btn btn-secondary review-remove-entry"
                   onClick={() => removeEntry(index)}
                   disabled={busy}
                 >
-                  Remove entry {entryNumber}
+                  {activeEntries.length > 1
+                    ? `Remove entry ${entryNumber}`
+                    : `Clear entry ${entryNumber}`}
                 </button>
               )}
             </fieldset>
@@ -843,16 +985,70 @@ function ReviewPanelContent({
               {result.failed ? ` · ${result.failed} not completed` : ''}.
             </strong>
             {result.failed > 0 && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={retryFailed}
-                disabled={busy}
-              >
-                {busy ? 'Retrying…' : 'Retry failed entries'}
-              </button>
+              <div className="result-actions">
+                {retryableIndices.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void retryWithSameKey(retryableIndices)}
+                    disabled={busy}
+                  >
+                    {busy
+                      ? 'Retrying…'
+                      : `Retry ${retryableIndices.length} entr${
+                          retryableIndices.length === 1 ? 'y' : 'ies'
+                        } with the same request key`}
+                  </button>
+                )}
+                {stuckIndices.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setNewKeyPending(stuckIndices)}
+                    disabled={busy}
+                  >
+                    Submit {stuckIndices.length} stored{' '}
+                    {stuckIndices.length === 1 ? 'result' : 'results'} again
+                  </button>
+                )}
+              </div>
             )}
           </div>
+          {newKeyPending && newKeyPending.length > 0 && (
+            <div className="validation-summary" role="alert">
+              <strong>Check Oracle before you continue.</strong>
+              <p>
+                {newKeyPending.length === 1
+                  ? 'The server has already stored the result for this request key, so it cannot be used again. '
+                  : `The server has already stored the results for these ${newKeyPending.length} request keys, so they cannot be used again. `}
+                Submitting {newKeyPending.length === 1 ? 'it' : 'them'} issues a
+                new request key. If an earlier attempt already reached Oracle,
+                that creates a second timecard.
+              </p>
+              <div className="new-key-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setNewKeyPending(null)}
+                  disabled={busy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-approve"
+                  onClick={() => void resubmitWithNewKey(newKeyPending)}
+                  disabled={busy}
+                >
+                  {busy
+                    ? 'Submitting…'
+                    : `Issue a new request key and submit${
+                        newKeyPending.length === 1 ? '' : ' them'
+                      }`}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
@@ -862,13 +1058,14 @@ function ReviewPanelContent({
                   <th>Date</th>
                   <th className="num">Hours</th>
                   <th>Server status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {result.results.map((row) => {
                   const entry = activeEntries[row.index];
                   return (
-                    <tr key={`${row.index}-${entry?.requestId}`}>
+                    <tr key={row.index}>
                       <td className="muted">{row.index + 1}</td>
                       <td>
                         {entry?.projectName || '—'}
@@ -885,12 +1082,40 @@ function ReviewPanelContent({
                         {row.ok ? (
                           <span className="status-ok">
                             ✓ {row.recordNumber || 'Created'}
+                            {row.replayed && (
+                              <span className="muted small"> (replayed)</span>
+                            )}
                           </span>
                         ) : (
                           <span className="status-fail">
                             ✗ {row.error || 'Failed'}
+                            <span className="muted small block">
+                              {rowOutcome(row)}
+                            </span>
                           </span>
                         )}
+                      </td>
+                      <td>
+                        {!row.ok &&
+                          (isRetryableRow(row) ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => void retryWithSameKey([row.index])}
+                              disabled={busy}
+                            >
+                              Retry entry {row.index + 1} with the same key
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => setNewKeyPending([row.index])}
+                              disabled={busy}
+                            >
+                              Submit entry {row.index + 1} with a new key
+                            </button>
+                          ))}
                       </td>
                     </tr>
                   );

@@ -34,14 +34,16 @@ function makeEntry(overrides: Partial<TimecardEntry> = {}): TimecardEntry {
 function resultRow(
   index: number,
   ok: boolean,
-  error?: string
+  error?: string,
+  extra: Partial<SubmitResultRow> = {}
 ): SubmitResultRow {
   return {
     index,
     ok,
-    id: ok ? `record-${index}` : undefined,
-    recordName: ok ? '2026-09-25' : '',
-    error,
+    ...(ok
+      ? { id: 9000 + index, recordNumber: `REC-${index + 1}` }
+      : { error }),
+    ...extra,
   };
 }
 
@@ -208,7 +210,7 @@ describe('ReviewPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('rotates requestId after an uncertain submission is edited', async () => {
+  it('keeps the same requestId when an uncertain submission is edited', async () => {
     const entry = makeEntry();
     vi.mocked(api.submitTimecard)
       .mockRejectedValueOnce(new Error('Network error'))
@@ -234,10 +236,12 @@ describe('ReviewPanel', () => {
       .requestId;
     const editedId = vi.mocked(api.submitTimecard).mock.calls[1][0][0]
       .requestId;
-    expect(editedId).not.toBe(originalId);
+    // A new key is a new idempotency key with no stored record, so the server
+    // would write Oracle a second time for a row that may already exist.
+    expect(editedId).toBe(originalId);
   });
 
-  it('retries only failed rows while preserving their request IDs', async () => {
+  it('resubmits only failed rows under new request keys after confirmation', async () => {
     const first = makeEntry({ requestId: 'request-1' });
     const second = makeEntry({
       requestId: 'request-2',
@@ -248,9 +252,12 @@ describe('ReviewPanel', () => {
       .mockResolvedValueOnce({
         results: [
           resultRow(0, true),
-          resultRow(1, false, 'Oracle rejected this row'),
+          resultRow(1, false, 'Oracle rejected this row', {
+            status: 400,
+            code: undefined,
+          }),
         ],
-        submitted: 1,
+        submitted: 2,
         succeeded: 1,
         failed: 1,
       })
@@ -267,16 +274,140 @@ describe('ReviewPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
     expect(await screen.findByText('Not Fully Confirmed')).toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Retry failed entries' })
+      screen.getByRole('button', { name: 'Submit 1 stored result again' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /Issue a new request key and submit/,
+      })
     );
 
     await waitFor(() => expect(api.submitTimecard).toHaveBeenCalledTimes(2));
     expect(vi.mocked(api.submitTimecard).mock.calls[1][0]).toHaveLength(1);
-    expect(vi.mocked(api.submitTimecard).mock.calls[1][0][0].requestId).toBe(
-      second.requestId
-    );
+    expect(
+      vi.mocked(api.submitTimecard).mock.calls[1][0][0].requestId
+    ).not.toBe(second.requestId);
     expect(
       await screen.findByText(/server confirmed 2 of 2 timecards/i)
+    ).toBeInTheDocument();
+  });
+
+  it('retries a retryable failure under the same request key', async () => {
+    const entry = makeEntry({ requestId: 'request-1' });
+    vi.mocked(api.submitTimecard)
+      .mockResolvedValueOnce({
+        results: [
+          resultRow(0, false, 'Oracle Cloud is temporarily unavailable.', {
+            status: 500,
+            code: 'oracle_unavailable',
+          }),
+        ],
+        submitted: 1,
+        succeeded: 0,
+        failed: 1,
+      })
+      .mockResolvedValueOnce({
+        results: [resultRow(0, true)],
+        submitted: 1,
+        succeeded: 1,
+        failed: 0,
+      });
+    render(<ReviewPanel entries={[entry]} onSessionExpired={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
+    await screen.findByText('Not Fully Confirmed');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry entry 1 with the same key' })
+    );
+
+    await waitFor(() => expect(api.submitTimecard).toHaveBeenCalledTimes(2));
+    // Rotating the key here is the duplicate-timecard risk, so it must not.
+    expect(vi.mocked(api.submitTimecard).mock.calls[1][0][0].requestId).toBe(
+      entry.requestId
+    );
+    expect(
+      await screen.findByText(/server confirmed 1 of 1 timecards/i)
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a failed row editable and removable while confirmed rows stay frozen', async () => {
+    const first = makeEntry({ requestId: 'request-1' });
+    const second = makeEntry({
+      requestId: 'request-2',
+      taskId: 'TASK-2',
+      taskDetails: 'Second task',
+    });
+    vi.mocked(api.submitTimecard).mockResolvedValue({
+      results: [
+        resultRow(0, true),
+        resultRow(1, false, 'Oracle rejected this row', { status: 400 }),
+      ],
+      submitted: 2,
+      succeeded: 1,
+      failed: 1,
+    });
+    render(
+      <ReviewPanel entries={[first, second]} onSessionExpired={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
+    await screen.findByText('Not Fully Confirmed');
+
+    const hours = screen.getAllByLabelText('Hours');
+    expect(hours[0]).toBeDisabled();
+    expect(hours[1]).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Remove entry 1' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove entry 2' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/keeps this request key’s result for 24 hours/i)
+    ).toBeInTheDocument();
+  });
+
+  it('clears a lone failed entry so a bad row is never a dead end', async () => {
+    vi.mocked(api.submitTimecard).mockResolvedValue({
+      results: [resultRow(0, false, 'Oracle is down')],
+      submitted: 1,
+      succeeded: 0,
+      failed: 1,
+    });
+    render(<ReviewPanel entries={[makeEntry()]} onSessionExpired={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
+    await screen.findByText('Not Fully Confirmed');
+    expect(screen.getByLabelText('Hours')).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear entry 1' }));
+
+    expect(screen.queryByText('Not Fully Confirmed')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Hours')).toHaveValue(null);
+    expect(
+      screen.getByRole('button', { name: 'Retry submission safely' })
+    ).toBeEnabled();
+  });
+
+  it('reports a replayed server result instead of a fresh Oracle write', async () => {
+    vi.mocked(api.submitTimecard).mockResolvedValue({
+      results: [
+        resultRow(0, false, 'Oracle rejected this row', {
+          status: 400,
+          replayed: true,
+        }),
+      ],
+      submitted: 1,
+      succeeded: 0,
+      failed: 1,
+    });
+    render(<ReviewPanel entries={[makeEntry()]} onSessionExpired={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & Submit' }));
+
+    await screen.findByText('Not Fully Confirmed');
+    expect(
+      screen.getByText(/replayed from the server’s stored result/i)
     ).toBeInTheDocument();
   });
 

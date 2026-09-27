@@ -161,6 +161,67 @@ describe('submit confirmation validation', () => {
     await expect(submitTimecard([])).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('keeps the per-row requestId and replayed flag the server sends', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response(
+          valid([
+            {
+              index: 0,
+              ok: true,
+              id: 'R1',
+              requestId: 'request-1',
+              replayed: true,
+            },
+            {
+              index: 1,
+              ok: false,
+              status: 503,
+              error: 'Oracle Cloud is temporarily unavailable.',
+              requestId: 'request-2',
+            },
+          ]),
+          200,
+          'fresh'
+        )
+      )
+    );
+
+    const result = await submitTimecard([]);
+
+    // Without these the client cannot tell a replayed write from a fresh one,
+    // which is the only way to know a same-key retry is pointless.
+    expect(result.results[0]).toMatchObject({
+      requestId: 'request-1',
+      replayed: true,
+    });
+    expect(result.results[1]).toMatchObject({
+      requestId: 'request-2',
+      replayed: undefined,
+    });
+  });
+
+  it.each([
+    [
+      'a row with a non-string requestId',
+      [{ index: 0, ok: true, requestId: 7 }],
+    ],
+    [
+      'a row with a non-boolean replayed flag',
+      [{ index: 0, ok: true, replayed: 'yes' }],
+    ],
+  ])('rejects %s as uncertain', async (_label, results) => {
+    const body = {
+      submitted: results.length,
+      succeeded: results.length,
+      failed: 0,
+      results,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)));
+    await expect(submitTimecard([])).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('surfaces a server rejection verbatim', async () => {
     vi.stubGlobal(
       'fetch',

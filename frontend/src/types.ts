@@ -57,6 +57,18 @@ export interface TimecardEntry {
   recordName?: string;
   comment?: string;
 }
+/**
+ * Why the server refused a row, when it says. `submission_in_progress`,
+ * `idempotency_claim_lost`, `idempotency_unavailable` and `oracle_unavailable`
+ * are all retryable with the *same* requestId. `request_id_conflict` is not.
+ */
+export type SubmitResultCode =
+  | 'submission_in_progress'
+  | 'request_id_conflict'
+  | 'idempotency_claim_lost'
+  | 'idempotency_unavailable'
+  | 'oracle_unavailable';
+
 export interface SubmitResultRow {
   index: number;
   ok: boolean;
@@ -65,6 +77,14 @@ export interface SubmitResultRow {
   recordName?: string;
   status?: number;
   error?: string;
+  /**
+   * The idempotency key the server actually used for this row. A row answered
+   * under a different key than the one submitted was replayed or conflicted.
+   */
+  requestId?: string;
+  /** True when the server answered from its stored result instead of calling OTL. */
+  replayed?: boolean;
+  code?: SubmitResultCode;
 }
 export interface SubmitResponse {
   submitted: number;

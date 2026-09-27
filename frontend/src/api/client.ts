@@ -4,6 +4,7 @@ import type {
   ChatEvent,
   ChatMessage,
   Identity,
+  SubmitResultCode,
   SubmitResponse,
   TimecardEntry,
   TimecardsResponse,
@@ -79,9 +80,24 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, detail);
 }
 
+function errorFromBody(body: unknown, res: Response): ApiError {
+  if (isRecord(body) && 'detail' in body && typeof body.detail === 'string') {
+    return new ApiError(res.status, body.detail);
+  }
+  return new ApiError(res.status, res.statusText || `HTTP ${res.status}`);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
+
+const SUBMIT_RESULT_CODES: readonly SubmitResultCode[] = [
+  'submission_in_progress',
+  'request_id_conflict',
+  'idempotency_claim_lost',
+  'idempotency_unavailable',
+  'oracle_unavailable',
+];
 
 function parseSubmitResponse(value: unknown): SubmitResponse {
   const invalid = () =>
@@ -122,7 +138,14 @@ function parseSubmitResponse(value: unknown): SubmitResponse {
         typeof item.recordNumber !== 'string') ||
       (item.recordName !== undefined && typeof item.recordName !== 'string') ||
       (item.status !== undefined && !Number.isInteger(item.status)) ||
-      (item.error !== undefined && typeof item.error !== 'string')
+      (item.error !== undefined && typeof item.error !== 'string') ||
+      (item.requestId !== undefined && typeof item.requestId !== 'string') ||
+      (item.replayed !== undefined && typeof item.replayed !== 'boolean') ||
+      (item.code !== undefined &&
+        !(
+          typeof item.code === 'string' &&
+          SUBMIT_RESULT_CODES.includes(item.code as SubmitResultCode)
+        ))
     ) {
       throw invalid();
     }
@@ -138,6 +161,9 @@ function parseSubmitResponse(value: unknown): SubmitResponse {
       recordName: item.recordName as string | undefined,
       status: item.status as number | undefined,
       error: item.error as string | undefined,
+      requestId: item.requestId as string | undefined,
+      replayed: item.replayed as boolean | undefined,
+      code: item.code as SubmitResultCode | undefined,
     };
   });
   if (parsed.filter((row) => row.ok).length !== succeeded) throw invalid();
@@ -194,6 +220,8 @@ export async function refreshSession(): Promise<void> {
   await refreshPromise;
 }
 
+const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
+
 async function fetchAuthenticated(
   url: string,
   options: RequestInit,
@@ -205,9 +233,20 @@ async function fetchAuthenticated(
       credentials: 'include',
       headers: withCurrentCsrf(options.headers),
     });
+  const method = (options.method || 'GET').toUpperCase();
+  // 401 is an expired session; a 403 on a state-changing request is the CSRF
+  // middleware rejecting a token the server rotated out from under us. Both are
+  // recoverable by refreshing once, and neither has reached a route handler, so
+  // replaying is safe.
+  const needsRefresh = (status: number) =>
+    status === 401 || (status === 403 && !SAFE_METHODS.includes(method));
   const response = await send();
   captureCsrfToken(response);
-  if (response.status !== 401 || !canRefresh || options.signal?.aborted) {
+  if (
+    !needsRefresh(response.status) ||
+    !canRefresh ||
+    options.signal?.aborted
+  ) {
     return response;
   }
   await refreshSession();
@@ -225,7 +264,7 @@ async function fetchWithRetry(
   try {
     const response = await fetchAuthenticated(url, options);
     const method = options.method?.toUpperCase() || 'GET';
-    const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+    const isSafeMethod = SAFE_METHODS.includes(method);
     if (response.status >= 500 && isSafeMethod && retries > 0) {
       if (options.signal?.aborted) {
         throw new DOMException('The operation was aborted.', 'AbortError');
@@ -240,7 +279,7 @@ async function fetchWithRetry(
   } catch (err) {
     if (options.signal?.aborted) throw err;
     const method = options.method?.toUpperCase() || 'GET';
-    const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+    const isSafeMethod = SAFE_METHODS.includes(method);
     if (isSafeMethod && retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
@@ -373,8 +412,17 @@ export async function submitTimecard(
     `${API}/otl/timecard`,
     jsonInit('POST', { entries })
   );
-  if (!response.ok) throw await parseError(response);
-  return parseSubmitResponse(await response.json());
+  const body: unknown = await response.json().catch(() => null);
+  if (response.ok) return parseSubmitResponse(body);
+  // A submission in which nothing succeeded is answered 502 (retryable) or 422
+  // (definitive) with the same per-row confirmation body. That body is the only
+  // thing that tells the user which row to correct, so it must not be collapsed
+  // into a bare error string.
+  try {
+    return parseSubmitResponse(body);
+  } catch {
+    throw errorFromBody(body, response);
+  }
 }
 
 export async function listTimecards(
