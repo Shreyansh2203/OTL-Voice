@@ -44,6 +44,16 @@ pnpm --dir frontend exec vitest run --coverage \
 
 CI performs an additional strict TypeScript invocation over `frontend/src` and `frontend/tests`, so a test-only type error cannot be hidden by the application tsconfig exclusions. The frontend job uploads JSON/HTML coverage and the built PWA.
 
+## Dependency auditing
+
+```bash
+uv export --all-groups --no-emit-project --no-hashes --format requirements-txt -o requirements.txt
+uv run pip-audit --strict --requirement requirements.txt
+pnpm audit --audit-level=high
+```
+
+These are the same commands the `Dependency Audit` CI job runs, and they are part of the blocking gate on every push, pull request, and the weekly `schedule` run. `pip-audit` is pinned in the dev dependency group so the auditor version is reproducible. See [security.md](security.md) for the policy.
+
 ## Playwright
 
 Install the browsers once:

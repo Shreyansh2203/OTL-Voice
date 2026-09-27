@@ -37,6 +37,19 @@
 - GHCR publication emits SBOM/provenance and runs a high/critical image scan.
 - CodeQL and Dependabot remain enabled.
 
+### Dependency vulnerability scanning
+
+Known-vulnerable dependencies fail the build rather than being reported and ignored. Two blocking jobs run in `.github/workflows/ci.yml`:
+
+| Job | Trigger | What it enforces | How it fails |
+| --- | --- | --- | --- |
+| `Dependency Audit` | every push and pull request, plus the weekly `schedule` | `pip-audit` over the exact set exported from `uv.lock`, and `pnpm audit --audit-level=high` over the workspace lockfile | `pip-audit` exits non-zero on any advisory, and `--strict` also makes a dependency-collection failure fatal so a broken export cannot pass silently. `pnpm audit` exits non-zero at or above the configured level. |
+| `Dependency Review` | pull requests only | `actions/dependency-review-action` over the pull request's dependency diff, at `fail-on-severity: moderate` | The action fails the job when the diff introduces a finding at or above that severity. |
+
+`pip-audit` is a dev dependency in `pyproject.toml`, so the audit runs against the same locked environment the tests use and the version is reproducible. It queries the PyPI advisory service, so the job needs network access; a run that cannot reach the advisory database is a failure to investigate, not a clean bill of health.
+
+The `schedule` trigger makes the whole-tree audit run weekly, which is what catches a newly published advisory against an unchanged lockfile. Fix an advisory in the manifest and update the lockfile in the same change, or document why an accepted risk is not exploitable here; do not suppress a finding to make the job green.
+
 ## Secrets and sensitive data
 
 Never commit or log:
