@@ -22,7 +22,19 @@ The application port is never published directly in the Compose production file.
 
 ## Image publication
 
-`.github/workflows/image.yml` runs once per published release, or on manual dispatch with an explicit `image_tag`. It does not also fire on the tag push, because release-please creates the release and its tag in one step and a manual tag push would otherwise build, publish, and scan the same version twice. The job is:
+`.github/workflows/image.yml` has two jobs with different triggers and different jobs to do.
+
+### `scan` — pre-publish gate on pull requests
+
+Runs on any pull request that can change the image: the Dockerfile, `.dockerignore`, `backend/`, `frontend/`, `deploy/`, either lockfile, a manifest, or the workflow itself. It builds the candidate from the pull request head with `push: false` and `load: true`, then runs the same high/critical Trivy policy against the local `otl-voice:pr-candidate` tag. A finding fails the job, so the vulnerability is visible on the pull request rather than after the release exists.
+
+`load: true` is used only here. It loads a single-platform image into the runner's daemon so the scanner can read it, and because nothing is published from this job there is no attestation to lose. It shares the `type=gha` build cache with the publish job but writes none, so a pull-request build cannot evict the publish job's cache.
+
+This is a gate, not a proof about the shipped image: it scans the pull request build, not the release build. The two can differ if a release changes the base image outside a pull request. The `publish` job's own scan closes that gap.
+
+### `publish` — the published artifact
+
+Runs once per published release, or on manual dispatch with an explicit `image_tag`. It does not also fire on the tag push, because release-please creates the release and its tag in one step and a manual tag push would otherwise build, publish, and scan the same version twice. The job is:
 
 - logs in to GHCR using the workflow token;
 - builds the multi-stage image from the root lockfiles;
@@ -31,7 +43,7 @@ The application port is never published directly in the Compose production file.
 - runs a high/critical Trivy image scan on the published image;
 - fails the workflow on unfixed high/critical findings according to policy.
 
-The scan runs against the published image, so a failing finding fails the workflow rather than preventing the push. That ordering is deliberate: the SBOM and provenance attestations that the rest of the delivery path depends on can only be produced by a push-capable Buildx output, and a pre-push scan would either drop those attestations or scan a second build that is not guaranteed to be byte-identical to the one deployed. Treat a failed publish as unapproved and roll the digest forward; the semver tags are immutable, so the vulnerable image is never promoted to a newer version.
+The publish scan runs against the published image, so a failing finding fails the workflow rather than preventing the push. That ordering is deliberate: the SBOM and provenance attestations that the rest of the delivery path depends on can only be produced by a push-capable Buildx output, and adding `load: true` here would drop both. The pre-publish `scan` job exists so the common case is still caught before a release, which is what makes this ordering acceptable. Treat a failed publish as unapproved and roll the digest forward; the semver tags are immutable, so the vulnerable image is never promoted to a newer version.
 
 Use an immutable `@sha256:` reference in Ansible. A human-readable version tag is useful for inventory but a digest is the strongest deployment pin.
 

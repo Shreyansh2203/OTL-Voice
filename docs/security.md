@@ -34,7 +34,7 @@
 - CI uses `uv sync --locked` and `pnpm install --frozen-lockfile`.
 - Every third-party GitHub Action is pinned to a full 40-character commit SHA with the release tag kept as a trailing comment, so a mutable tag move cannot change what a workflow executes. Dependabot's `github-actions` ecosystem in `.github/dependabot.yml` opens the weekly bump that updates those pins; reviewing that pull request is the point at which a new action version is approved.
 - The runtime runs as UID 10001, drops capabilities, uses a read-only root filesystem, and has bounded temporary storage.
-- GHCR publication emits SBOM/provenance and runs a high/critical image scan.
+- A high/critical image scan gates any pull request that can change the image, and runs again against the published artifact before a release is treated as approved.
 - CodeQL and Dependabot remain enabled.
 
 ### Dependency vulnerability scanning

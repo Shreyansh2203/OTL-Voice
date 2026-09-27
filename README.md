@@ -306,7 +306,7 @@ Native signing, store submission, and certificate issuance are intentionally ope
 - Release-please creates the release/tag. It uses the `simple` strategy, so the
   released version lives in the root `version.txt`; `release-please-config.json`
   pins the changelog path and release-PR title.
-- `.github/workflows/image.yml` builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
+- `.github/workflows/image.yml` runs a high/critical image scan on any pull request that can change the image, then builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
 - `.github/workflows/cd.yml` is an explicit, protected Ansible deployment handoff. Supply a versioned tag or, preferably, an `@sha256:` image digest, and reject `latest` in the same way. The old Render hook is not part of the deployment path.
 
 ### Compose (TLS-first production)
