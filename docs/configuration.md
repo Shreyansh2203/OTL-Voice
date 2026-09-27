@@ -121,6 +121,10 @@ IDEMPOTENCY_POLL_SECONDS=0.05
 
 The server accepts a stable per-entry `requestId` (and the compatibility `idempotencyKey`/`Idempotency-Key` forms). The frontend creates a UUID once for a reviewed row and reuses it for retries. The SQLite store is the durable deduplication record; the in-process fallback is only a degraded single-process mode and is not a substitute for the volume.
 
+Two independent windows govern a submission. `IDEMPOTENCY_TTL_SECONDS` is how long a completed result stays replayable. `IDEMPOTENCY_LEASE_SECONDS` is the crash-recovery window for a claim that has started but has not finished: while the lease is live, any other submission of the same `requestId` is refused and waits for the first result, so a live write is never duplicated. When the lease expires the claim is treated as abandoned and the next attempt reclaims it, so a process crash, a container restart, or a lost write cannot block a `requestId` for the whole TTL. The lease is clamped to at most the TTL, so it can never outlive the record it protects.
+
+Set the lease above the longest expected single-entry write. The default 120s is comfortably above the default 30s `OTL_TIMEOUT_SECONDS` bound on one write. Because an expired lease is reclaimable, a write that reached Oracle but died before the result was stored can be duplicated by the retrying client; that is the deliberate cost of bounding the outage, and the alternative is a `requestId` that stays permanently unusable.
+
 Keep the idempotency volume until the configured TTL plus the maximum retry/window has elapsed. Back it up with the application data and restrict its mode/ownership. Do not copy a live SQLite file without coordinating a consistent snapshot.
 
 ## Health and readiness

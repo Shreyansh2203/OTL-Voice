@@ -99,7 +99,7 @@ Browser / installed PWA / Capacitor app
 - `.github/workflows/` contains locked-dependency CI, CodeQL, release-please, GHCR publishing, image scanning, and the Ansible deployment handoff.
 - The application serves the built PWA and API from one origin. The browser receives an HttpOnly session cookie; application JavaScript does not need to read the session token.
 
-The catalogue is refreshed in the background and is stored under `/app/data`. Timecard write deduplication is durable when the idempotency SQLite volume is mounted. The production image sets `IDEMPOTENCY_DB_PATH=/app/data/idempotency/idempotency.sqlite3`; the idempotency volume must not be placed on an ephemeral container filesystem.
+The catalogue is refreshed in the background and is stored under `/app/data`. Timecard write deduplication is durable when the idempotency SQLite volume is mounted. The production image sets `IDEMPOTENCY_DB_PATH=/app/data/idempotency/idempotency.sqlite3`; the idempotency volume must not be placed on an ephemeral container filesystem. A submission in flight holds a short lease (`IDEMPOTENCY_LEASE_SECONDS`, 120s by default) that keeps a concurrent duplicate out; once that lease expires the claim is reclaimable, so a crashed write cannot block its `requestId` for the whole 24h TTL. See [docs/configuration.md](docs/configuration.md) for the full semantics.
 
 ## Prerequisites
 
