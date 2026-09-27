@@ -35,14 +35,12 @@ The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fai
 pnpm --dir frontend run typecheck
 pnpm --dir frontend run lint
 pnpm --dir frontend run build
-pnpm --dir frontend exec vitest run --coverage \
-  --coverage.thresholds.statements=83 \
-  --coverage.thresholds.lines=86 \
-  --coverage.thresholds.functions=84 \
-  --coverage.thresholds.branches=76
+pnpm --dir frontend exec vitest run --coverage
 ```
 
-The thresholds mirror the four numbers Vitest reports, so a single failing metric names itself. Branches are held to a lower floor than statements because branch coverage counts defensive guards, optional-chaining chains, and prop defaults that are not worth a test each.
+The enforced thresholds live in `frontend/vite.config.ts` and are not repeated here. Restating a config value in prose is how this document and `README.md` came to disagree with the code in the first place; read the thresholds from the config, and the measured percentages from the coverage table the run prints. `make coverage` runs both ecosystems and applies both gates.
+
+Branches are held to a lower floor than statements because branch coverage counts defensive guards, optional-chaining chains, and prop defaults that are not worth a test each.
 
 CI performs an additional strict TypeScript invocation over `frontend/src` and `frontend/tests`, so a test-only type error cannot be hidden by the application tsconfig exclusions. The frontend job uploads JSON/HTML coverage and the built PWA.
 

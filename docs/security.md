@@ -2,10 +2,12 @@
 
 ## Security objectives
 
-- A person can act only on their own authenticated session and authorized Fusion assignments.
+- A person can act only on their own authenticated session and authorized Fusion assignments. Project authorisation is enforced server-side and cannot be switched off: `STRICT_ASSIGNMENT=false` is refused in production preflight and ignored at runtime, so a caller cannot book hours to a project they are not assigned to.
 - A session cookie is not readable by browser JavaScript and is protected by TLS in production.
-- A model response cannot create a timecard without the user's explicit review/approval.
-- A retry cannot silently create a second Oracle record when the request ID and durable idempotency store are preserved.
+- Review before write is a property of the **client**, not a guarantee of the API. The UI requires explicit approval, and the server will only accept a timecard from an authenticated session whose entries are well-formed and whose project is one the employee is assigned to. A caller who bypasses the UI does **not** gain another employee's timecard or an unassigned project — `employeeNumber` and `employeeName` are overwritten from the session, and the outbound field set is an explicit allowlist rather than a forward of the caller's payload. What the API cannot attest is that a human read the proposal; treat "a human approved this" as a client-side control and do not describe it as a system property.
+- A retry cannot silently create a second Oracle record when the request ID and durable idempotency store are preserved. Ambiguous outcomes release the claim so a same-key retry genuinely re-attempts, definitive rejections are memoised so they never re-attempt, and each row carries a `code` — 409 alone does not distinguish "retry" from "permanent conflict", and clients must not branch on it.
+- Rate limiting keys on the connecting peer. uvicorn no longer rewrites the client address from `X-Forwarded-For` (the image runs without `--forwarded-allow-ips=*`), and forwarded headers are honoured only when an operator declares a trusted proxy. The bounds are therefore not bypassable with a forged header.
+- `TEST_MODE`, `DEV_MODE` and `CSP_DEV_MODE` are refused by the production preflight, so the flag that disables CSRF and rate limiting cannot survive a deployment unnoticed.
 - A compromised frontend or a leaked static asset does not reveal server credentials.
 - Operators can detect, contain, and rotate credentials without relying on source-code changes.
 

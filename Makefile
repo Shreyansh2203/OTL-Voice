@@ -70,7 +70,7 @@ test-live:
 
 coverage:
 	$(UV) run pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=xml --cov-fail-under=80
-	$(PNPM) --filter otl-timesheet-pwa exec vitest run --coverage --coverage.reporter=text --coverage.reporter=json --coverage.thresholds.statements=83 --coverage.thresholds.lines=86 --coverage.thresholds.functions=84 --coverage.thresholds.branches=76
+	$(PNPM) --filter otl-timesheet-pwa exec vitest run --coverage --coverage.reporter=text --coverage.reporter=json
 
 lint:
 	$(UV) run ruff check .

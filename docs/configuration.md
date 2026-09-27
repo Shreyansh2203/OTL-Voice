@@ -127,7 +127,15 @@ IDEMPOTENCY_WAIT_SECONDS=35
 IDEMPOTENCY_POLL_SECONDS=0.05
 ```
 
-The server accepts a stable per-entry `requestId` (and the compatibility `idempotencyKey`/`Idempotency-Key` forms). The frontend creates a UUID once for a reviewed row and reuses it for retries. The SQLite store is the durable deduplication record; the in-process fallback is only a degraded single-process mode and is not a substitute for the volume.
+The server accepts a stable per-entry `requestId` (and the compatibility `idempotencyKey`/`Idempotency-Key` forms). The frontend creates a UUID once for a reviewed row and **keeps it for every retry of that row**, including a retry after an ambiguous failure. Reusing the key is what makes a retry safe.
+
+Retry semantics, and how a client decides:
+
+- **Ambiguous outcomes are not memoised.** A 5xx, or an unavailable idempotency store, releases the claim instead of completing it, so retrying with the same `requestId` makes a real second attempt. Only *definitive* rejections (4xx) are stored, so retrying one of those never rewrites Oracle.
+- **`POST /api/otl/timecard` no longer returns 200 when nothing succeeded.** It answers **502** when at least one row failed in a retryable way and **422** when every row was definitively rejected, with the per-row body in both cases. 200 means at least one row was created. Status alone is not sufficient to decide anything — read each row.
+- **Every row carries a `code`.** `submission_in_progress`, `request_id_conflict`, `idempotency_claim_lost`, `idempotency_unavailable` and `oracle_unavailable` are distinct and each has its own message. **Do not branch on 409 alone** — it previously meant both "retry with the same key" and "permanent conflict", and clients that read it as terminal or as retryable were both wrong.
+
+The SQLite store is the durable deduplication record; the in-process fallback is only a degraded single-process mode and is not a substitute for the volume. If the store cannot be opened the write is refused (503) rather than silently degraded, because degrading would lose every deduplication guarantee.
 
 Two independent windows govern a submission. `IDEMPOTENCY_TTL_SECONDS` is how long a completed result stays replayable. `IDEMPOTENCY_LEASE_SECONDS` is the crash-recovery window for a claim that has started but has not finished: while the lease is live, any other submission of the same `requestId` is refused and waits for the first result, so a live write is never duplicated. When the lease expires the claim is treated as abandoned and the next attempt reclaims it, so a process crash, a container restart, or a lost write cannot block a `requestId` for the whole TTL. The lease is clamped to at most the TTL, so it can never outlive the record it protects.
 
