@@ -36,10 +36,10 @@ pnpm --dir frontend run typecheck
 pnpm --dir frontend run lint
 pnpm --dir frontend run build
 pnpm --dir frontend exec vitest run --coverage \
-  --coverage.thresholds.statements=80 \
-  --coverage.thresholds.lines=80 \
-  --coverage.thresholds.functions=82 \
-  --coverage.thresholds.branches=75
+  --coverage.thresholds.statements=83 \
+  --coverage.thresholds.lines=86 \
+  --coverage.thresholds.functions=84 \
+  --coverage.thresholds.branches=76
 ```
 
 The thresholds mirror the four numbers Vitest reports, so a single failing metric names itself. Branches are held to a lower floor than statements because branch coverage counts defensive guards, optional-chaining chains, and prop defaults that are not worth a test each.

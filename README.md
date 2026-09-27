@@ -268,7 +268,7 @@ pnpm --dir frontend exec vitest run --coverage
 pnpm --dir frontend run build
 ```
 
-The backend gate is 80% and the frontend Vitest thresholds are 80% for statements and lines, 82% for functions, and 75% for branches. Every raise is earned with tests; excluding code or adding coverage pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+The backend gate is 80% and the frontend Vitest thresholds are 83% for statements, 86% for lines, 84% for functions, and 76% for branches. Every raise is earned with tests; excluding code or adding coverage pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 CI additionally typechecks frontend test files and runs the complete Playwright matrix (Chromium, Firefox, and WebKit). Install browsers before a local matrix run:
 
