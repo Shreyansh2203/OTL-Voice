@@ -394,10 +394,13 @@ describe('tts', () => {
   });
 
   it('truncates the requested text to the server limit', async () => {
-    const audio = new Blob(['audio']);
+    // A string body rather than a Blob: undici streams a Blob body via
+    // Blob.stream(), which the Blob provided by the test environment does not
+    // implement on every Node version. The response content is irrelevant here,
+    // only the outgoing request body is asserted.
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(audio, { status: 200 }));
+      .mockResolvedValue(new Response('audio', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const blob = await tts('x'.repeat(5000), 1.5);
