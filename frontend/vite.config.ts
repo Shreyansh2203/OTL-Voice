@@ -86,14 +86,19 @@ export default defineConfig({
         'src/**/*.spec.{ts,tsx}',
         'src/vite-env.d.ts',
       ],
-      // Kept a few points under the measured values (84.24 / 77.02 / 85.21 / 87.71
-      // at the time of writing) so a platform difference cannot flip the gate. All four
-      // are still well above the previous 75/75/75/70 floors.
+      // Single source of truth for the coverage gate. These match the values CI
+      // used to override on the command line, so local and CI now enforce the
+      // same floor and the CLI duplication can go away.
+      //
+      // Measured with the current suite: 85.25 / 77.44 / 86.87 / 88.71. Each
+      // threshold sits a few points under its measured value (branches, the
+      // most volatile metric, is the tightest at 1.44) so a platform difference
+      // cannot flip the gate.
       thresholds: {
-        statements: 81,
-        branches: 74,
-        functions: 82,
-        lines: 84,
+        statements: 83,
+        branches: 76,
+        functions: 84,
+        lines: 86,
       },
     },
   },

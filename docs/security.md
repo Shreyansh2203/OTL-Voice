@@ -63,6 +63,45 @@ Never commit or log:
 
 The preflight helper only reports names/status. Configure the host, CI, and secret manager so command output is not captured alongside values. Restrict backups of the app data/idempotency volumes and define retention/deletion requirements with privacy and payroll owners.
 
+## Error reporting boundaries
+
+Sentry is the one outbound integration that can carry both a credential and an
+employee identifier, so the backend scrubs at three separate seams in
+`backend/main.py`:
+
+- `before_send` drops the event entirely when the request path is one of the
+  sensitive flows (`/api/auth/`, `/api/chat`, `/api/tts`, `/api/stt/`,
+  `/api/otl/`), and otherwise removes attachments, breadcrumbs, contexts, extra,
+  logs, module lists, the user object, and tags before recursive redaction.
+- `before_send_transaction` applies the same sensitive-path drop and the same
+  request and stack-frame stripping to performance transactions, and removes the
+  `user` and `tags` fields plus the raw `contexts.asgi` scope. It deliberately
+  keeps `contexts.trace`, because that is what links a transaction to the errors
+  it spans.
+- `before_breadcrumb` returns `None` unconditionally, so no breadcrumb is ever
+  recorded. This costs debuggability on purpose: breadcrumbs are the easiest way
+  for chat text, a URL query string, or a header value to reach a third party
+  without anyone adding a line of code.
+
+On every path, `send_default_pii` and `include_local_variables` are `false`,
+profiles are disabled, the trace sample rate is capped, and the request URL is
+rebuilt from its scheme, host, and redacted path so the query string and
+fragment are never transmitted. `backend/tests/test_security_sentry.py` asserts
+each of these; treat a failure there as a security regression, not a flaky test.
+
+Two residual risks are accepted rather than silently fixed, and a reviewer
+should know they exist:
+
+- A bare 5- or 6-digit number in free text is only redacted when it has at least
+  six digits (`(?<!\d)\d{6,}(?!\d)`). A short employee or person number embedded
+  in an exception *message* — as opposed to a structured field, which is filtered
+  by key name — would therefore survive. The structured paths are covered; the
+  free-text path is best-effort.
+- `_scrub_sentry_value` recurses without a depth limit. Sentry events are
+  serialised and not cyclic in practice, so this is theoretical, but a
+  self-referential structure would raise `RecursionError` inside the processor
+  rather than being scrubbed.
+
 ## Data flow and privacy
 
 The browser sends text and, when requested, microphone audio to the backend. The backend sends the minimum required context to OCI for generation/speech and the minimum required fields to Fusion for an approved timecard. Model output is advisory until the user confirms the structured review. External providers' retention and training settings must be reviewed before production use.

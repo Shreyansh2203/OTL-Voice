@@ -1,6 +1,0 @@
-packages:
-  - '.'
-
-allowBuilds:
-  '@sentry/cli': true
-  esbuild: true

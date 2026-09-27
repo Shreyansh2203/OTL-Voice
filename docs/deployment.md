@@ -22,6 +22,16 @@ The application port is never published directly in the Compose production file.
 
 ## Image publication
 
+The image is a multi-stage build: a Node stage compiles the PWA, and the runtime
+stage is a Python-only Debian-slim base. Node and pnpm are build-time tools
+only and are deliberately absent from the runtime layer.
+
+The Python runtime is 3.13, which is also the newest interpreter CI tests
+alongside the `requires-python = ">=3.12"` floor. Read the exact base image
+tags and digests from the `FROM` lines in the `Dockerfile` rather than from this
+document: they are digest-pinned and Dependabot opens the bump, so a number
+copied here would only ever be a stale one.
+
 `.github/workflows/image.yml` has two jobs with different triggers and different jobs to do.
 
 ### `scan` — pre-publish gate on pull requests

@@ -3,9 +3,9 @@
 [![CI](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/ci.yml/badge.svg)](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/codeql.yml/badge.svg)](https://github.com/Shreyansh2203/OTL-Voice/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python: 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](pyproject.toml)
+[![Python: 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-009688.svg)](https://fastapi.tiangolo.com)
-[![React: 18](https://img.shields.io/badge/React-18-61dafb.svg)](frontend/package.json)
+[![React: 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
 [![TypeScript: 5.9](https://img.shields.io/badge/TypeScript-5.9-3178C6.svg)](frontend/package.json)
 [![Vite: 6](https://img.shields.io/badge/Vite-6-646CFF.svg)](frontend/vite.config.ts)
 [![Docker: GHCR](https://img.shields.io/badge/docker-gHCR-2496ED?logo=docker&logoColor=white)](https://github.com/Shreyansh2203/OTL-Voice/pkgs/container/otl-voice)
@@ -50,8 +50,8 @@ separately provisioned test identity.
 | Oracle | `httpx` client for Fusion HCM/PPM REST, OCI SDK for GenAI and Speech | Assignment catalogue, timecard reads/writes, speech-to-text and LLM streaming |
 | Storage | SQLite (WAL) for the assignment catalogue and the idempotency store | Durable write deduplication; both volumes are operator-provisioned |
 | Rate limiting | `redis.asyncio` with a dev-only in-memory fallback | Per-IP request limits and per-user WebSocket caps |
-| Errors | Sentry SDK with a credential-scrubbing `before_send` | Sensitive flows dropped, request bodies/cookies/local vars stripped |
-| Frontend | React 18, TypeScript 5.9, Vite 6, TanStack Query, Workbox | Voice/text chat, assignment picker, review panel, installable PWA shell |
+| Errors | Sentry SDK with credential-scrubbing `before_send`, `before_send_transaction`, and `before_breadcrumb` processors | Sensitive flows dropped entirely; query strings, request bodies, cookies, headers, user/tag identity, the raw ASGI scope, and local variables stripped; breadcrumbs never retained |
+| Frontend | React 19, TypeScript 5.9, Vite 6, TanStack Query, Workbox | Voice/text chat, assignment picker, review panel, installable PWA shell |
 | Native | Capacitor 8 | Optional iOS and Android shells around the same PWA |
 | Quality | Ruff, mypy, pytest + coverage, ESLint, Vitest + coverage, Playwright + axe, CodeQL | Gates enforced in `make verify` and CI |
 | Delivery | Docker + GHCR, release-please, Dependabot, Ansible, nginx | Pinned images with SBOM/provenance/Trivy scan, protected production handoff |
@@ -105,9 +105,9 @@ The catalogue is refreshed in the background and is stored under `/app/data`. Ti
 
 ### Required for native development
 
-- Python 3.12 or newer compatible with `pyproject.toml`.
+- Python 3.12 or newer compatible with `pyproject.toml`, which declares `requires-python = ">=3.12"`. CI runs the backend suite as a matrix over 3.12 and 3.13, and the container image ships 3.13. Both legs pass on the 1.0.0 baseline; see [docs/testing.md](docs/testing.md#supported-python-range).
 - [`uv`](https://docs.astral.sh/uv/) for Python dependency and lockfile management.
-- Node.js 22 and pnpm 12.6.0 (Corepack or the pinned pnpm package is supported).
+- Node.js 24 and pnpm 12.6.0 (Corepack or the pinned pnpm package is supported). CI runs Node 24.
 - Git and a POSIX shell for the repository helper scripts. The Makefile itself uses Python and Docker Compose for portability on Windows, Linux, and macOS.
 
 ### Required for container deployment
@@ -267,7 +267,7 @@ uv lock --check
 uv run ruff check .
 uv run ruff format --check backend deploy
 uv run mypy backend
-uv run pytest backend/tests --cov=backend --cov-fail-under=80
+uv run pytest backend/tests --cov=backend --cov-report=xml
 pnpm install --frozen-lockfile
 pnpm --dir frontend run typecheck
 pnpm --dir frontend run lint
@@ -320,7 +320,12 @@ Native signing, store submission, and certificate issuance are intentionally ope
 - Pull requests and pushes to `main` run CI.
 - Release-please creates the release/tag. It uses the `simple` strategy, so the
   released version lives in the root `version.txt`; `release-please-config.json`
-  pins the changelog path and release-PR title.
+  pins the changelog path and release-PR title. The current release is tracked
+  in `.release-please-manifest.json` and recorded in [CHANGELOG.md](CHANGELOG.md),
+  which is seeded at the `1.0.0` baseline. `version.txt`, the root
+  `package.json`, `frontend/package.json`, and `pyproject.toml` all declare
+  `1.0.0`; if one of them is ever bumped by hand, bump the others in the same
+  change, because the `simple` strategy only rewrites `version.txt`.
 - `.github/workflows/image.yml` runs a high/critical image scan on any pull request that can change the image, then builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
 - `.github/workflows/cd.yml` is an explicit, protected Ansible deployment handoff. Supply a versioned tag or, preferably, an `@sha256:` image digest, and reject `latest` in the same way. The old Render hook is not part of the deployment path.
 

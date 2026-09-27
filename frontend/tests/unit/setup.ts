@@ -12,6 +12,12 @@ afterEach(() => {
 const localStorageMock = (function () {
   let store: Record<string, string> = {};
   return {
+    get length() {
+      return Object.keys(store).length;
+    },
+    key: function (index: number) {
+      return Object.keys(store)[index] ?? null;
+    },
     getItem: function (key: string) {
       return store[key] || null;
     },
@@ -29,6 +35,8 @@ const localStorageMock = (function () {
 
 Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
+  configurable: true,
+  writable: true,
 });
 
 // Mock IntersectionObserver

@@ -1,3 +1,4 @@
+import json
 import os
 from unittest.mock import patch
 
@@ -107,6 +108,73 @@ def test_sentry_drops_all_breadcrumbs_to_prevent_chat_text_capture():
         )
         is None
     )
+
+
+def test_sentry_transaction_scrubs_request_query_string_user_and_asgi_scope():
+    transaction = {
+        "transaction": "POST /api/people/lookup",
+        "request": {
+            "url": "https://app.example.com/api/people/lookup?personNumber=12345",
+            "method": "POST",
+            "headers": {"Authorization": "Bearer secret-token"},
+            "cookies": {"otl_session": "secret"},
+            "data": {"personNumber": "12345"},
+        },
+        "user": {"id": "u-1", "email": "person@example.com"},
+        "tags": {"person": "12345"},
+        "contexts": {
+            "asgi": {
+                "self": {
+                    "headers": [[b"host", b"app.example.com"]],
+                    "query_string": b"personNumber=12345",
+                    "client": ("10.0.0.5", 5000),
+                }
+            },
+            "trace": {"trace_id": "a" * 32, "span_id": "b" * 16},
+        },
+        "stacktrace": {"frames": [{"filename": "otl.py", "vars": {"token": "secret"}}]},
+        "spans": [],
+    }
+    scrubbed = main._sentry_scrub_transaction(transaction, {})
+    assert scrubbed is not None
+    request = scrubbed["request"]
+    assert "personNumber" not in request["url"]
+    assert request["url"] == "https://app.example.com/api/people/lookup"
+    assert "headers" not in request
+    assert "cookies" not in request
+    assert "data" not in request
+    assert "user" not in scrubbed
+    assert "tags" not in scrubbed
+    assert "asgi" not in scrubbed["contexts"]
+    # The client IP only ever lived in the ASGI scope, so dropping that scope
+    # is what removes it; assert it is nowhere in the serialised payload.
+    assert "10.0.0.5" not in json.dumps(scrubbed, default=str)
+    # contexts.trace is what links the transaction to its errors and must stay.
+    assert scrubbed["contexts"]["trace"]["trace_id"] == "a" * 32
+    assert "vars" not in scrubbed["stacktrace"]["frames"][0]
+
+
+def test_sentry_breadcrumb_scrubber_never_returns_a_crum():
+    assert (
+        main._sentry_scrub_breadcrumb({"category": "app", "message": "x"}, {}) is None
+    )
+    assert main._sentry_scrub_breadcrumb({}, {}) is None
+
+
+def test_sentry_scrubbers_ignore_non_dict_input():
+    assert main._sentry_scrub_event("not an event", {}) is None
+    assert main._sentry_scrub_transaction("not an event", {}) is None
+    assert main._sentry_scrub_event(None, {}) is None
+    assert main._sentry_scrub_transaction(None, {}) is None
+
+
+def test_sentry_sample_rate_is_clamped_and_survives_a_bad_value():
+    with patch.dict(os.environ, {"RATE": "2.0"}, clear=False):
+        assert main._sentry_sample_rate("RATE", 0.05, 0.1) == 0.1
+    with patch.dict(os.environ, {"RATE": "-1.0"}, clear=False):
+        assert main._sentry_sample_rate("RATE", 0.05, 0.1) == 0.0
+    with patch.dict(os.environ, {"RATE": "not-a-number"}, clear=False):
+        assert main._sentry_sample_rate("RATE", 0.05, 0.1) == 0.05
 
 
 def test_sentry_profiles_are_disabled_and_samples_are_capped():

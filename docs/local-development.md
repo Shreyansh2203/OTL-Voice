@@ -4,9 +4,18 @@
 
 | Workstation | Python | Node/pnpm | Container option |
 | --- | --- | --- | --- |
-| Windows 10/11 | Python 3.12+ | Node 22, pnpm 12.6.0 | Docker Desktop + Compose v2.24+ |
-| Ubuntu/Debian | Python 3.12+ | Node 22, pnpm 12.6.0 | Docker Engine + Compose v2.24+ |
-| macOS | Python 3.12+ | Node 22, pnpm 12.6.0 | Docker Desktop + Compose v2.24+ |
+| Windows 10/11 | Python 3.12+ | Node 24, pnpm 12.6.0 | Docker Desktop + Compose v2.24+ |
+| Ubuntu/Debian | Python 3.12+ | Node 24, pnpm 12.6.0 | Docker Engine + Compose v2.24+ |
+| macOS | Python 3.12+ | Node 24, pnpm 12.6.0 | Docker Desktop + Compose v2.24+ |
+
+These are the versions CI uses and the versions the container image is built
+from, so a workstation on the same versions reproduces a green run. The Python
+column is the supported *floor* rather than a single pin: `pyproject.toml`
+declares `requires-python = ">=3.12"` and the backend job is a matrix over 3.12
+and 3.13. The repository's `.python-version` selects 3.12 for a bare `uv run`
+on this checkout, so the floor is what you get by default; pass
+`uv run --python 3.13 ...` to exercise the newer leg. The supplied
+`.devcontainer/devcontainer.json` pins Python 3.13 and Node 24.
 
 Install `uv` using its official platform installer or package manager. Enable Corepack or install pnpm 12.6.0 explicitly. Do not use a globally drifting Node/pnpm combination when reproducing CI.
 

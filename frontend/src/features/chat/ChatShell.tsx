@@ -248,7 +248,7 @@ export default function ChatShell({
       <main
         className="workspace"
         style={{ position: 'relative' }}
-        {...(drawerModal ? { inert: '' } : {})}
+        {...(drawerModal ? { inert: true } : {})}
       >
         <header className="workspace-header">
           <div className="workspace-title-group">

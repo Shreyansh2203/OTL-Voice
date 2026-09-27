@@ -147,5 +147,6 @@ pnpm --dir frontend exec vitest run --coverage
 
 The gates live in the root `pyproject.toml` (`fail_under`) and
 `frontend/vite.config.ts` (`test.coverage.thresholds`); each coverage run prints
-the measured percentages. `docs/testing.md` still records the earlier frontend
-numbers and needs the same single-source-of-truth treatment this file avoids.
+the measured percentages. Neither number is restated in prose anywhere in this
+repository, and neither is duplicated in the CI workflow or the Makefile, so
+there is no second copy to drift. Read them from the config files.

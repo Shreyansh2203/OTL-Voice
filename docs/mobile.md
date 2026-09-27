@@ -8,7 +8,7 @@ Install it from a supported browser's “Install app”/“Add to home screen”
 
 ## Capacitor prerequisites
 
-- Node 22 and pnpm 12.6.0.
+- Node 24 and pnpm 12.6.0.
 - Android Studio, Android SDK, JDK, and a configured emulator/device for Android.
 - Xcode, an Apple developer account, CocoaPods, and a configured device/simulator for iOS.
 - A reachable HTTPS backend and a valid TLS certificate. Mobile operating systems may reject plaintext or self-signed endpoints outside a controlled development setup.

@@ -24,10 +24,42 @@ The root workspace lockfile is canonical. Do not use `uv lock` or an unlocked pn
 uv run ruff check .
 uv run ruff format --check backend deploy
 uv run mypy backend
-uv run pytest backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80
+uv run pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=xml
 ```
 
-The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 80% gate matches what the suite genuinely measures today (81.5% at the time of writing) rather than sitting far below it, so a regression is caught and improving coverage is rewarded. Raise it as tests land, and never reach the number by excluding code or adding a coverage pragma.
+Note the absence of `--cov-fail-under` on that last line. The backend gate is
+`fail_under` in `[tool.coverage.report]` in the root `pyproject.toml`, and
+pytest-cov reads it from there. The CI workflow and the `make coverage` target
+both invoke the identical command with no override flag, so local and CI apply
+the same number and there is exactly one place to change it.
+
+The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 80% gate matches what the suite genuinely measures today — **82.5%** as last measured on the 1.0.0 baseline, against 403 passing and 4 skipped tests — rather than sitting far below it, so a regression is caught and improving coverage is rewarded. The headroom above the gate is roughly 2.5 points, which is deliberately thin: it is enough to absorb a small amount of platform drift, not enough to hide a deleted test. Raise it as tests land, and never reach the number by excluding code or adding a coverage pragma.
+
+### Supported Python range
+
+`pyproject.toml` declares `requires-python = ">=3.12"`, and the CI `backend` job
+runs as a matrix over `['3.12', '3.13']` so the declared floor is tested on
+every push rather than assumed. The container image ships 3.13, and 3.12 is the
+oldest interpreter the project claims to support.
+
+To reproduce the 3.13 leg locally without disturbing the project venv, point
+`uv` at a separate environment:
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venv313 uv run --python 3.13 pytest backend/tests
+```
+
+Pointing `uv` at a separate environment is deliberate. Plain
+`uv run --python 3.13 ...` reinterprets the existing `.venv` as a 3.13
+environment in place, which destroys the working 3.12 environment — and on a
+checkout where another process holds a file lock, the removal fails halfway and
+leaves a broken `.venv` rather than either interpreter. `.venv*/` is ignored by
+git so the scratch environment does not show up in `git status`.
+
+Both legs pass on the 1.0.0 baseline: 403 passed, 4 skipped on CPython 3.12.14
+and on CPython 3.13.15. A change that passes on one and fails on the other is a
+compatibility regression, not a flake. The skipped tests are the opt-in live
+integration tests described below.
 
 ## Frontend
 
@@ -38,7 +70,13 @@ pnpm --dir frontend run build
 pnpm --dir frontend exec vitest run --coverage
 ```
 
-The enforced thresholds live in `frontend/vite.config.ts` and are not repeated here. Restating a config value in prose is how this document and `README.md` came to disagree with the code in the first place; read the thresholds from the config, and the measured percentages from the coverage table the run prints. `make coverage` runs both ecosystems and applies both gates.
+The enforced thresholds live in `frontend/vite.config.ts` under `test.coverage.thresholds` and are deliberately not repeated here or in `README.md`, `CONTRIBUTING.md`, or `SECURITY.md`. Restating a config value in prose is how those documents came to disagree with the code in the first place; read the thresholds from the config, and the measured percentages from the coverage table the run prints. `make coverage` runs both ecosystems and applies both gates.
+
+`frontend/vite.config.ts` is the CI gate too, and that is on purpose. A
+`--coverage.thresholds.*` command-line flag takes precedence over the config
+file, so the CI job used to carry a second, hand-maintained copy of all four
+numbers. Those flags have been removed: CI and local runs now read the same
+config, and there is nothing left to drift. Do not reintroduce a CLI override.
 
 Branches are held to a lower floor than statements because branch coverage counts defensive guards, optional-chaining chains, and prop defaults that are not worth a test each.
 

@@ -25,6 +25,22 @@ _SENSITIVE_EVENT_PATHS = (
     "/api/stt/",
     "/api/otl/",
 )
+# Fields removed wholesale from an error event before it is sent.
+_SENSITIVE_EVENT_FIELDS = (
+    "attachments",
+    "breadcrumbs",
+    "contexts",
+    "extra",
+    "logs",
+    "modules",
+    "user",
+    "tags",
+)
+# A transaction is scrubbed to the same standard, minus `contexts` (see
+# _sentry_scrub_transaction) and with the ASGI scope dropped by name.
+_SENSITIVE_TRANSACTION_FIELDS = ("user", "tags")
+_SENSITIVE_TRANSACTION_CONTEXTS = ("asgi",)
+_SCRUBBED_REQUEST_FIELDS = ("cookies", "data", "env", "headers", "query_string")
 _SENSITIVE_KEYS = {
     "authorization",
     "cookie",
@@ -114,37 +130,36 @@ def _event_path(event: dict[str, Any]) -> str:
     return transaction if isinstance(transaction, str) else ""
 
 
+def _scrub_request(request: Any) -> None:
+    if not isinstance(request, dict):
+        return
+    for field in _SCRUBBED_REQUEST_FIELDS:
+        request.pop(field, None)
+    raw_url = request.get("url")
+    if isinstance(raw_url, str):
+        parsed = urlsplit(raw_url)
+        request["url"] = urlunsplit(
+            (parsed.scheme, parsed.netloc, _redact_text(parsed.path), "", "")
+        )
+
+
+def _drop_stack_frame_vars(stacktrace: Any) -> None:
+    if not isinstance(stacktrace, dict):
+        return
+    for frame in stacktrace.get("frames", []):
+        if isinstance(frame, dict):
+            frame.pop("vars", None)
+
+
 def _sentry_scrub_event(event: Any, hint: Any) -> Any | None:
     if not isinstance(event, dict):
         return None
     if any(path in _event_path(event) for path in _SENSITIVE_EVENT_PATHS):
         return None
-    for field in (
-        "attachments",
-        "breadcrumbs",
-        "contexts",
-        "extra",
-        "logs",
-        "modules",
-        "user",
-    ):
+    for field in _SENSITIVE_EVENT_FIELDS:
         event.pop(field, None)
-    event.pop("tags", None)
-    request = event.get("request")
-    if isinstance(request, dict):
-        for field in ("cookies", "data", "env", "headers", "query_string"):
-            request.pop(field, None)
-        raw_url = request.get("url")
-        if isinstance(raw_url, str):
-            parsed = urlsplit(raw_url)
-            request["url"] = urlunsplit(
-                (parsed.scheme, parsed.netloc, _redact_text(parsed.path), "", "")
-            )
-    stacktrace = event.get("stacktrace")
-    frames = stacktrace.get("frames", []) if isinstance(stacktrace, dict) else []
-    for frame in frames:
-        if isinstance(frame, dict):
-            frame.pop("vars", None)
+    _scrub_request(event.get("request"))
+    _drop_stack_frame_vars(event.get("stacktrace"))
     scrubbed = _scrub_sentry_value(event)
     return scrubbed if isinstance(scrubbed, dict) else None
 
@@ -155,7 +170,20 @@ def _sentry_scrub_transaction(event: Any, hint: Any) -> Any | None:
         return None
     if any(path in _event_path(event) for path in _SENSITIVE_EVENT_PATHS):
         return None
-    return _scrub_sentry_value(event)
+    for field in _SENSITIVE_TRANSACTION_FIELDS:
+        event.pop(field, None)
+    # A transaction keeps `contexts.trace`: that is what links it to the errors
+    # it spans, so dropping the whole `contexts` map the way the error path does
+    # would orphan every trace. The raw ASGI scope is the part that leaks a
+    # client IP and the unsanitised query string, so it is dropped by name.
+    contexts = event.get("contexts")
+    if isinstance(contexts, dict):
+        for name in _SENSITIVE_TRANSACTION_CONTEXTS:
+            contexts.pop(name, None)
+    _scrub_request(event.get("request"))
+    _drop_stack_frame_vars(event.get("stacktrace"))
+    scrubbed = _scrub_sentry_value(event)
+    return scrubbed if isinstance(scrubbed, dict) else None
 
 
 def _sentry_scrub_breadcrumb(crumb: Any, hint: Any) -> None:

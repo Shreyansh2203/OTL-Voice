@@ -15,7 +15,7 @@ uv sync --locked --all-groups
 pnpm install --frozen-lockfile
 ```
 
-Run pnpm from the repository root. The root `pnpm-lock.yaml` is the only workspace lockfile; a nested `frontend/pnpm-lock.yaml` must never be created or committed.
+Run pnpm from the repository root. The root `pnpm-lock.yaml` is the only workspace lockfile; a nested `frontend/pnpm-workspace.yaml` or `frontend/pnpm-lock.yaml` must never be created or committed. A nested `frontend/pnpm-workspace.yaml` used to exist here and has been removed: it made `pnpm --dir frontend` resolve a different workspace than `pnpm install` at the root, which is how the two drifted apart. If either file reappears, `lock-check`'s `pnpm install --frozen-lockfile --lockfile-only` will fail — and that failure is the intended signal, not something to silence by adding the nested lockfile to `.gitignore`.
 
 The dev dependency group carries `tzdata` on Windows because `zoneinfo` needs a zone database that a bare Windows install does not ship. Without it an IANA `APP_TIMEZONE` resolves to nothing and the application falls back to the host timezone.
 
@@ -50,9 +50,20 @@ A pull request should:
 Run everything before you push:
 
 ```bash
-make verify     # format-check + lint + typecheck + unit tests
-make coverage   # both coverage gates
+make verify
+```
+
+`make verify` is the single pre-push entry point. It runs `lock-check`,
+`format-check`, `lint`, `typecheck`, `test`, and `coverage`, so it covers both
+lockfiles, both ecosystems' formatting, lint, types, unit tests, and both
+coverage gates. Read the `Makefile` for the exact recipe; the target list above
+is accurate only as long as the two agree, and the Makefile wins.
+
+The individual pieces remain available when you need a fast loop:
+
+```bash
 make lock-check # lockfiles match the manifests
+make coverage   # both coverage gates
 ```
 
 Individually:
@@ -63,17 +74,19 @@ Individually:
 | Python format | `uv run ruff format --check backend deploy` |
 | Python types | `uv run mypy backend` |
 | Python tests | `uv run pytest backend/tests` |
-| Backend coverage | `uv run pytest backend/tests --cov=backend --cov-fail-under=80` |
+| Backend coverage | `uv run pytest backend/tests --cov=backend --cov-report=xml` |
 | Frontend types | `pnpm --dir frontend exec tsc -b tsconfig.app.json tsconfig.node.json` and `--project tsconfig.tests.json` |
 | Frontend lint | `pnpm --dir frontend run lint` |
 | Frontend format | `pnpm --dir frontend exec prettier --check "src/**/*.{ts,tsx}"` |
 | Frontend tests | `pnpm --dir frontend run test:unit` |
-| Frontend coverage | statements 83, lines 86, functions 84, branches 76 |
+| Frontend coverage | thresholds live in `frontend/vite.config.ts` — read them there |
 | Frontend build | `pnpm --dir frontend run build` |
 | Dependency audit | `uv run pip-audit` over the exported lock, and `pnpm audit --audit-level=high` |
 | Compose config | `make config` and `make config-dev` |
 
-The coverage floors are real gates. Raise them only with tests that prove the new behaviour, and never reach a number by excluding a file, adding a coverage pragma, deleting a test, or marking one skipped. A test that asserts nothing is worse than no test.
+The coverage floors are real gates, and each one has exactly one home: the backend floor is `fail_under` in `[tool.coverage.report]` in the root `pyproject.toml`, and the frontend floors are `test.coverage.thresholds` in `frontend/vite.config.ts`. Do not copy either number into a CI variable, a Makefile flag, or a table like the one above, and do not pass a `--cov-fail-under` or `--coverage.thresholds.*` override — a CLI flag beats the config file, so an override silently replaces the gate you think you are enforcing. Neither number is restated in this document on purpose.
+
+Raise the floors only with tests that prove the new behaviour, and never reach a number by excluding a file, adding a coverage pragma, deleting a test, or marking one skipped. A test that asserts nothing is worse than no test.
 
 `make` is a convenience wrapper, not a dependency. Every target maps to a command you can run directly.
 
