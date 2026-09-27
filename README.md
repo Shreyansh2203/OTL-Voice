@@ -368,6 +368,20 @@ Native signing, store submission, and certificate issuance are intentionally ope
 - [Security](docs/security.md)
 - [Operations and incident response](docs/operations.md)
 
+## Portfolio
+
+Other projects by the same author. Each is a standalone repository with its own scope; only OTL-Voice is described in depth here.
+
+| Repository | What it is |
+| --- | --- |
+| [OTL-Voice](https://github.com/Shreyansh2203/OTL-Voice) | This project: an installable PWA that logs Oracle Time & Labour hours by chat or voice and submits them to OTL. |
+| [oracle-bip-reconciler](https://github.com/Shreyansh2203/oracle-bip-reconciler) | FastAPI service that repairs incoming payment and remittance JSON in place and matches it against invoice and receipt history in Oracle Fusion ERP Cloud BI Publisher. |
+| [Product-Comparison-Advisor-AI-Agent](https://github.com/Shreyansh2203/Product-Comparison-Advisor---AI-Agent) | Oracle Fusion Cloud AI Agent configuration that compares two or more Items on curated product and manufacturing attributes and returns an HTML comparison table. |
+| [Merge-TIFF](https://github.com/Shreyansh2203/Merge-TIFF) | Next.js web tool that merges multiple TIFF images into one multi-page TIFF through a serverless Python function. |
+| [Scraping-Bot](https://github.com/Shreyansh2203/Scraping-Bot) | Telegram bot that downloads the media behind an Instagram or Twitter/X link. |
+
+Each of those repositories links back here from its own README, so either end of a link is a way in.
+
 ## Contributing and releases
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the commit convention, the quality gates, how to run the suite with and without live credentials, and the security controls a change must not weaken. In short: use Conventional Commit messages, keep lockfiles synchronized with package manifests, and include tests for behavior changes. CodeQL, Dependabot, release-please, the GHCR publisher, and the Ansible deployment target are part of the supported delivery path. Never include credentials, private keys, session cookies, or raw employee/chat data in an issue, pull request, artifact, or log.
