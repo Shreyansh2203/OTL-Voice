@@ -17,7 +17,6 @@ services:
       CSP_DEV_MODE: "false"
       REDIS_REQUIRED: "true"
       ALLOW_IN_MEMORY_SESSIONS: "false"
-      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       IDEMPOTENCY_DB_PATH: /app/data/idempotency/idempotency.sqlite3
       READINESS_BASE_URL: http://127.0.0.1:8000
       READINESS_URL: http://127.0.0.1:8000/api/health
@@ -71,3 +70,10 @@ services:
 volumes:
   app_data:
   idempotency_data:
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.7.0/24

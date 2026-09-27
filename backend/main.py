@@ -435,7 +435,12 @@ async def _otl_error_handler(_: Request, exc: OtlError) -> JSONResponse:
 
 @app.exception_handler(OtlConfigError)
 async def _otl_config_error_handler(_: Request, exc: OtlConfigError) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    logger.error("Oracle Cloud OTL is not configured: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Oracle Cloud OTL is not configured."},
+        headers={"Retry-After": "30"},
+    )
 
 
 # Mount all modular v1 routes

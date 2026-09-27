@@ -46,6 +46,21 @@ def _entry(**overrides):
     return value
 
 
+def _assigned_project():
+    return [
+        {
+            "workOrder": "WO-1",
+            "projects": [
+                {
+                    "projectNo": "P1",
+                    "projectName": "Alpha",
+                    "tasks": [{"taskId": "T1", "taskDetails": "Development"}],
+                }
+            ],
+        }
+    ]
+
+
 def test_timecard_helper_facade_exports_service_helpers():
     assert timecards._FENCED_JSON is timecard_entries._FENCED_JSON
     assert timecards._normalize_entry is timecard_entries._normalize_entry
@@ -134,22 +149,57 @@ def test_submit_waits_for_catalogue_cold_start(auth_client, mock_fusion_catalogu
     assert "not loaded" in response.json()["detail"].lower()
 
 
-def test_non_strict_submit_preserves_supplied_project_id(auth_client, mock_otl_client):
+def test_non_strict_submit_never_bypasses_project_authorisation(
+    auth_client, mock_fusion_catalogue, mock_otl_client
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = [
+        {
+            "workOrder": "WO-1",
+            "projects": [{"projectNo": "P1", "projectName": "Alpha", "tasks": []}],
+        }
+    ]
     entry = _entry(projectId="SUPPLIED")
     entry.pop("projectNo")
     entry.pop("projectName")
     with (
         patch.dict("os.environ", {"STRICT_ASSIGNMENT": "false"}),
-        patch("backend.services.timecard_entries._STRICT_ASSIGNMENT_CACHE", False),
+        patch("backend.services.timecard_entries._STRICT_ASSIGNMENT_CACHE", None),
     ):
-        response = auth_client.post(
-            "/api/otl/timecard",
-            json={"entries": [entry]},
-        )
+        response = auth_client.post("/api/otl/timecard", json={"entries": [entry]})
 
-    assert response.status_code == 200, response.text
-    submitted = mock_otl_client.acreate_many.await_args.args[1]
-    assert submitted[0]["projectId"] == "SUPPLIED"
+    assert response.status_code == 400
+    assert "project" in response.json()["detail"].lower()
+    mock_otl_client.acreate_many.assert_not_awaited()
+
+
+def test_strict_assignment_flag_cannot_be_switched_off(monkeypatch):
+    monkeypatch.setenv("STRICT_ASSIGNMENT", "false")
+    monkeypatch.setattr(timecard_entries, "_STRICT_ASSIGNMENT_CACHE", None)
+
+    assert timecard_entries._strict_assignment() is True
+
+    monkeypatch.setenv("STRICT_ASSIGNMENT", "0")
+    monkeypatch.setattr(timecard_entries, "_STRICT_ASSIGNMENT_CACHE", None)
+
+    assert timecard_entries._strict_assignment() is True
+
+
+def test_submit_rejects_a_project_outside_the_employee_assignments(
+    auth_client, mock_fusion_catalogue
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = [
+        {
+            "workOrder": "WO-1",
+            "projects": [{"projectNo": "P1", "projectName": "Alpha", "tasks": []}],
+        }
+    ]
+
+    response = auth_client.post(
+        "/api/otl/timecard", json={"entries": [_entry(projectNo="P-OTHER")]}
+    )
+
+    assert response.status_code == 400
+    assert "not in your assigned projects" in response.json()["detail"].lower()
 
 
 def test_submit_rejects_task_from_another_project(auth_client, mock_fusion_catalogue):
@@ -365,16 +415,20 @@ def test_submit_rejects_duplicate_entry_request_ids(auth_client, mock_otl_client
     mock_otl_client.acreate_many.assert_not_awaited()
 
 
-def test_submit_hides_internal_submission_error(auth_client, mock_otl_client):
+def test_submit_hides_internal_submission_error(
+    auth_client, mock_fusion_catalogue, mock_otl_client
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = (
+        _assigned_project()
+    )
     mock_otl_client.acreate_many.side_effect = RuntimeError(
         "ORA-00933 password=supersecret"
     )
 
-    with patch("backend.services.timecard_entries._STRICT_ASSIGNMENT_CACHE", False):
-        response = auth_client.post(
-            "/api/otl/timecard",
-            json={"entries": [_entry(requestId="request-safe-error")]},
-        )
+    response = auth_client.post(
+        "/api/otl/timecard",
+        json={"entries": [_entry(requestId="request-safe-error")]},
+    )
 
     assert response.status_code == 502
     detail = response.json()["detail"]
@@ -383,7 +437,12 @@ def test_submit_hides_internal_submission_error(auth_client, mock_otl_client):
     assert "reference" in detail.lower()
 
 
-def test_submit_sanitizes_per_row_error(auth_client, mock_otl_client):
+def test_submit_sanitizes_per_row_error(
+    auth_client, mock_fusion_catalogue, mock_otl_client
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = (
+        _assigned_project()
+    )
     mock_otl_client.acreate_many.return_value = [
         {
             "index": 0,
@@ -394,14 +453,64 @@ def test_submit_sanitizes_per_row_error(auth_client, mock_otl_client):
         }
     ]
 
-    with patch("backend.services.timecard_entries._STRICT_ASSIGNMENT_CACHE", False):
-        response = auth_client.post(
-            "/api/otl/timecard",
-            json={"entries": [_entry(requestId="request-row-safe")]},
-        )
+    response = auth_client.post(
+        "/api/otl/timecard",
+        json={"entries": [_entry(requestId="request-row-safe")]},
+    )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 502, response.text
     result = response.json()["results"][0]
     assert result["error"] == "Oracle Cloud is temporarily unavailable."
     assert "supersecret" not in str(result).lower()
     assert "detail" not in result
+
+
+def test_status_carries_information_when_every_entry_is_rejected(
+    auth_client, mock_fusion_catalogue, mock_otl_client
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = (
+        _assigned_project()
+    )
+    mock_otl_client.acreate_many.return_value = [
+        {"index": 0, "ok": False, "status": 400, "error": "Oracle rejected."}
+    ]
+
+    rejected = auth_client.post("/api/otl/timecard", json={"entries": [_entry()]})
+
+    assert rejected.status_code == 422
+    assert rejected.json()["succeeded"] == 0
+    assert rejected.json()["failed"] == 1
+
+    mock_otl_client.acreate_many.return_value = [
+        {
+            "index": 0,
+            "ok": False,
+            "status": 409,
+            "code": "submission_in_progress",
+        }
+    ]
+
+    in_progress = auth_client.post("/api/otl/timecard", json={"entries": [_entry()]})
+
+    assert in_progress.status_code == 502
+    assert in_progress.json()["results"][0]["code"] == "submission_in_progress"
+
+
+def test_partial_success_is_still_reported_as_ok(
+    auth_client, mock_fusion_catalogue, mock_otl_client
+):
+    mock_fusion_catalogue.alist_assignments_for_worker.return_value = (
+        _assigned_project()
+    )
+    mock_otl_client.acreate_many.return_value = [
+        {"index": 0, "ok": True, "id": "rec-1"},
+        {"index": 1, "ok": False, "status": 400, "error": "Oracle rejected."},
+    ]
+
+    response = auth_client.post(
+        "/api/otl/timecard", json={"entries": [_entry(), _entry()]}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["succeeded"] == 1
+    assert response.json()["failed"] == 1

@@ -4,7 +4,7 @@ import asyncio
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from ...core import auth
 from ...core.auth import SessionContext
@@ -37,8 +37,10 @@ def health() -> dict[str, str]:
 
 @router.get("/api/health/otl")
 async def health_otl(
+    response: Response,
     ctx: SessionContext = Depends(auth.current_session),
 ) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return await asyncio.wait_for(
             otl_client.avalidate(otl_client.service_credential()), timeout=5.0

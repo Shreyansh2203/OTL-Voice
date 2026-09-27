@@ -31,10 +31,36 @@ _RESULT_FIELDS = {
     "recordName",
     "status",
     "error",
+    "code",
     "correlationId",
     "requestId",
     "replayed",
 }
+RESULT_CODE_SUBMISSION_IN_PROGRESS = "submission_in_progress"
+RESULT_CODE_REQUEST_ID_CONFLICT = "request_id_conflict"
+RESULT_CODE_CLAIM_LOST = "idempotency_claim_lost"
+RESULT_CODE_STORE_UNAVAILABLE = "idempotency_unavailable"
+RESULT_CODE_ORACLE_UNAVAILABLE = "oracle_unavailable"
+_RESULT_CODES = frozenset(
+    {
+        RESULT_CODE_SUBMISSION_IN_PROGRESS,
+        RESULT_CODE_REQUEST_ID_CONFLICT,
+        RESULT_CODE_CLAIM_LOST,
+        RESULT_CODE_STORE_UNAVAILABLE,
+        RESULT_CODE_ORACLE_UNAVAILABLE,
+    }
+)
+AMBIGUOUS_CODES = frozenset(
+    {RESULT_CODE_STORE_UNAVAILABLE, RESULT_CODE_ORACLE_UNAVAILABLE}
+)
+RETRYABLE_CODES = frozenset(
+    {
+        RESULT_CODE_SUBMISSION_IN_PROGRESS,
+        RESULT_CODE_CLAIM_LOST,
+        RESULT_CODE_STORE_UNAVAILABLE,
+        RESULT_CODE_ORACLE_UNAVAILABLE,
+    }
+)
 _ERROR_MESSAGES = {
     400: "Oracle rejected this timecard entry.",
     401: "Oracle authentication failed.",
@@ -43,6 +69,24 @@ _ERROR_MESSAGES = {
     409: "The timecard request conflicts with an existing request.",
     422: "Oracle rejected this timecard entry.",
     429: "Oracle is temporarily busy. Please retry later.",
+}
+_CODE_MESSAGES = {
+    RESULT_CODE_SUBMISSION_IN_PROGRESS: (
+        "A matching submission is still processing. Retry with the same requestId."
+    ),
+    RESULT_CODE_REQUEST_ID_CONFLICT: (
+        "This requestId was already used for different timecard data."
+    ),
+    RESULT_CODE_CLAIM_LOST: (
+        "The submission could not be recorded as complete. Retry with the same "
+        "requestId."
+    ),
+    RESULT_CODE_STORE_UNAVAILABLE: (
+        "The idempotency store is unavailable. Retry with the same requestId."
+    ),
+    RESULT_CODE_ORACLE_UNAVAILABLE: (
+        "Oracle Cloud is temporarily unavailable. Retry with the same requestId."
+    ),
 }
 
 
@@ -111,7 +155,44 @@ def _safe_string(value: Any) -> str:
     return str(value)[:MAX_RESULT_STRING_LENGTH]
 
 
-def _safe_error(status: Any) -> str:
+def _result_status(result: dict[str, Any]) -> int:
+    try:
+        return int(result.get("status", 500))
+    except (TypeError, ValueError):
+        return 500
+
+
+def _is_ambiguous_result(result: dict[str, Any]) -> bool:
+    """True when the write outcome is unknown, so the result must not be memoised.
+
+    A 5xx from Oracle leaves it unknown whether the row was created, and an
+    unavailable idempotency store means nothing was submitted at all. Neither is a
+    definitive answer, so neither may become a replayable completed record: the
+    claim is released and the caller is told to retry the same ``requestId``.
+    """
+    if result.get("ok"):
+        return False
+    if result.get("code") in AMBIGUOUS_CODES:
+        return True
+    return _result_status(result) >= 500
+
+
+def is_retryable_result(result: dict[str, Any]) -> bool:
+    """True when re-sending the same requestId can change the outcome."""
+    if result.get("ok"):
+        return False
+    code = result.get("code")
+    if code in RETRYABLE_CODES:
+        return True
+    if code == RESULT_CODE_REQUEST_ID_CONFLICT:
+        return False
+    status = _result_status(result)
+    return status >= 500 or status in (409, 429)
+
+
+def _safe_error(status: Any, code: str | None = None) -> str:
+    if code is not None and code in _CODE_MESSAGES:
+        return _CODE_MESSAGES[code]
     try:
         status_code = int(status)
     except (TypeError, ValueError):
@@ -144,8 +225,14 @@ def sanitize_idempotency_result(result: Any) -> dict[str, Any]:
             except (TypeError, ValueError):
                 status = 500
             safe[field] = status if 400 <= status <= 599 else 500
+        elif field == "code":
+            if isinstance(value, str) and value in _RESULT_CODES:
+                safe[field] = value
         elif field == "error":
-            safe[field] = _safe_error(result.get("status", 500))
+            code = result.get("code")
+            safe[field] = _safe_error(
+                result.get("status", 500), code if isinstance(code, str) else None
+            )
         elif field == "correlationId":
             candidate = _safe_string(value)
             if re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", candidate):
@@ -154,7 +241,10 @@ def sanitize_idempotency_result(result: Any) -> dict[str, Any]:
             safe[field] = _safe_string(value)
     safe.setdefault("ok", False)
     if not safe["ok"]:
-        safe["error"] = _safe_error(safe.get("status", 500))
+        code = safe.get("code")
+        safe["error"] = _safe_error(
+            safe.get("status", 500), code if isinstance(code, str) else None
+        )
     return safe
 
 
@@ -162,7 +252,17 @@ def _pending_result() -> dict[str, Any]:
     return {
         "ok": False,
         "status": 409,
-        "error": "A matching submission is still processing. Retry with the same requestId.",
+        "code": RESULT_CODE_SUBMISSION_IN_PROGRESS,
+        "error": _CODE_MESSAGES[RESULT_CODE_SUBMISSION_IN_PROGRESS],
+    }
+
+
+def _conflict_result() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": 409,
+        "code": RESULT_CODE_REQUEST_ID_CONFLICT,
+        "error": _CODE_MESSAGES[RESULT_CODE_REQUEST_ID_CONFLICT],
     }
 
 
@@ -207,14 +307,7 @@ class _MemoryBackend:
                 )
                 return IdempotencyClaim(state="claimed", token=token)
             if record.request_hash != request_hash:
-                return IdempotencyClaim(
-                    state="conflict",
-                    result={
-                        "ok": False,
-                        "status": 409,
-                        "error": "This requestId was already used for different timecard data.",
-                    },
-                )
+                return IdempotencyClaim(state="conflict", result=_conflict_result())
             if record.state == "complete" and record.result_json:
                 result = json.loads(record.result_json)
                 result["replayed"] = True
@@ -229,6 +322,7 @@ class _MemoryBackend:
 
     def complete(self, key: str, token: str, result: dict[str, Any]) -> bool:
         now = time.time()
+        safe = sanitize_idempotency_result(result)
         with self._lock:
             record = self._records.get(key)
             if (
@@ -239,10 +333,11 @@ class _MemoryBackend:
                 or record.expires_at <= now
             ):
                 return False
+            if _is_ambiguous_result(safe):
+                del self._records[key]
+                return True
             record.state = "complete"
-            record.result_json = json.dumps(
-                sanitize_idempotency_result(result), separators=(",", ":")
-            )
+            record.result_json = json.dumps(safe, separators=(",", ":"))
             record.owner_token = None
             record.lease_until = 0
             return True
@@ -327,14 +422,7 @@ class _SQLiteBackend:
                 state, stored_hash, result_json, lease_until = row
                 if stored_hash != request_hash:
                     connection.commit()
-                    return IdempotencyClaim(
-                        state="conflict",
-                        result={
-                            "ok": False,
-                            "status": 409,
-                            "error": "This requestId was already used for different timecard data.",
-                        },
-                    )
+                    return IdempotencyClaim(state="conflict", result=_conflict_result())
                 if state == "complete" and result_json:
                     connection.commit()
                     result = json.loads(result_json)
@@ -361,6 +449,19 @@ class _SQLiteBackend:
     def complete(self, key: str, token: str, result: dict[str, Any]) -> bool:
         safe = sanitize_idempotency_result(result)
         now = time.time()
+        if _is_ambiguous_result(safe):
+            try:
+                with self._connect() as connection:
+                    cursor = connection.execute(
+                        "DELETE FROM idempotency_records WHERE key = ? "
+                        "AND state = 'pending' AND owner_token = ?",
+                        (key, token),
+                    )
+                    return cursor.rowcount == 1
+            except sqlite3.Error as exc:
+                raise IdempotencyUnavailable(
+                    "Idempotency store is unavailable."
+                ) from exc
         try:
             with self._connect() as connection:
                 cursor = connection.execute(
@@ -402,6 +503,13 @@ class IdempotencyStore:
     stale and may be reclaimed. The lease is therefore clamped into ``(0, ttl_seconds]``
     so it can never exceed the lifetime of the record it protects and can never
     resurrect a record that has already expired.
+
+    Only a *definitive* outcome is memoised. When the write outcome is unknown (a 5xx
+    from Oracle, or an unavailable store) the claim is released instead of completed, so
+    the caller can retry the same ``requestId`` and get a real second attempt rather than
+    the identical failure replayed for the full TTL. Losing the durable store is fatal,
+    never a silent downgrade to a process-local map: ``IdempotencyUnavailable`` is raised
+    so callers fail closed instead of losing every deduplication guarantee.
     """
 
     def __init__(
@@ -426,11 +534,10 @@ class IdempotencyStore:
         else:
             try:
                 self._backend = _SQLiteBackend(Path(path))
-            except (OSError, sqlite3.Error):
-                logger.error(
-                    "Durable idempotency database is unavailable; using process-local fallback"
-                )
-                self._backend = _MemoryBackend()
+            except (OSError, sqlite3.Error) as exc:
+                raise IdempotencyUnavailable(
+                    "Durable idempotency database is unavailable."
+                ) from exc
 
     def claim(self, key: str, request_hash: str) -> IdempotencyClaim:
         if not key or len(key) > 512:

@@ -45,4 +45,4 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=8s --start-period=30s --retries=3 \
     CMD ["python", "/app/deploy/readycheck.py"]
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

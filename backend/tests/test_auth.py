@@ -1,4 +1,6 @@
+import asyncio
 import os
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
@@ -26,6 +28,78 @@ from backend.core.auth import (
     resolve,
 )
 from backend.models import Employee
+
+
+def _user_mapping():
+    from backend.core import auth
+
+    return {
+        "someone": auth.AuthUser(
+            employee_id="10021",
+            username="someone",
+            password_hash=auth._DUMMY_PASSWORD_HASH,
+        )
+    }
+
+
+@pytest.mark.asyncio
+async def test_scrypt_verification_never_blocks_the_event_loop(monkeypatch):
+    from backend.core import auth
+
+    ticks: list[int] = []
+    ticks_observed_inside_scrypt: list[int] = []
+
+    async def _ticker() -> None:
+        while True:
+            ticks.append(1)
+            await asyncio.sleep(0.005)
+
+    def _slow_verify(password, password_hash):  # noqa: ANN001, ANN202
+        time.sleep(0.3)
+        ticks_observed_inside_scrypt.append(len(ticks))
+        return False
+
+    monkeypatch.setattr(auth, "_verify_scrypt", _slow_verify)
+    verifier = auth.LocalCredentialVerifier(_user_mapping())
+    ticker = asyncio.create_task(_ticker())
+    try:
+        assert await verifier.verify("someone", "wrong-password") is None
+    finally:
+        ticker.cancel()
+
+    assert len(ticks_observed_inside_scrypt) == 1
+    assert ticks_observed_inside_scrypt[0] > 0, (
+        "the event loop was stalled for the whole of the scrypt verification"
+    )
+    assert len(ticks) > 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_still_pays_the_full_scrypt_cost(monkeypatch):
+    from backend.core import auth
+
+    calls: list[str] = []
+    real_verify = auth._verify_scrypt
+    real_hash = auth.hash_scrypt_password("correct-horse-battery-staple")
+
+    def _tracking_verify(password, password_hash):  # noqa: ANN001, ANN202
+        calls.append(password_hash.salt.hex())
+        return real_verify(password, password_hash)
+
+    monkeypatch.setattr(auth, "_verify_scrypt", _tracking_verify)
+    verifier = auth.LocalCredentialVerifier(
+        {
+            "someone": auth.AuthUser(
+                employee_id="10021", username="someone", password_hash=real_hash
+            )
+        }
+    )
+
+    assert await verifier.verify("unknown", "wrong-password") is None
+    assert await verifier.verify("someone", "wrong-password") is None
+    assert len(calls) == 2
+    assert calls[0] != calls[1]
+    assert await verifier.verify("unknown", "correct-horse-battery-staple") is None
 
 
 def test_create_session_uses_minimal_identity_claims():

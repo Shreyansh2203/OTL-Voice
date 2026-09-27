@@ -397,6 +397,110 @@ async def test_create_many_replays_same_request_id(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_retry_after_an_ambiguous_failure_reattempts_oracle(tmp_path):
+    store = IdempotencyStore(tmp_path / "idempotency.db", poll_seconds=0.002)
+    entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-ambiguous-123",
+    }
+    create_mock = AsyncMock(
+        side_effect=[
+            OtlError(503, "Oracle is busy"),
+            {"timeRecordEventRequestId": "r1"},
+        ]
+    )
+
+    with (
+        patch(
+            "backend.services.otl_client.get_shared_async_client",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch("backend.services.otl_client.acreate_timecard_entry", new=create_mock),
+    ):
+        first = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+        retry = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+
+    assert first[0]["ok"] is False
+    assert first[0]["status"] == 503
+    assert first[0]["code"] == "oracle_unavailable"
+    assert retry[0]["ok"] is True
+    assert retry[0]["id"] == "r1"
+    assert create_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_after_a_definitive_rejection_never_rewrites_oracle(tmp_path):
+    store = IdempotencyStore(tmp_path / "idempotency.db", poll_seconds=0.002)
+    entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-rejected-123",
+    }
+    create_mock = AsyncMock(side_effect=OtlError(400, "Invalid time type"))
+
+    with (
+        patch(
+            "backend.services.otl_client.get_shared_async_client",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch("backend.services.otl_client.acreate_timecard_entry", new=create_mock),
+    ):
+        first = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+        retry = await acreate_many(
+            OtlCredential("u", "p"), [entry], idempotency_store=store
+        )
+
+    assert first[0]["status"] == 400
+    assert retry[0]["status"] == 400
+    assert retry[0]["replayed"] is True
+    assert create_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_unavailable_store_refuses_the_write_instead_of_degrading(
+    tmp_path, monkeypatch
+):
+    from backend.services.idempotency import reset_idempotency_store
+
+    entry = {
+        "employeeNumber": "123",
+        "hours": 8,
+        "requestId": "request-store-down-123",
+    }
+    blocker = tmp_path / "occupied"
+    blocker.write_text("occupied", encoding="utf-8")
+    monkeypatch.setenv("IDEMPOTENCY_DB_PATH", str(blocker / "nested" / "store.db"))
+    reset_idempotency_store()
+    create_mock = AsyncMock(return_value={"timeRecordEventRequestId": "r1"})
+
+    try:
+        with (
+            patch(
+                "backend.services.otl_client.get_shared_async_client",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.services.otl_client.acreate_timecard_entry", new=create_mock
+            ),
+        ):
+            results = await acreate_many(OtlCredential("u", "p"), [entry])
+    finally:
+        reset_idempotency_store()
+
+    assert results[0]["ok"] is False
+    assert results[0]["status"] == 503
+    assert results[0]["code"] == "idempotency_unavailable"
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_concurrent_duplicate_waits_for_original_result(tmp_path):
     store = IdempotencyStore(
         tmp_path / "idempotency.db",

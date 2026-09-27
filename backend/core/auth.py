@@ -112,7 +112,7 @@ class LocalCredentialVerifier:
         parsed_hash = (
             _parse_password_hash(user.password_hash) if user else self._dummy_hash
         )
-        matches = _verify_scrypt(credential, parsed_hash)
+        matches = await asyncio.to_thread(_verify_scrypt, credential, parsed_hash)
         if user is None or not matches:
             return None
         return AuthVerification(employee_id=user.employee_id, username=user.username)

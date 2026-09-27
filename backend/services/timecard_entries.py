@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import date
@@ -9,6 +10,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ..core.auth import SessionContext
+
+logger = logging.getLogger(__name__)
+
+_TRUTHY_FLAG_VALUES = frozenset({"1", "true", "yes", "on"})
 
 _FENCED_JSON = re.compile(
     r"```(?:json)?\s*([{\[][\s\S]*?[}\]])\s*```",
@@ -85,11 +90,23 @@ _STRICT_ASSIGNMENT_CACHE: bool | None = None
 
 
 def _strict_assignment() -> bool:
+    """Project authorisation is mandatory and cannot be switched off.
+
+    ``STRICT_ASSIGNMENT=false`` used to remove the project/task authorisation check
+    entirely, which let any authenticated employee book hours to any project. The
+    environment variable is now advisory only: anything other than an explicit
+    truthy value is ignored so the check can only ever be enabled, never removed.
+    """
     global _STRICT_ASSIGNMENT_CACHE
     if _STRICT_ASSIGNMENT_CACHE is None:
-        _STRICT_ASSIGNMENT_CACHE = (
-            os.getenv("STRICT_ASSIGNMENT", "true").strip().lower() != "false"
-        )
+        _STRICT_ASSIGNMENT_CACHE = True
+        configured = os.getenv("STRICT_ASSIGNMENT", "").strip().lower()
+        if configured and configured not in _TRUTHY_FLAG_VALUES:
+            logger.warning(
+                "STRICT_ASSIGNMENT=%s is ignored; project authorisation checks are "
+                "mandatory and cannot be disabled.",
+                configured,
+            )
     return _STRICT_ASSIGNMENT_CACHE
 
 

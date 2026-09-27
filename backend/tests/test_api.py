@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -23,7 +23,23 @@ async def test_otl_error_handler():
     res = await _otl_error_handler(None, OtlError(status_code=500, message="server"))
     assert res.status_code == 502
     res = await _otl_config_error_handler(None, OtlConfigError("bad"))
-    assert res.status_code == 500
+    assert res.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_otl_config_error_handler_hides_env_var_names():
+    res = await _otl_config_error_handler(
+        None,
+        OtlConfigError(
+            "OTL_SERVICE_USERNAME is not set and OTL_SERVICE_PASSWORD is empty"
+        ),
+    )
+
+    assert res.status_code == 503
+    body = res.body.decode()
+    assert "OTL_SERVICE_USERNAME" not in body
+    assert "OTL_SERVICE_PASSWORD" not in body
+    assert "not configured" in body
 
 
 def test_health(client):
@@ -31,8 +47,35 @@ def test_health(client):
 
 
 def test_health_otl(auth_client, mock_otl_client):
-    mock_otl_client.avalidate.return_value = {"ok": True, "username": "test"}
+    mock_otl_client.avalidate.return_value = {"ok": True}
     assert auth_client.get("/api/health/otl").status_code == 200
+
+
+def test_health_otl_response_is_never_cached(auth_client, mock_otl_client):
+    mock_otl_client.avalidate.return_value = {"ok": True}
+
+    response = auth_client.get("/api/health/otl")
+
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_otl_validation_never_discloses_the_service_account_username():
+    from backend.services import otl_client
+
+    credential = otl_client.OtlCredential("integration.service", "secret")
+    response = MagicMock(status_code=200)
+
+    with (
+        patch.object(
+            otl_client, "_arequest_with_retry", new=AsyncMock(return_value=response)
+        ),
+        patch.object(otl_client, "_raise_for_status", new=MagicMock()),
+    ):
+        payload = await otl_client.avalidate(credential)
+
+    assert "username" not in payload
+    assert "integration.service" not in str(payload)
 
 
 def test_session_unauthorized(client):

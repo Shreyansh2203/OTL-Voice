@@ -13,6 +13,7 @@ from ...services import fusion_catalogue, otl_client, timecard_entries
 from ...services.idempotency import (
     IdempotencyKeyError,
     idempotency_key_for_entry,
+    is_retryable_result,
     sanitize_idempotency_result,
 )
 from ...services.otl_client import propagate_timecard_statuses
@@ -150,10 +151,17 @@ async def submit_timecard(
         safe_result.setdefault("index", index)
         safe_results.append(safe_result)
     succeeded = sum(1 for result in safe_results if result.get("ok"))
+    failed = len(safe_results) - succeeded
+    if succeeded == 0 and failed:
+        response.status_code = (
+            status.HTTP_502_BAD_GATEWAY
+            if any(is_retryable_result(result) for result in safe_results)
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
     return {
         "submitted": len(safe_results),
         "succeeded": succeeded,
-        "failed": len(safe_results) - succeeded,
+        "failed": failed,
         "results": safe_results,
         "correlationId": correlation_id,
     }

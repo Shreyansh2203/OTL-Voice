@@ -15,6 +15,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from .idempotency import (
+    RESULT_CODE_CLAIM_LOST,
+    RESULT_CODE_ORACLE_UNAVAILABLE,
+    RESULT_CODE_STORE_UNAVAILABLE,
     IdempotencyKeyError,
     IdempotencyStore,
     IdempotencyUnavailable,
@@ -722,6 +725,7 @@ def _failure_result(
     request_id: str | None = None,
     *,
     replayed: bool = False,
+    code: str | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "index": index,
@@ -732,9 +736,69 @@ def _failure_result(
     }
     if request_id:
         result["requestId"] = request_id
+    if code:
+        result["code"] = code
     if replayed:
         result["replayed"] = True
     return result
+
+
+def _idempotency_store(
+    keys: list[str | None], explicit: IdempotencyStore | None
+) -> IdempotencyStore | None:
+    if explicit is not None:
+        return explicit
+    if not any(key is not None for key in keys):
+        return None
+    return get_idempotency_store()
+
+
+def _idempotency_store_unavailable(
+    keys: list[str | None], correlation_id: str
+) -> list[dict[str, Any]]:
+    return [
+        _store_unavailable_result(index, f"{correlation_id}-{index}", key)
+        for index, key in enumerate(keys)
+    ]
+
+
+def _oracle_failure_result(
+    index: int,
+    status_code: int,
+    correlation_id: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    return _failure_result(
+        index,
+        status_code,
+        correlation_id,
+        request_id,
+        code=RESULT_CODE_ORACLE_UNAVAILABLE if status_code >= 500 else None,
+    )
+
+
+def _store_unavailable_result(
+    index: int, correlation_id: str, request_id: str | None
+) -> dict[str, Any]:
+    return _failure_result(
+        index,
+        503,
+        correlation_id,
+        request_id,
+        code=RESULT_CODE_STORE_UNAVAILABLE,
+    )
+
+
+def _claim_lost_result(
+    index: int, correlation_id: str, request_id: str | None
+) -> dict[str, Any]:
+    return _failure_result(
+        index,
+        409,
+        correlation_id,
+        request_id,
+        code=RESULT_CODE_CLAIM_LOST,
+    )
 
 
 def _preflight_entries(
@@ -809,9 +873,13 @@ def create_many(
     keys = _preflight_entries(entries, request_id)
     if request_id is not None and len(entries) == 1 and keys[0] is not None:
         entries = [{**entries[0], "requestId": keys[0]}]
-    store = idempotency_store or (
-        get_idempotency_store() if any(key is not None for key in keys) else None
-    )
+    try:
+        store = _idempotency_store(keys, idempotency_store)
+    except IdempotencyUnavailable:
+        logger.error("Idempotency store is unavailable; refusing to submit")
+        return _idempotency_store_unavailable(
+            keys, correlation_id or new_correlation_id()
+        )
     results: list[dict[str, Any]] = []
     for index, (entry, key) in enumerate(zip(entries, keys, strict=True)):
         row_correlation_id = f"{correlation_id or new_correlation_id()}-{index}"
@@ -819,7 +887,9 @@ def create_many(
         claim_token: str | None = None
         if key:
             if store is None:
-                results.append(_failure_result(index, 503, row_correlation_id, key))
+                results.append(
+                    _store_unavailable_result(index, row_correlation_id, key)
+                )
                 continue
             employee_number = str(entry.get("employeeNumber") or "").strip()
             if not employee_number:
@@ -832,7 +902,9 @@ def create_many(
                 logger.error(
                     "Idempotency claim failed (correlation_id=%s)", row_correlation_id
                 )
-                results.append(_failure_result(index, 503, row_correlation_id, key))
+                results.append(
+                    _store_unavailable_result(index, row_correlation_id, key)
+                )
                 continue
             if claim.state == "replay" and claim.result is not None:
                 results.append({**claim.result, "index": index})
@@ -851,7 +923,9 @@ def create_many(
                 try:
                     replayed = store.wait_for_result(scoped_key)
                 except IdempotencyUnavailable:
-                    results.append(_failure_result(index, 503, row_correlation_id, key))
+                    results.append(
+                        _store_unavailable_result(index, row_correlation_id, key)
+                    )
                     continue
                 results.append(
                     {
@@ -874,14 +948,16 @@ def create_many(
                 exc.correlation_id,
                 exc.status_code,
             )
-            result = _failure_result(index, exc.status_code, exc.correlation_id, key)
+            result = _oracle_failure_result(
+                index, exc.status_code, exc.correlation_id, key
+            )
         except Exception as exc:
             logger.error(
                 "Unexpected timecard write failure (%s, correlation_id=%s)",
                 type(exc).__name__,
                 row_correlation_id,
             )
-            result = _failure_result(index, 500, row_correlation_id, key)
+            result = _oracle_failure_result(index, 500, row_correlation_id, key)
         if scoped_key and claim_token:
             assert store is not None
             try:
@@ -891,10 +967,10 @@ def create_many(
                     "Idempotency result persistence failed (correlation_id=%s)",
                     row_correlation_id,
                 )
-                result = _failure_result(index, 503, row_correlation_id, key)
+                result = _store_unavailable_result(index, row_correlation_id, key)
             else:
                 if not stored:
-                    result = _failure_result(index, 409, row_correlation_id, key)
+                    result = _claim_lost_result(index, row_correlation_id, key)
         results.append(result)
     return results
 
@@ -943,7 +1019,7 @@ async def avalidate(cred: OtlCredential) -> dict[str, Any]:
             public_otl_error(resp.status_code),
         )
     _raise_for_status(resp)
-    return {"ok": True, "username": cred.username}
+    return {"ok": True}
 
 
 async def aget_worker(cred: OtlCredential, person_number: str) -> dict[str, Any] | None:
@@ -1014,9 +1090,13 @@ async def acreate_many(
     keys = _preflight_entries(entries, request_id)
     if request_id is not None and len(entries) == 1 and keys[0] is not None:
         entries = [{**entries[0], "requestId": keys[0]}]
-    store = idempotency_store or (
-        get_idempotency_store() if any(key is not None for key in keys) else None
-    )
+    try:
+        store = _idempotency_store(keys, idempotency_store)
+    except IdempotencyUnavailable:
+        logger.error("Idempotency store is unavailable; refusing to submit")
+        return _idempotency_store_unavailable(
+            keys, correlation_id or new_correlation_id()
+        )
     client = await get_shared_async_client()
 
     async def _submit_single(
@@ -1038,7 +1118,7 @@ async def acreate_many(
                 logger.error(
                     "Idempotency claim failed (correlation_id=%s)", row_correlation_id
                 )
-                return _failure_result(index, 503, row_correlation_id, key)
+                return _store_unavailable_result(index, row_correlation_id, key)
             if claim.state == "replay" and claim.result is not None:
                 return {**claim.result, "index": index}
             if claim.state == "conflict" and claim.result is not None:
@@ -1054,7 +1134,7 @@ async def acreate_many(
                         store.wait_for_result, scoped_key
                     )
                 except IdempotencyUnavailable:
-                    return _failure_result(index, 503, row_correlation_id, key)
+                    return _store_unavailable_result(index, row_correlation_id, key)
                 return {
                     **replayed,
                     "index": index,
@@ -1073,14 +1153,16 @@ async def acreate_many(
                 exc.correlation_id,
                 exc.status_code,
             )
-            result = _failure_result(index, exc.status_code, exc.correlation_id, key)
+            result = _oracle_failure_result(
+                index, exc.status_code, exc.correlation_id, key
+            )
         except Exception as exc:
             logger.error(
                 "Unexpected timecard write failure (%s, correlation_id=%s)",
                 type(exc).__name__,
                 row_correlation_id,
             )
-            result = _failure_result(index, 500, row_correlation_id, key)
+            result = _oracle_failure_result(index, 500, row_correlation_id, key)
         if scoped_key and claim_token and store is not None:
             try:
                 stored = await asyncio.to_thread(
@@ -1091,9 +1173,9 @@ async def acreate_many(
                     "Idempotency result persistence failed (correlation_id=%s)",
                     row_correlation_id,
                 )
-                return _failure_result(index, 503, row_correlation_id, key)
+                return _store_unavailable_result(index, row_correlation_id, key)
             if not stored:
-                return _failure_result(index, 409, row_correlation_id, key)
+                return _claim_lost_result(index, row_correlation_id, key)
         return result
 
     tasks = [

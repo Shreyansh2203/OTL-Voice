@@ -31,6 +31,8 @@ BASE_REQUIRED = (
 )
 
 OIDC_REQUIRED = ("OIDC_ISSUER", "OIDC_AUDIENCE")
+ENABLED_FLAG_VALUES = {"1", "true", "yes", "on"}
+DISABLED_FLAG_VALUES = {"0", "false", "no", "off"}
 PLACEHOLDER_RE = re.compile(
     r"^(?:change|replace|your|example|test|dummy|ci-only)|<[^>]+>", re.IGNORECASE
 )
@@ -196,15 +198,26 @@ def _check(values: dict[str, str], mode: str) -> list[str]:
             "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true"
         )
     if mode == "production":
+        for name in ("TEST_MODE", "DEV_MODE", "CSP_DEV_MODE"):
+            if values.get(name, "").strip().lower() in ENABLED_FLAG_VALUES:
+                errors.append(f"{name} must be false for production")
+        if (
+            values.get("STRICT_ASSIGNMENT", "true").strip().lower()
+            in DISABLED_FLAG_VALUES
+        ):
+            errors.append("STRICT_ASSIGNMENT cannot be disabled in production")
         if values.get("REDIS_REQUIRED", "false").strip().lower() != "true":
             errors.append("REDIS_REQUIRED must be true for production")
         if values.get("ALLOW_IN_MEMORY_SESSIONS", "false").strip().lower() == "true":
             errors.append("ALLOW_IN_MEMORY_SESSIONS must be false for production")
         if not any(
-            values.get(name, "").strip()
+            _has_value(values, name)
             for name in ("TRUSTED_PROXY_IPS", "TRUSTED_PROXY_CIDRS")
         ):
-            errors.append("configure TRUSTED_PROXY_IPS or TRUSTED_PROXY_CIDRS")
+            errors.append(
+                "configure TRUSTED_PROXY_IPS or TRUSTED_PROXY_CIDRS; both names are "
+                "honoured and the shipped compose network subnet is 172.30.7.0/24"
+            )
     origins = [
         origin.strip()
         for origin in values.get("CORS_ORIGINS", "").split(",")

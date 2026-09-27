@@ -178,7 +178,23 @@ def test_tts_reports_an_unavailable_synthesizer(auth_client: TestClient) -> None
         factory.return_value.synthesize.side_effect = RuntimeError("no quota")
         response = auth_client.post("/api/tts", json={"text": "hello"})
     assert response.status_code == 503
-    assert "no quota" in response.json()["detail"]
+    assert "unavailable" in response.json()["detail"].lower()
+    assert "no quota" not in response.text
+
+
+def test_tts_never_leaks_oci_tenancy_detail(auth_client: TestClient) -> None:
+    leaked = (
+        "endpoint https://text-oc1.iam.us-ashburn-1.oci.oraclecloud.com "
+        "key ocid1.apikey.oc1..secret tenancy ocid1.tenancy.oc1..real"
+    )
+    with patch("backend.api.v1.chat._speech_client") as factory:
+        factory.return_value.synthesize.side_effect = RuntimeError(leaked)
+        response = auth_client.post("/api/tts", json={"text": "hello"})
+    assert response.status_code == 503
+    body = response.text
+    assert "ocid1" not in body
+    assert "oci.oraclecloud.com" not in body
+    assert "us-ashburn-1" not in body
 
 
 def test_tts_requires_authentication(client: TestClient) -> None:
