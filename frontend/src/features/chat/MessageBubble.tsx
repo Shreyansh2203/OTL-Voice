@@ -15,6 +15,9 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`bubble-row ${isUser ? 'user' : 'assistant'}`}>
       <div className="bubble-wrapper">
+        <span className="sr-only">
+          {isUser ? 'You said' : 'Assistant said'}
+        </span>
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="tool-chips-container">
             {message.toolCalls.map((tool, i) => (

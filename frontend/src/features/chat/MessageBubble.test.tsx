@@ -64,4 +64,16 @@ describe('MessageBubble', () => {
     render(<MessageBubble message={message} />);
     expect(screen.getByText('…')).toBeInTheDocument();
   });
+  it('names the speaker so user and assistant are not visual-only', () => {
+    const { container, rerender } = render(
+      <MessageBubble message={{ role: 'user', content: 'Hello there' }} />
+    );
+    expect(screen.getByText('You said')).toHaveClass('sr-only');
+
+    rerender(
+      <MessageBubble message={{ role: 'assistant', content: 'Hello there' }} />
+    );
+    expect(screen.getByText('Assistant said')).toHaveClass('sr-only');
+    expect(container.querySelectorAll('.sr-only')).toHaveLength(1);
+  });
 });

@@ -699,6 +699,10 @@ export default function ChatView({
           <div
             className="transcript scroll-y"
             style={{ background: 'transparent' }}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-label="Conversation transcript"
           >
             <div className="transcript-inner">
               {restoredNotice && (
@@ -786,7 +790,8 @@ export default function ChatView({
                 </div>
               )}
               <Composer
-                disabled={(sending && !mic.listening) || viewTab !== 'chat'}
+                disabled={viewTab !== 'chat'}
+                sending={sending && !mic.listening}
                 onSend={sendUser}
                 supported={mic.supported}
                 listening={mic.listening}

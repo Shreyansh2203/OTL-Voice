@@ -118,12 +118,16 @@ test('accepts chat input and shows the loading then response states', async ({
   await page.goto('/');
   const input = await readyComposer(page);
   await input.fill('Capture my time');
+  await input.focus();
   await page.getByRole('button', { name: /send/i }).click();
 
   await expect(page.getByText('Capture my time')).toBeVisible();
-  await expect(input).toBeDisabled();
-  await expect(page.getByText('Thanks, I captured that.')).toBeVisible();
+  // The draft stays typeable and keeps focus while the reply streams, so a
+  // keyboard or screen-reader user is not dropped back to the top of the page.
   await expect(input).toBeEnabled();
+  await expect(input).toBeFocused();
+  await expect(page.getByRole('button', { name: /send/i })).toBeDisabled();
+  await expect(page.getByText('Thanks, I captured that.')).toBeVisible();
   await expect(page.getByRole('button', { name: /send/i })).toBeDisabled();
 });
 

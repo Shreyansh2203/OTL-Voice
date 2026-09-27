@@ -332,4 +332,50 @@ describe('ChatView', () => {
     await waitFor(() => expect(onSessionExpired).toHaveBeenCalledTimes(1));
     expect(localStorage.getItem('otl_conversation_v1')).toBeNull();
   });
+
+  it('exposes the transcript as a live region so replies are announced', async () => {
+    vi.mocked(api.chatStream).mockImplementation(async (history, onEvent) => {
+      if (history.some((message) => message.content === 'My message')) {
+        onEvent({ delta: 'Response from the assistant' });
+        onEvent({ done: true });
+      }
+    });
+    const { container } = render(
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    await waitFor(() => expect(api.chatStream).toHaveBeenCalledTimes(1));
+
+    const transcript = container.querySelector('.transcript')!;
+    expect(transcript).toHaveAttribute('role', 'log');
+    expect(transcript).toHaveAttribute('aria-live', 'polite');
+    expect(transcript.getAttribute('aria-relevant')).toContain('additions');
+    expect(transcript.getAttribute('aria-relevant')).toContain('text');
+  });
+
+  it('keeps the draft focusable while the assistant is replying', async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(api.chatStream).mockImplementation(
+      (_history, _onEvent, signal) =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          signal?.addEventListener('abort', () => resolve());
+        })
+    );
+    render(
+      <ChatView username="7" onLogout={vi.fn()} onSessionExpired={vi.fn()} />
+    );
+    await waitFor(() => expect(api.chatStream).toHaveBeenCalled());
+
+    const textarea = screen.getByRole('textbox', { name: /message/i });
+    fireEvent.change(textarea, { target: { value: 'My message' } });
+    textarea.focus();
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+
+    // A disabled textarea would send focus to <body> for the whole reply.
+    expect(screen.getByRole('textbox', { name: /message/i })).toBeEnabled();
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: /message/i })
+    );
+    release?.();
+  });
 });

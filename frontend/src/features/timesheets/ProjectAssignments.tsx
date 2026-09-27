@@ -239,10 +239,14 @@ export default function ProjectAssignments({
       {}
       {workOrders.length > 0 && (
         <div className="pa-search-wrap">
+          <label className="sr-only" htmlFor="pa-search">
+            Search by work order, project, or task
+          </label>
           <span className="pa-search-icon">
             <SearchIcon />
           </span>
           <input
+            id="pa-search"
             className="pa-search"
             type="text"
             placeholder="Search by work order, project, or task…"

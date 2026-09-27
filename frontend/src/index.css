@@ -95,7 +95,8 @@
   --shadow-modal:
     rgba(50, 50, 93, 0.25) 0 30px 45px -30px,
     rgba(0, 0, 0, 0.1) 0 18px 36px -18px;
-  --shadow-focus: 0 0 0 3px var(--color-accent-soft);
+  --shadow-focus:
+    0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-accent-primary);
   --shadow: var(--shadow-card); /* Legacy alias */
 
   /* ── Motion ── */
@@ -180,6 +181,10 @@ a:hover {
 }
 .small {
   font-size: 0.8rem;
+}
+
+.block {
+  display: block;
 }
 
 /* ── 4. Centered Layout ──────────────────────────────────────────────────── */
@@ -888,7 +893,7 @@ tr:hover td {
   box-shadow: none;
 }
 .btn-approve:focus-visible {
-  box-shadow: 0 0 0 3px rgba(0, 135, 102, 0.3);
+  box-shadow: var(--shadow-focus);
   outline: none;
 }
 .btn-approve:disabled {
@@ -1604,6 +1609,26 @@ tr:hover td {
   text-decoration: underline;
 }
 
+.validation-summary p {
+  margin: 8px 0 0;
+}
+
+.new-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
 .review-entry-list {
   display: flex;
   flex-direction: column;
@@ -1681,7 +1706,7 @@ tr:hover td {
 }
 
 .review-field .hour-stepper input:focus {
-  box-shadow: inset 0 0 0 2px var(--color-accent-soft);
+  box-shadow: inset 0 0 0 2px var(--color-accent-primary);
 }
 
 .field-error {

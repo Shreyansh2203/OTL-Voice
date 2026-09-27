@@ -1,4 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { motion } from 'motion/react';
 import {
   SpeakerIcon,
@@ -10,6 +16,19 @@ import ShinyText from '../../components/ui/ShinyText';
 
 export type ChatTab = 'chat' | 'history' | 'projects';
 export type OracleStatus = 'checking' | 'online' | 'offline';
+
+const NARROW_VIEWPORT = 800;
+const NARROW_QUERY = `(max-width: ${NARROW_VIEWPORT}px)`;
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function isNarrowViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia !== 'function') {
+    return window.innerWidth <= NARROW_VIEWPORT;
+  }
+  return window.matchMedia(NARROW_QUERY).matches;
+}
 
 export interface ChatShellProps {
   username: string;
@@ -35,8 +54,18 @@ export default function ChatShell({
   children,
 }: ChatShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(
-    () => typeof window === 'undefined' || window.innerWidth > 800
+    () => typeof window === 'undefined' || window.innerWidth > NARROW_VIEWPORT
   );
+  const [narrow, setNarrow] = useState(isNarrowViewport);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  // The drawer only behaves modally on a narrow viewport; on desktop the sidebar
+  // is part of the page and must not trap focus.
+  const drawerModal = sidebarOpen && narrow;
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -48,17 +77,52 @@ export default function ChatShell({
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const desktop = window.matchMedia('(min-width: 801px)');
+    const narrowMedia = window.matchMedia(NARROW_QUERY);
     const onChange = (event: MediaQueryListEvent) => {
+      setNarrow(event.matches);
       if (!event.matches) setSidebarOpen(false);
     };
-    desktop.addEventListener('change', onChange);
-    return () => desktop.removeEventListener('change', onChange);
+    narrowMedia.addEventListener('change', onChange);
+    return () => narrowMedia.removeEventListener('change', onChange);
   }, []);
+
+  useEffect(() => {
+    if (!drawerModal) return;
+    const sidebar = sidebarRef.current;
+    const toggle = toggleRef.current;
+    if (!sidebar) return;
+    // Move focus into the drawer and keep it there: a modal drawer that leaks
+    // focus behind it is unusable with a screen reader or a keyboard.
+    const first = sidebar.querySelector<HTMLElement>(FOCUSABLE);
+    first?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const focusable = [...sidebar.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (focusable.length === 0) return;
+      const firstItem = focusable[0];
+      const lastItem = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (
+        event.shiftKey &&
+        (active === firstItem || !sidebar.contains(active))
+      ) {
+        event.preventDefault();
+        lastItem.focus();
+      } else if (!event.shiftKey && active === lastItem) {
+        event.preventDefault();
+        firstItem.focus();
+      }
+    };
+    sidebar.addEventListener('keydown', onKeyDown);
+    return () => {
+      sidebar.removeEventListener('keydown', onKeyDown);
+      toggle?.focus();
+    };
+  }, [drawerModal]);
 
   const navigate = (tab: ChatTab) => {
     onViewTabChange(tab);
-    if (window.innerWidth <= 800) setSidebarOpen(false);
+    if (narrow) setSidebarOpen(false);
   };
 
   return (
@@ -67,11 +131,19 @@ export default function ChatShell({
         <button
           type="button"
           className="sidebar-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setSidebarOpen(false)}
+          // A redundant pointer target: it must not be a tab stop, and the
+          // drawer's own Close control and Escape are the announced routes out.
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={closeSidebar}
         />
       )}
-      <aside className="sidebar" id="primary-navigation">
+      <aside
+        className="sidebar"
+        id="primary-navigation"
+        ref={sidebarRef}
+        {...(drawerModal ? { 'aria-modal': true, role: 'dialog' } : {})}
+      >
         <div className="sidebar-header">
           <div className="brand-logo">
             <img src="/favicon.svg" alt="" width={24} height={24} />
@@ -81,7 +153,7 @@ export default function ChatShell({
             type="button"
             className="sidebar-close"
             aria-label="Close navigation"
-            onClick={() => setSidebarOpen(false)}
+            onClick={closeSidebar}
           >
             Close
           </button>
@@ -126,7 +198,7 @@ export default function ChatShell({
             className="nav-item new-conversation-button"
             onClick={() => {
               onNewConversation();
-              if (window.innerWidth <= 800) setSidebarOpen(false);
+              if (narrow) setSidebarOpen(false);
             }}
           >
             <span className="nav-item-content">
@@ -173,7 +245,11 @@ export default function ChatShell({
           </div>
         </div>
       </aside>
-      <main className="workspace" style={{ position: 'relative' }}>
+      <main
+        className="workspace"
+        style={{ position: 'relative' }}
+        {...(drawerModal ? { inert: '' } : {})}
+      >
         <header className="workspace-header">
           <div className="workspace-title-group">
             <button
@@ -182,6 +258,7 @@ export default function ChatShell({
               aria-label="Open navigation"
               aria-controls="primary-navigation"
               aria-expanded={sidebarOpen}
+              ref={toggleRef}
               onClick={() => setSidebarOpen((current) => !current)}
             >
               Menu

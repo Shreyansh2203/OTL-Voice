@@ -301,4 +301,54 @@ describe('Composer', () => {
     expect(send).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox')).toHaveValue('Two hours');
   });
+
+  it('returns focus to the draft after sending', () => {
+    const send = vi.fn();
+    render(<Composer disabled={false} onSend={send} supported />);
+    const textarea = screen.getByRole('textbox');
+    fireEvent.change(textarea, { target: { value: 'Capture my time' } });
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+    expect(send).toHaveBeenCalled();
+    // The send button is disabled while the reply streams, which would
+    // otherwise strand focus on <body>.
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it('keeps the draft focusable while a reply is in flight', () => {
+    const send = vi.fn();
+    const { rerender } = render(
+      <Composer disabled={false} onSend={send} supported draft="" />
+    );
+    const textarea = screen.getByRole('textbox');
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+
+    rerender(
+      <Composer disabled={false} sending onSend={send} supported draft="" />
+    );
+
+    // Disabling the textarea mid-reply drops focus to <body>, stranding anyone
+    // navigating by keyboard or listening to the transcript.
+    expect(screen.getByRole('textbox')).toBeEnabled();
+    expect(document.activeElement).toBe(screen.getByRole('textbox'));
+    expect(screen.getByRole('button', { name: /send/i })).toBeDisabled();
+  });
+
+  it('blocks sending while a reply is in flight', () => {
+    const send = vi.fn();
+    render(
+      <Composer
+        disabled={false}
+        sending
+        onSend={send}
+        supported
+        draft="Queued"
+      />
+    );
+    const textarea = screen.getByRole('textbox');
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+    expect(send).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue('Queued');
+  });
 });

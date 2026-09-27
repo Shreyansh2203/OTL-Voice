@@ -6,6 +6,8 @@ import { playMicStart, playMicStop } from '../../lib/audio';
 import { useMicLevel } from '../../lib/useMicLevel';
 export interface ComposerProps {
   disabled: boolean;
+  /** A reply is in flight: sending is blocked but the draft stays typeable. */
+  sending?: boolean;
   onSend: (text: string, isVoice?: boolean) => void;
   supported?: boolean;
   listening?: boolean;
@@ -26,6 +28,7 @@ export interface ComposerProps {
 
 export default function Composer({
   disabled,
+  sending = false,
   onSend,
   supported = false,
   listening = false,
@@ -46,6 +49,7 @@ export default function Composer({
   const micSessionRef = useRef(0);
   const micActiveRef = useRef(false);
   const ringRef = useRef<HTMLSpanElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const micLevel = useMicLevel((_level) => {
     if (ringRef.current)
       ringRef.current.style.transform = `scale(${1 + _level * 0.5})`;
@@ -102,12 +106,15 @@ export default function Composer({
   function send() {
     clearSilenceTimer();
     const trimmed = text.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || sending) return;
     if (listening || micActiveRef.current) {
       finishMic();
     }
     onSend(trimmed, false);
     updateText('');
+    // Focus stays with the draft: the send button is about to be disabled, and
+    // a disabled control drops focus to <body>.
+    textareaRef.current?.focus();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -286,6 +293,7 @@ export default function Composer({
           )}
           <textarea
             id="chat-message"
+            ref={textareaRef}
             value={text}
             onChange={(e) => {
               if (listening || micActiveRef.current) finishMic();
@@ -300,7 +308,7 @@ export default function Composer({
             type="button"
             className="icon-btn send"
             onClick={send}
-            disabled={disabled || !text.trim()}
+            disabled={disabled || sending || !text.trim()}
             title="Send"
             aria-label="Send"
           >
