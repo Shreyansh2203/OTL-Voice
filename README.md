@@ -256,6 +256,13 @@ The browser uses an HttpOnly, Secure session cookie in production and a readable
 The repository uses locked dependencies and explicit coverage gates:
 
 ```bash
+make verify          # format, lint, typecheck, backend and frontend unit tests
+make coverage        # backend and frontend coverage gates
+```
+
+Individual commands, if you want to run one in isolation:
+
+```bash
 uv lock --check
 uv run ruff check .
 uv run ruff format --check backend deploy
@@ -268,7 +275,15 @@ pnpm --dir frontend exec vitest run --coverage
 pnpm --dir frontend run build
 ```
 
-The backend gate is 80% and the frontend Vitest thresholds are 83% for statements, 86% for lines, 84% for functions, and 76% for branches. Every raise is earned with tests; excluding code or adding coverage pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+`make verify` and `make coverage` are the authority on which checks run and what
+they currently require; read them rather than copying any number out of this file
+into a new place. The backend coverage gate is `fail_under` in
+`[tool.coverage.report]` in the root `pyproject.toml`. The frontend Vitest
+thresholds live in `frontend/vite.config.ts` under `test.coverage.thresholds` —
+read them there, and read the measured percentages out of the coverage table each
+run prints. Every raise is earned with tests; excluding code or adding coverage
+pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md)
+and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 CI additionally typechecks frontend test files and runs the complete Playwright matrix (Chromium, Firefox, and WebKit). Install browsers before a local matrix run:
 
@@ -344,6 +359,7 @@ Native signing, store submission, and certificate issuance are intentionally ope
 - Session cookies are HttpOnly. CSRF protection, CSP, frame denial, content-type protection, body limits, rate limits, and trusted-proxy configuration are enabled in the application.
 - Secrets are injected at runtime. The preflight command intentionally reports names and validity only, never values.
 - The idempotency SQLite database is persistent and should be backed up with the application data. Protect it as sensitive operational data.
+- To report a vulnerability, use the private GitHub advisory channel described in [SECURITY.md](SECURITY.md). Do not open a public issue for one.
 - See [docs/security.md](docs/security.md) for threat boundaries and [docs/operations.md](docs/operations.md) for incident response and rotation.
 
 ## Known limitations
@@ -366,6 +382,7 @@ Native signing, store submission, and certificate issuance are intentionally ope
 - [Mobile/PWA](docs/mobile.md)
 - [Deployment](docs/deployment.md)
 - [Security](docs/security.md)
+- [Security policy and reporting](SECURITY.md)
 - [Operations and incident response](docs/operations.md)
 
 ## Portfolio
