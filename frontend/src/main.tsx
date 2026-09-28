@@ -3,11 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import * as Sentry from '@sentry/react';
 import App from './App';
-import {
-  DENY_URLS,
-  scrubEvent,
-  scrubTransaction,
-} from './lib/sentryPrivacy';
+import { DENY_URLS, scrubEvent, scrubTransaction } from './lib/sentryPrivacy';
 import './index.css';
 
 if (import.meta.env.VITE_SENTRY_DSN) {

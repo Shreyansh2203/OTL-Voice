@@ -86,8 +86,9 @@ export function scrubString(value: string): string {
     .replace(PEM_PRIVATE_KEY, REDACTED)
     .replace(BEARER_TOKEN, (match) => `${match.split(/\s+/)[0]} ${REDACTED}`)
     .replace(JWT, REDACTED)
-    .replace(CREDENTIAL_ASSIGNMENT, (_match, prefix: string) =>
-      `${prefix}${REDACTED}`
+    .replace(
+      CREDENTIAL_ASSIGNMENT,
+      (_match, prefix: string) => `${prefix}${REDACTED}`
     );
 }
 
@@ -99,7 +100,10 @@ const isPlainish = (value: unknown): value is Record<string, unknown> =>
  * Cycles are collapsed to `"[circular]"` instead of throwing, because Sentry
  * events are known to contain shared references.
  */
-export function scrubValue<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {
+export function scrubValue<T>(
+  value: T,
+  seen: WeakSet<object> = new WeakSet()
+): T {
   if (typeof value === 'string') return scrubString(value) as unknown as T;
   if (typeof value === 'bigint') return `${value}` as unknown as T;
   if (!isPlainish(value)) return value;
@@ -129,8 +133,10 @@ export function scrubValue<T>(value: T, seen: WeakSet<object> = new WeakSet()): 
  * attached to the event.
  */
 export function scrubStorageSnapshot(
-  store: Pick<Storage, 'length' | 'key'> | undefined | null =
-    typeof window === 'undefined' ? undefined : window.localStorage
+  store: Pick<Storage, 'length' | 'key'> | undefined | null = typeof window ===
+  'undefined'
+    ? undefined
+    : window.localStorage
 ): Record<string, unknown> {
   if (!store || typeof store.key !== 'function') return {};
   try {
@@ -239,7 +245,10 @@ export function scrubEvent<T>(event: T): T {
 
   const storage = scrubStorageSnapshot();
   if (Object.keys(storage).length > 0) {
-    out.contexts = { ...(isPlainish(out.contexts) ? out.contexts : {}), storage };
+    out.contexts = {
+      ...(isPlainish(out.contexts) ? out.contexts : {}),
+      storage,
+    };
   }
 
   return out as unknown as T;

@@ -84,7 +84,9 @@ describe('scrubString', () => {
   it('redacts an inline PEM private key block', () => {
     const text = `signing failed\n${PEM}\ntrailer`;
     const out = scrubString(text);
-    expect(out).not.toContain('MIIEowIBAAKCAQEAtSomePrivateKeyMaterialForTesting');
+    expect(out).not.toContain(
+      'MIIEowIBAAKCAQEAtSomePrivateKeyMaterialForTesting'
+    );
     expect(out).not.toContain('BEGIN RSA PRIVATE KEY');
     expect(out).toContain(REDACTED);
     expect(out).toContain('signing failed');
@@ -291,7 +293,11 @@ describe('scrubEvent', () => {
       })
     );
     const contexts = rec(out.contexts);
-    expect(out.user).toEqual({ id: '7', ip_address: '10.0.0.1', username: 'mala' });
+    expect(out.user).toEqual({
+      id: '7',
+      ip_address: '10.0.0.1',
+      username: 'mala',
+    });
     expect(out.extra).toEqual({ apiKey: REDACTED, retry: 2 });
     expect(contexts.device).toEqual({ name: 'iPad' });
     // A key named `auth` is dropped whole, including its subtree.
@@ -392,7 +398,9 @@ describe('DENY_URLS', () => {
 
   it('has no stateful lastIndex across calls', () => {
     for (let i = 0; i < 3; i += 1) {
-      expect(DENY_URLS.some((pattern) => pattern.test('/api/auth/login'))).toBe(true);
+      expect(DENY_URLS.some((pattern) => pattern.test('/api/auth/login'))).toBe(
+        true
+      );
     }
   });
 });
