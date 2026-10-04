@@ -318,15 +318,24 @@ Native signing, store submission, and certificate issuance are intentionally ope
 ### GHCR image and release flow
 
 - Pull requests and pushes to `main` run CI.
-- Release-please creates the release/tag. It uses the `simple` strategy, so the
-  released version lives in the root `version.txt`; `release-please-config.json`
-  pins the changelog path and release-PR title. The current release is tracked
-  in `.release-please-manifest.json` and recorded in [CHANGELOG.md](CHANGELOG.md),
-  which is seeded at the `1.0.0` baseline. `version.txt`, the root
-  `package.json`, `frontend/package.json`, and `pyproject.toml` all declare
-  `1.0.0`; if one of them is ever bumped by hand, bump the others in the same
-  change, because the `simple` strategy only rewrites `version.txt`.
-- `.github/workflows/image.yml` runs a high/critical image scan on any pull request that can change the image, then builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
+- Release-please creates the release/tag. It uses the `simple` strategy and the
+  `extra-files` list in `release-please-config.json`, so the released version is
+  written to `version.txt`, `package.json`, `frontend/package.json`, and
+  `pyproject.toml` together; the changelog path and release-PR title are pinned in
+  the same config. The current release is tracked in
+  `.release-please-manifest.json` and recorded in [CHANGELOG.md](CHANGELOG.md),
+  which is seeded at the `1.0.0` baseline. Do not bump those four files by hand:
+  release-please owns them, and a manual bump becomes a conflict in the next
+  release PR.
+- **The release-to-image path needs a token that is not the default one.**
+  release-please currently runs on `GITHUB_TOKEN`, and GitHub suppresses the events
+  a `GITHUB_TOKEN` raises — so the release it publishes does not trigger the
+  `release: [published]` trigger in `image.yml`, and versioned images only get
+  built by a manual dispatch or a manually pushed `v*` tag (both triggers exist).
+  To automate it, give release-please a PAT or GitHub App token with `contents:
+  write` and `pull-requests: write` via the `token:` input in
+  `.github/workflows/release-please.yml`.
+- `.github/workflows/image.yml` runs a high/critical image scan on any pull request that can change the image, then builds the versioned GHCR image, attaches an SBOM and provenance, and scans the published image. The publish job is skipped on pull requests (where there is no version to publish). The workflow rejects any tag that is not a semantic version, so no `:latest` image is published.
 - `.github/workflows/cd.yml` is an explicit, protected Ansible deployment handoff. Supply a versioned tag or, preferably, an `@sha256:` image digest, and reject `latest` in the same way. The old Render hook is not part of the deployment path.
 
 ### Compose (TLS-first production)

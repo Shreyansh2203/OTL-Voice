@@ -33,7 +33,7 @@ pytest-cov reads it from there. The CI workflow and the `make coverage` target
 both invoke the identical command with no override flag, so local and CI apply
 the same number and there is exactly one place to change it.
 
-The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 80% gate matches what the suite genuinely measures today — **82.5%** as last measured on the 1.0.0 baseline, against 403 passing and 4 skipped tests — rather than sitting far below it, so a regression is caught and improving coverage is rewarded. The headroom above the gate is roughly 2.5 points, which is deliberately thin: it is enough to absorb a small amount of platform drift, not enough to hide a deleted test. Raise it as tests land, and never reach the number by excluding code or adding a coverage pragma.
+The CI workflow uploads `coverage.xml` and `.coverage` even when a test step fails. The 80% gate matches what the suite genuinely measures today — **82.5%** as last measured on the 1.0.0 baseline, against 419 passing and 4 skipped tests — rather than sitting far below it, so a regression is caught and improving coverage is rewarded. The headroom above the gate is roughly 2.5 points, which is deliberately thin: it is enough to absorb a small amount of platform drift, not enough to hide a deleted test. Raise it as tests land, and never reach the number by excluding code or adding a coverage pragma.
 
 ### Supported Python range
 
@@ -56,7 +56,7 @@ checkout where another process holds a file lock, the removal fails halfway and
 leaves a broken `.venv` rather than either interpreter. `.venv*/` is ignored by
 git so the scratch environment does not show up in `git status`.
 
-Both legs pass on the 1.0.0 baseline: 403 passed, 4 skipped on CPython 3.12.14
+Both legs pass on the 1.0.0 baseline: 419 passed, 4 skipped on CPython 3.12.14
 and on CPython 3.13.15. A change that passes on one and fails on the other is a
 compatibility regression, not a flake. The skipped tests are the opt-in live
 integration tests described below.

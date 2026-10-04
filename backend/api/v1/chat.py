@@ -46,6 +46,17 @@ async def chat_stream(
     assignments = await fusion_catalogue.alist_assignments_for_worker(
         ctx.employee_id, ctx.full_name
     )
+    if assignments is None:
+        # None means the catalogue is not loaded, which is different from an employee
+        # who has no assignments (that is []). build_system_prompt renders None as
+        # "this employee has no project assignments on record", so a failed refresh
+        # made the model confidently tell the user they had no projects. The write
+        # path already refuses on None; the chat path now does the same.
+        logger.warning("Project assignments catalogue is not loaded; refusing to chat")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Project assignments are temporarily unavailable.",
+        )
     recent_history_str = ""
     try:
         recent = await otl_client.alist_timecard_entries(

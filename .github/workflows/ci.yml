@@ -67,7 +67,9 @@ jobs:
         run: uv run ruff check .
 
       - name: Verify Ruff formatting
-        run: uv run ruff format --check backend
+        # backend and deploy, matching `make format-check`: deploy/*.py is Python that
+        # runs in the image, and it was ungated in CI while the Makefile checked it.
+        run: uv run ruff format --check backend deploy
 
       - name: Run mypy
         run: uv run mypy backend

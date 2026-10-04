@@ -10,11 +10,39 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import ParseResult, unquote, urlparse
 from urllib.request import Request, urlopen
 
+# Mirrors backend.core.auth. The readiness probe authenticates to a session-cookie
+# endpoint, and FastAPI binds that cookie by alias when the app is imported, so the
+# name has to be the one the running server actually reads.
+SESSION_COOKIE_NAME = "otl_session"
+
+
+def _cookie_secure() -> bool:
+    value = os.getenv("SESSION_COOKIE_SECURE")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _session_cookie_name() -> str:
+    """The cookie name the server reads for its session.
+
+    Same default as backend.core.auth._session_cookie_name, overridable so an operator
+    whose deployment names it differently does not have to edit this file.
+    """
+    override = os.getenv("READINESS_AUTH_COOKIE_NAME", "").strip()
+    if override:
+        return override
+    return f"__Host-{SESSION_COOKIE_NAME}" if _cookie_secure() else SESSION_COOKIE_NAME
+
 
 def _get(url: str, token: str | None = None) -> None:
     headers = {"Accept": "application/json"}
     if token:
-        headers["Authorization"] = f"Bearer {token}"
+        # A session cookie, not a bearer token. /api/health/otl authenticates through
+        # the session cookie only, and bearer auth is deliberately unsupported, so the
+        # Authorization header this probe used to send made the endpoint answer 401
+        # forever: the container never went healthy and nginx never started behind it.
+        headers["Cookie"] = f"{_session_cookie_name()}={token}"
     request = Request(url, headers=headers, method="GET")
     context = (
         ssl._create_unverified_context()

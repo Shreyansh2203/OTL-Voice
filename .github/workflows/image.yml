@@ -17,6 +17,14 @@ on:
       - '.github/workflows/image.yml'
   release:
     types: [published]
+  # A manually pushed v* tag builds the same immutable image. Note that a tag created
+  # by release-please (which runs on the default GITHUB_TOKEN) does NOT trigger this:
+  # events raised by GITHUB_TOKEN are suppressed by GitHub. Automating the
+  # release-to-image path needs release-please to run with a PAT or GitHub App token
+  # -- see README, "Release automation".
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -80,6 +88,10 @@ jobs:
 
   publish:
     name: Build, scan, and publish
+    # Releases and manual dispatches only. Without this the job also ran on every
+    # image-touching pull request, where github.ref_name is "<pr>/merge" and the
+    # semver guard below failed -- a permanent red check on every such PR.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

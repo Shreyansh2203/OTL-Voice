@@ -1,0 +1,35 @@
+fix(deploy): authenticate the readiness probe with the session cookie, and fix the release/image wiring
+
+The readiness probe was the deployment's worst bug: it sent
+"Authorization: Bearer <token>" to /api/health/otl, which authenticates only
+through the HttpOnly session cookie and rejects bearer auth outright. With
+READINESS_REQUIRE_OTL=true the healthcheck therefore 401ed forever, the
+container never went healthy, and nginx -- which waits on service_healthy --
+never started. deploy/readycheck.py now derives the cookie name the server
+reads (the __Host- prefix follows SESSION_COOKIE_SECURE, overridable with
+READINESS_AUTH_COOKIE_NAME) and sends that cookie.
+
+deploy/readycheck.py had no tests at all, which is how this shipped.
+backend/tests/test_readycheck.py pins the contract, including that the probe
+and backend.core.auth derive the same cookie name, that the liveness probe
+still sends no credentials, and that a rejected probe still fails readiness.
+
+image.yml: the publish job ran on pull requests too, where github.ref_name is
+"<pr>/merge" and the semver guard failed -- a permanent red check on every
+image-touching PR. It is now skipped for pull requests, and a manually pushed
+v* tag is a trigger in its own right. The release-to-image path still needs a
+PAT for release-please, since GitHub suppresses events raised by
+GITHUB_TOKEN; the README now says so instead of implying the two are wired
+together.
+
+chat: a catalogue that is not loaded (None) is not an employee with no
+assignments ([]). build_system_prompt renders None as "this employee has no
+project assignments on record", so a failed refresh made the model tell every
+user they had no projects. /api/chat now refuses with 503 on None, which is
+what the timecard write path already did.
+
+ci: the Ruff format gate covered backend only while `make format-check` covered
+backend and deploy, so deploy/*.py -- Python that runs in the image -- was
+ungated in CI. It caught drift in the first commit that used it.
+
+docs: the measured test count is restated (419 passed, 4 skipped).

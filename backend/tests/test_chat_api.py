@@ -69,6 +69,46 @@ def _catalogue_mock(**attributes: Any) -> MagicMock:
     return catalogue
 
 
+def test_chat_refuses_while_the_assignment_catalogue_is_unavailable(
+    auth_client: TestClient, mock_otl_client: MagicMock
+) -> None:
+    """None means "catalogue not loaded", which is not "no assignments".
+
+    build_system_prompt renders None as "this employee has no project assignments on
+    record, tell them to contact their manager", so any failed catalogue refresh made
+    the model confidently misinform the user. The write path already 503s on None.
+    """
+    catalogue = _catalogue_mock()
+    catalogue.alist_assignments_for_worker = AsyncMock(return_value=None)
+
+    with (
+        patch("backend.api.v1.chat.fusion_catalogue", catalogue),
+        patch("backend.api.v1.chat.chat.build_system_prompt") as build_prompt,
+    ):
+        response = auth_client.post("/api/chat", json=_messages("log 8 hours"))
+
+    assert response.status_code == 503
+    build_prompt.assert_not_called()
+
+
+def test_chat_still_answers_when_the_employee_really_has_no_assignments(
+    auth_client: TestClient, mock_otl_client: MagicMock
+) -> None:
+    # [] is the genuine empty case and has to keep working: refusing it would turn a
+    # missing-catalogue failure into an outage for employees who have no projects.
+    catalogue = _catalogue_mock()
+
+    with (
+        patch("backend.api.v1.chat.fusion_catalogue", catalogue),
+        patch("backend.api.v1.chat.chat.build_system_prompt", return_value="prompt"),
+        patch("backend.services.chat.stream_sse") as stream,
+    ):
+        stream.return_value = iter(["data: ok\n\n"])
+        response = auth_client.post("/api/chat", json=_messages("hello"))
+
+    assert response.status_code == 200
+
+
 def test_chat_adds_the_most_recent_timecard_to_the_prompt(
     auth_client: TestClient, mock_otl_client: MagicMock
 ) -> None:
