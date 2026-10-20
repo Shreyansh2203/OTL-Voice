@@ -1,4 +1,4 @@
-FROM node:24.20.0-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS frontend
+FROM node:26.12.0-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4 AS frontend
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=/pnpm:$PATH
