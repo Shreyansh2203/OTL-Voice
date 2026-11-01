@@ -97,13 +97,7 @@ function isValidTime(value: string): boolean {
   return Number(match[1]) <= 23 && Number(match[2]) <= 59;
 }
 
-/**
- * Mirrors `services/idempotency.py::is_retryable_result`. A retryable failure is
- * not memoised by the server, so re-sending the same requestId gives Oracle a
- * real second attempt. Everything else was stored, so the same key can only ever
- * replay it — that row needs a new key, and a new key needs a human to have
- * checked that the first attempt did not reach Oracle.
- */
+
 function isRetryableRow(row: SubmitResultRow): boolean {
   if (row.ok) return false;
   if (
@@ -456,11 +450,7 @@ function ReviewPanelContent({
     []
   );
 
-  /**
-   * Re-sends chosen rows under their existing request keys. This is the right
-   * action for a failure the server did not memoise, and a harmless replay for
-   * one it did, which the table then labels as replayed.
-   */
+  
   const retryWithSameKey = useCallback(
     async (indices: number[]) => {
       if (busy || indices.length === 0) return;
@@ -493,11 +483,7 @@ function ReviewPanelContent({
     [activeEntries, busy, mergeResults, onSessionExpired]
   );
 
-  /**
-   * Resubmits chosen rows under fresh request keys. Required for a failure the
-   * server already stored, where the same key can only replay. The caller warns
-   * about the duplicate risk first.
-   */
+  
   const resubmitWithNewKey = useCallback(
     async (indices: number[]) => {
       if (busy || indices.length === 0) return;

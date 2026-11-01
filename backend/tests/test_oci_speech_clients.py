@@ -1,4 +1,3 @@
-"""Speech payload construction, realtime STT setup, and the STT listener."""
 
 from __future__ import annotations
 

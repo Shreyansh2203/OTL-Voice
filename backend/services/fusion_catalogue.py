@@ -1,13 +1,3 @@
-"""
-Fusion Live Catalogue
-======================
-Fetches projects, tasks, and team-member allocations directly from Oracle
-Fusion Cloud REST APIs on startup, caches them in a local SQLite database, and provides
-fast lookups by stable person id.
-Using SQLite allows multiple Uvicorn workers to share the catalogue without duplicating
-memory usage or fragmenting state.
-The catalogue auto-refreshes on a configurable interval (default: 6 hours).
-"""
 
 from __future__ import annotations
 

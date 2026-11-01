@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * Reports live microphone amplitude (0-1) for UI feedback (the voice orb)
- * and adaptive silence detection.
- *
- * Supports an optional onLevel callback so 60 FPS microphone sampling can update
- * CSS transforms directly without triggering full React component re-renders.
- */
+
 export function useMicLevel(onLevel?: (level: number) => void) {
   const [level, setLevel] = useState(0);
   const onLevelRef = useRef(onLevel);

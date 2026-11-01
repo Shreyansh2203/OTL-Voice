@@ -75,14 +75,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/unit/setup.ts'],
     globals: true,
-    include: ['src/**/*.test.{ts,tsx}'],
-    pool: 'threads',
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
-      reportsDirectory: './coverage',
-      exclude: [
-        'src/**/*.test.{ts,tsx}',
+    include: ['src*.test.{ts,tsx}',
         'src/**/*.spec.{ts,tsx}',
         'src/vite-env.d.ts',
       ],

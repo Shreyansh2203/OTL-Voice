@@ -1,4 +1,3 @@
-"""Run the repository's backend and frontend unit-test package scripts."""
 
 from __future__ import annotations
 

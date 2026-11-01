@@ -1,4 +1,3 @@
-"""Start the backend and Vite development servers as one supervised process."""
 
 from __future__ import annotations
 

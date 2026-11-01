@@ -1,4 +1,3 @@
-"""The business timezone must be honoured, not silently replaced."""
 
 from __future__ import annotations
 

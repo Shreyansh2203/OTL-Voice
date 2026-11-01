@@ -1,4 +1,3 @@
-"""The vendored OCI realtime speech websocket client."""
 
 from __future__ import annotations
 

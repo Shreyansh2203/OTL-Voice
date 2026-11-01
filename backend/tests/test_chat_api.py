@@ -1,4 +1,3 @@
-"""Chat streaming context, speech synthesis, and the STT WebSocket session."""
 
 from __future__ import annotations
 

@@ -1,4 +1,3 @@
-"""Pagination and failure handling for the Fusion PPM catalogue client."""
 
 from __future__ import annotations
 
