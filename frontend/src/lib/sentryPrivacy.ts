@@ -1,7 +1,4 @@
-
-
 export const REDACTED = '[redacted]';
-
 
 const SENSITIVE_KEY = new RegExp(
   [
@@ -26,25 +23,19 @@ const SENSITIVE_KEY = new RegExp(
   'i'
 );
 
-
 const PEM_PRIVATE_KEY =
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 
-
 const BEARER_TOKEN = /\b(bearer|basic)\s+[A-Za-z0-9\-._~+/]{8,}=*/gi;
 
-
 const JWT = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g;
-
 
 const CREDENTIAL_ASSIGNMENT =
   /(["']?\b(?:pass(?:word|wd)?|pwd|secret|token|api[-_]?key|apikey|auth(?:orization)?|client[-_]?secret|private[-_]?key)\b["']?\s*[:=]\s*)(?!(?:bearer|basic|digest|token)\b)(?:"[^"]*"|'[^']*'|[^\s"',;)\]}{[]+)/gi;
 
-
 export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY.test(key);
 }
-
 
 export function containsCredential(value: string): boolean {
   PEM_PRIVATE_KEY.lastIndex = 0;
@@ -59,7 +50,6 @@ export function containsCredential(value: string): boolean {
   );
 }
 
-
 export function scrubString(value: string): string {
   return value
     .replace(PEM_PRIVATE_KEY, REDACTED)
@@ -73,7 +63,6 @@ export function scrubString(value: string): string {
 
 const isPlainish = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
-
 
 export function scrubValue<T>(
   value: T,
@@ -101,7 +90,6 @@ export function scrubValue<T>(
   return out as unknown as T;
 }
 
-
 export function scrubStorageSnapshot(
   store: Pick<Storage, 'length' | 'key'> | undefined | null = typeof window ===
   'undefined'
@@ -121,7 +109,6 @@ export function scrubStorageSnapshot(
   }
 }
 
-
 interface HttpLike {
   url?: unknown;
   query_string?: unknown;
@@ -131,7 +118,6 @@ interface HttpLike {
   env?: unknown;
   body?: unknown;
 }
-
 
 function scrubCookies(cookies: unknown): unknown {
   if (typeof cookies === 'string') return REDACTED;
@@ -145,7 +131,6 @@ function scrubCookies(cookies: unknown): unknown {
   for (const name of Object.keys(cookies)) out[name] = REDACTED;
   return out;
 }
-
 
 function scrubHttpSection(section: unknown): unknown {
   if (!isPlainish(section)) return section;
@@ -164,7 +149,6 @@ function scrubHttpSection(section: unknown): unknown {
   if (typeof http.url === 'string') http.url = scrubString(http.url);
   return http;
 }
-
 
 export function scrubEvent<T>(event: T): T {
   if (!isPlainish(event)) return event;
@@ -207,11 +191,9 @@ export function scrubEvent<T>(event: T): T {
   return out as unknown as T;
 }
 
-
 export function scrubTransaction<T>(event: T): T {
   return scrubEvent(event);
 }
-
 
 export const DENY_URLS: RegExp[] = [
   /\/api\/auth\//i,

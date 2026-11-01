@@ -2,8 +2,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-
-
 const candidates = [
   resolve(process.cwd(), 'src', 'index.css'),
   resolve(process.cwd(), 'frontend', 'src', 'index.css'),
@@ -59,7 +57,6 @@ function contrast(first: string, second: string): number {
   const [light, dark] = a > b ? [a, b] : [b, a];
   return (light + 0.05) / (dark + 0.05);
 }
-
 
 function shadowLayers(declaration: string): string[] {
   return [...declaration.matchAll(/var\((--[a-z-]+)\)/g)].map((match) =>

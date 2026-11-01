@@ -3,8 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import ReviewPanel from './ReviewPanel';
 import type { SubmitResultCode, TimecardEntry } from '../../types';
 
-
-
 interface FakeRow {
   index: number;
   ok: boolean;
@@ -38,7 +36,6 @@ const RETRYABLE_CODES: readonly SubmitResultCode[] = [
   'oracle_unavailable',
 ];
 
-
 function isRetryable(row: FakeRow): boolean {
   if (row.ok) return false;
   if (row.code && RETRYABLE_CODES.includes(row.code)) return true;
@@ -46,7 +43,6 @@ function isRetryable(row: FakeRow): boolean {
   const status = row.status ?? 500;
   return status >= 500 || status === 409 || status === 429;
 }
-
 
 function isAmbiguous(row: FakeRow): boolean {
   if (row.ok) return false;
@@ -59,11 +55,9 @@ function isAmbiguous(row: FakeRow): boolean {
   return (row.status ?? 500) >= 500;
 }
 
-
 function scopedKey(employeeNumber: string, requestId: string): string {
   return `timecard:${employeeNumber}:${requestId}`;
 }
-
 
 function requestFingerprint(entry: Record<string, unknown>): string {
   const payload: Record<string, unknown> = {};
@@ -86,15 +80,14 @@ function requestFingerprint(entry: Record<string, unknown>): string {
 }
 
 class FakeOtlServer {
-  
   oracleAttempts: TimecardEntry[] = [];
-  
+
   createdRecords: string[] = [];
-  
+
   seenKeys: string[] = [];
-  
+
   outcomes: OracleOutcome[] = [];
-  
+
   dropResponses = 0;
   private store = new Map<string, { fingerprint: string; result: FakeRow }>();
   private created = 0;

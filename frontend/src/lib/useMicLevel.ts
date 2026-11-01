@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-
 export function useMicLevel(onLevel?: (level: number) => void) {
   const [level, setLevel] = useState(0);
   const onLevelRef = useRef(onLevel);

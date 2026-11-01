@@ -21,7 +21,6 @@ ghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/abcdefgh
 
 type Rec = Record<string, unknown>;
 
-
 const rec = (value: unknown): Rec => value as Rec;
 
 describe('isSensitiveKey', () => {

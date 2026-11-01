@@ -75,18 +75,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/unit/setup.ts'],
     globals: true,
-    include: ['src*.test.{ts,tsx}',
-        'src/**/*.spec.{ts,tsx}',
-        'src/vite-env.d.ts',
-      ],
-      // Single source of truth for the coverage gate. These match the values CI
-      // used to override on the command line, so local and CI now enforce the
-      // same floor and the CLI duplication can go away.
-      //
-      // Measured with the current suite: 85.25 / 77.44 / 86.87 / 88.71. Each
-      // threshold sits a few points under its measured value (branches, the
-      // most volatile metric, is the tightest at 1.44) so a platform difference
-      // cannot flip the gate.
+    include: ['src/**/*.test.{ts,tsx}'],
+    pool: 'threads',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
       thresholds: {
         statements: 83,
         branches: 76,

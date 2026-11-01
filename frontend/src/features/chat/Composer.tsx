@@ -6,7 +6,7 @@ import { playMicStart, playMicStop } from '../../lib/audio';
 import { useMicLevel } from '../../lib/useMicLevel';
 export interface ComposerProps {
   disabled: boolean;
-  
+
   sending?: boolean;
   onSend: (text: string, isVoice?: boolean) => void;
   supported?: boolean;

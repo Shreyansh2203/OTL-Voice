@@ -97,7 +97,6 @@ function isValidTime(value: string): boolean {
   return Number(match[1]) <= 23 && Number(match[2]) <= 59;
 }
 
-
 function isRetryableRow(row: SubmitResultRow): boolean {
   if (row.ok) return false;
   if (
@@ -450,7 +449,6 @@ function ReviewPanelContent({
     []
   );
 
-  
   const retryWithSameKey = useCallback(
     async (indices: number[]) => {
       if (busy || indices.length === 0) return;
@@ -483,7 +481,6 @@ function ReviewPanelContent({
     [activeEntries, busy, mergeResults, onSessionExpired]
   );
 
-  
   const resubmitWithNewKey = useCallback(
     async (indices: number[]) => {
       if (busy || indices.length === 0) return;

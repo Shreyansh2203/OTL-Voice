@@ -4,12 +4,11 @@ export type VoiceOrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export interface VoiceOrbProps {
   state: VoiceOrbState;
-  
+
   level?: number;
   size?: number;
   ringRef?: React.Ref<HTMLSpanElement>;
 }
-
 
 export default function VoiceOrb({
   state,

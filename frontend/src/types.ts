@@ -73,9 +73,9 @@ export interface SubmitResultRow {
   recordName?: string;
   status?: number;
   error?: string;
-  
+
   requestId?: string;
-  
+
   replayed?: boolean;
   code?: SubmitResultCode;
 }
