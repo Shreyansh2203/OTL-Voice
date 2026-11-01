@@ -1,7 +1,7 @@
 {
   "name": "otl-timesheet-pwa",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "OTL Timesheet Assistant PWA frontend for the FastAPI backend.",
   "scripts": {

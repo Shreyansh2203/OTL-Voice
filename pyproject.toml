@@ -1,6 +1,6 @@
 [project]
 name = "otl-voice-backend"
-version = "1.0.0"
+version = "1.1.0"
 description = "Voice-enabled Oracle Time and Labor assistant powered by Oracle Cloud Infrastructure (OCI) generative AI and speech services."
 authors = [
     { name = "Shreyansh Srivastava", email = "main.doga@gmail.com" }
