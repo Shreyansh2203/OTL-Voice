@@ -27,7 +27,7 @@ readycheck = _load_readycheck()
 
 
 class _Response:
-    """The little of urlopen's response the probe actually uses."""
+
 
     def __init__(self, payload: dict[str, Any], status: int = 200) -> None:
         self._body = json.dumps(payload).encode("utf-8")

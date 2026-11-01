@@ -21,7 +21,7 @@ ghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/abcdefgh
 
 type Rec = Record<string, unknown>;
 
-/** `scrubEvent` preserves its input type, so tests read fields through this. */
+
 const rec = (value: unknown): Rec => value as Rec;
 
 describe('isSensitiveKey', () => {

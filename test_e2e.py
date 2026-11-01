@@ -1,4 +1,4 @@
-"""Run the frontend Playwright package script from any working directory."""
+
 
 from __future__ import annotations
 

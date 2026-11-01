@@ -4,17 +4,13 @@ export type VoiceOrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export interface VoiceOrbProps {
   state: VoiceOrbState;
-  /** Live mic amplitude 0-1, only meaningful while listening. */
+  
   level?: number;
   size?: number;
   ringRef?: React.Ref<HTMLSpanElement>;
 }
 
-/**
- * A small animated indicator that gives the assistant a physical presence —
- * it breathes at idle, swells with the user's voice while listening, spins
- * gently while thinking, and pulses in rhythm while speaking.
- */
+
 export default function VoiceOrb({
   state,
   level = 0,

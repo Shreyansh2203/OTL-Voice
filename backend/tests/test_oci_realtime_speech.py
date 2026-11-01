@@ -1,4 +1,4 @@
-"""The vendored OCI realtime speech websocket client."""
+
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _closed(code: int, reason: str) -> ConnectionClosed:
 
 
 class _FalsyListener(_Listener):
-    """Stands in for the ``if self.listener`` guard being false."""
+
 
     def __bool__(self) -> bool:
         return False
@@ -117,7 +117,7 @@ def skip_oci_config_validation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def connect_script(monkeypatch: pytest.MonkeyPatch) -> _ConnectScript:
-    """Patches websockets.connect; queue the frames each connection should see."""
+
     script = _ConnectScript()
 
     def _connect(uri: str, **kwargs: Any) -> Any:

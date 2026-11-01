@@ -341,10 +341,10 @@ class GenAIChatClient:
 
 @lru_cache(maxsize=1)
 def get_genai_chat_client() -> GenAIChatClient:
-    """Return a cached singleton instance of GenAIChatClient."""
+
     return GenAIChatClient()
 
 
 def reset_genai_chat_client() -> None:
-    """Clear the cached GenAIChatClient instance."""
+
     get_genai_chat_client.cache_clear()

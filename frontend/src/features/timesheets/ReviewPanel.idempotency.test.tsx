@@ -3,21 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import ReviewPanel from './ReviewPanel';
 import type { SubmitResultCode, TimecardEntry } from '../../types';
 
-/**
- * These tests drive the real `api.submitTimecard` through `fetch`. The fake
- * server below is a port of `backend/services/idempotency.py`,
- * `backend/services/otl_client.py`, and `backend/api/v1/timecards.py`:
- *
- * - `request_fingerprint` excludes employeeName, so a name-only correction is
- *   not material and the same key replays instead of writing a second timecard;
- * - only a *definitive* result is memoised. An ambiguous one (5xx, unavailable
- *   store) releases the claim, so re-sending the same requestId really does get
- *   another attempt at Oracle instead of the identical failure for 24 hours;
- * - `POST /api/otl/timecard` answers 502 when nothing succeeded and any failure
- *   is retryable, else 422, with the per-row body either way.
- *
- * Re-mocking the API function would prove nothing about any of that.
- */
+
 
 interface FakeRow {
   index: number;
@@ -52,7 +38,7 @@ const RETRYABLE_CODES: readonly SubmitResultCode[] = [
   'oracle_unavailable',
 ];
 
-/** Mirrors `services/idempotency.py::is_retryable_result`. */
+
 function isRetryable(row: FakeRow): boolean {
   if (row.ok) return false;
   if (row.code && RETRYABLE_CODES.includes(row.code)) return true;
@@ -61,7 +47,7 @@ function isRetryable(row: FakeRow): boolean {
   return status >= 500 || status === 409 || status === 429;
 }
 
-/** Mirrors `_is_ambiguous_result`: only an ambiguous outcome loses its record. */
+
 function isAmbiguous(row: FakeRow): boolean {
   if (row.ok) return false;
   if (
@@ -73,15 +59,12 @@ function isAmbiguous(row: FakeRow): boolean {
   return (row.status ?? 500) >= 500;
 }
 
-/** Mirrors `scoped_idempotency_key` — per employee, per request key. */
+
 function scopedKey(employeeNumber: string, requestId: string): string {
   return `timecard:${employeeNumber}:${requestId}`;
 }
 
-/**
- * Mirrors `request_fingerprint`: every field is material for conflict detection
- * *except* employeeName and the key fields themselves.
- */
+
 function requestFingerprint(entry: Record<string, unknown>): string {
   const payload: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entry)) {
@@ -103,15 +86,15 @@ function requestFingerprint(entry: Record<string, unknown>): string {
 }
 
 class FakeOtlServer {
-  /** Every entry that actually reached Oracle, successful or not. */
+  
   oracleAttempts: TimecardEntry[] = [];
-  /** Oracle record numbers that were really created. */
+  
   createdRecords: string[] = [];
-  /** Request keys the client sent, in order. */
+  
   seenKeys: string[] = [];
-  /** Consumed front to back; an empty queue means "succeed". */
+  
   outcomes: OracleOutcome[] = [];
-  /** Requests to fully process and then fail at the transport layer. */
+  
   dropResponses = 0;
   private store = new Map<string, { fingerprint: string; result: FakeRow }>();
   private created = 0;

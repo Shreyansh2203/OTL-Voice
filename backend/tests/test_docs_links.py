@@ -1,9 +1,3 @@
-"""Validate relative links and heading anchors across the repository's Markdown.
-
-The docs here are extensive (README plus a dozen files under docs/) and every claim they
-make is load-bearing, so a link that rots is a silent defect. The other repositories in
-this portfolio already assert their own links; this closes the same gap here.
-"""
 
 import re
 import unittest

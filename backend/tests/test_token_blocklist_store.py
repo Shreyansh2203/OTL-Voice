@@ -1,4 +1,4 @@
-"""Session store behaviour with and without the authoritative Redis store."""
+
 
 from __future__ import annotations
 

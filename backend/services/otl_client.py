@@ -985,7 +985,7 @@ def _async_client(cred: OtlCredential) -> httpx.AsyncClient:
 
 
 async def get_shared_async_client() -> httpx.AsyncClient:
-    """Return the shared pooled httpx.AsyncClient instance."""
+
     global _shared_async_client
     if _shared_async_client is None or _shared_async_client.is_closed:
         async with _shared_client_lock:
@@ -999,7 +999,7 @@ async def get_shared_async_client() -> httpx.AsyncClient:
 
 
 async def close_shared_client() -> None:
-    """Cleanly close the shared persistent HTTP client on shutdown."""
+
     global _shared_async_client
     if _shared_async_client is not None and not _shared_async_client.is_closed:
         async with _shared_client_lock:

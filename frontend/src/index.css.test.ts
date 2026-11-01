@@ -2,12 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-/**
- * WCAG 1.4.11 (non-text contrast) and 2.4.7 (focus visible) both require a focus
- * indicator at 3:1 against the colours next to it. The previous ring was
- * `--color-accent-soft` (#d6d9fc), which is 1.38:1 on white, so this asserts the
- * real numbers from the stylesheet rather than trusting a token's name.
- */
+
 
 const candidates = [
   resolve(process.cwd(), 'src', 'index.css'),
@@ -65,7 +60,7 @@ function contrast(first: string, second: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
-/** Resolves the colours a box-shadow layer list paints, outermost last. */
+
 function shadowLayers(declaration: string): string[] {
   return [...declaration.matchAll(/var\((--[a-z-]+)\)/g)].map((match) =>
     token(match[1])

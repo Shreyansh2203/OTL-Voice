@@ -90,13 +90,6 @@ _STRICT_ASSIGNMENT_CACHE: bool | None = None
 
 
 def _strict_assignment() -> bool:
-    """Project authorisation is mandatory and cannot be switched off.
-
-    ``STRICT_ASSIGNMENT=false`` used to remove the project/task authorisation check
-    entirely, which let any authenticated employee book hours to any project. The
-    environment variable is now advisory only: anything other than an explicit
-    truthy value is ignored so the check can only ever be enabled, never removed.
-    """
     global _STRICT_ASSIGNMENT_CACHE
     if _STRICT_ASSIGNMENT_CACHE is None:
         _STRICT_ASSIGNMENT_CACHE = True

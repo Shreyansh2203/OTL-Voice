@@ -32,13 +32,13 @@ def mock_db(tmp_path):
         "file:memdb1?mode=memory&cache=shared", uri=True, check_same_thread=False
     )
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)"""
+
     )
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)"""
+
     )
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)"""
+
     )
     conn.commit()
 

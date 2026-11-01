@@ -24,11 +24,6 @@ def _cookie_secure() -> bool:
 
 
 def _session_cookie_name() -> str:
-    """The cookie name the server reads for its session.
-
-    Same default as backend.core.auth._session_cookie_name, overridable so an operator
-    whose deployment names it differently does not have to edit this file.
-    """
     override = os.getenv("READINESS_AUTH_COOKIE_NAME", "").strip()
     if override:
         return override

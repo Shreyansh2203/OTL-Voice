@@ -44,7 +44,7 @@ def _dockerfile_cmd() -> list[str]:
 
 
 def _shipped_forwarded_allow_ips() -> str:
-    """The trusted-host value uvicorn would use for the shipped CMD."""
+
     argv = _dockerfile_cmd()
     for index, argument in enumerate(argv):
         if argument == "--forwarded-allow-ips" and index + 1 < len(argv):

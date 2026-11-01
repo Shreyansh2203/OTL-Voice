@@ -6,7 +6,7 @@ import { playMicStart, playMicStop } from '../../lib/audio';
 import { useMicLevel } from '../../lib/useMicLevel';
 export interface ComposerProps {
   disabled: boolean;
-  /** A reply is in flight: sending is blocked but the draft stays typeable. */
+  
   sending?: boolean;
   onSend: (text: string, isVoice?: boolean) => void;
   supported?: boolean;
