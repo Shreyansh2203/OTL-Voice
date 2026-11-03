@@ -41,15 +41,26 @@ def is_development_or_test() -> bool:
     return is_dev_mode() or is_test_mode()
 
 
+def is_demo_mode() -> bool:
+    """DEMO_MODE seeds a synthetic catalogue and a demo identity so the app can be
+    exercised without Oracle Fusion or OCI credentials. It never relaxes CSRF or
+    session validation; it only swaps the upstream network calls for canned ones."""
+    return env_flag("DEMO_MODE")
+
+
+def is_demo_or_development() -> bool:
+    return is_development_or_test() or is_demo_mode()
+
+
 def redis_required() -> bool:
-    return env_flag("REDIS_REQUIRED", default=not is_development_or_test())
+    return env_flag("REDIS_REQUIRED", default=not is_demo_or_development())
 
 
 def memory_fallback_allowed() -> bool:
     return (
-        is_development_or_test()
+        is_demo_or_development()
         and not redis_required()
-        and env_flag("ALLOW_IN_MEMORY_SESSIONS")
+        and env_flag("ALLOW_IN_MEMORY_SESSIONS", default=is_demo_mode())
     )
 
 
@@ -74,5 +85,5 @@ def trusted_proxy_networks() -> tuple[IPv4Network | IPv6Network, ...]:
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS")
     if raw is None:
-        return list(_DEVELOPMENT_ORIGINS) if is_development_or_test() else []
+        return list(_DEVELOPMENT_ORIGINS) if is_demo_or_development() else []
     return [origin.strip() for origin in raw.split(",") if origin.strip()]

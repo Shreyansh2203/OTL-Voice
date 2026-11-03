@@ -427,7 +427,87 @@ def _save_catalogue(
         raise
 
 
+def _demo_catalogue_payload() -> list[dict[str, Any]]:
+    def member() -> dict[str, Any]:
+        return {
+            "HCMPersonId": "DEMO-0001",
+            "PersonName": "Demo User",
+            "ProjectRole": "Team Member",
+        }
+
+    return [
+        {
+            "project_id": "900001",
+            "project_number": "D-1001",
+            "project_name": "Aurora Field Trial",
+            "status": "Active",
+            "manager": "Demo Manager",
+            "manager_id": "DEMO-0002",
+            "tasks": [
+                {
+                    "task_id": "81001",
+                    "task_number": "10",
+                    "task_name": "Field data collection",
+                },
+                {
+                    "task_id": "81002",
+                    "task_number": "20",
+                    "task_name": "Data review and QA",
+                },
+            ],
+            "team_members": [member()],
+        },
+        {
+            "project_id": "900002",
+            "project_number": "D-2042",
+            "project_name": "Borealis Maintenance",
+            "status": "Active",
+            "manager": "Demo Manager",
+            "manager_id": "DEMO-0002",
+            "tasks": [
+                {
+                    "task_id": "82001",
+                    "task_number": "30",
+                    "task_name": "Preventive maintenance",
+                },
+                {
+                    "task_id": "82002",
+                    "task_number": "40",
+                    "task_name": "Corrective repairs",
+                },
+            ],
+            "team_members": [member()],
+        },
+    ]
+
+
+def _seed_demo_catalogue() -> None:
+    """Seed the synthetic catalogue used by DEMO_MODE. Idempotent: replaces the rows."""
+    from ..core.config import is_demo_mode
+
+    if not is_demo_mode():
+        return
+    logger.warning("DEMO_MODE is on: seeding a synthetic catalogue for Demo User.")
+    enriched = _demo_catalogue_payload()
+    person_index = _build_index(enriched)
+    conn = _get_db()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+        )
+        conn.commit()
+        _save_catalogue(conn, enriched, person_index, correlation_id="demo-seed")
+    except Exception as exc:
+        logger.error("Failed to seed the demo catalogue (%s)", type(exc).__name__)
+        raise
+
+
 def load_catalogue() -> None:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        _seed_demo_catalogue()
+        return
     if os.getenv("TEST_MODE", "false").strip().lower() == "true":
         logger.info("TEST_MODE is true. Skipping live Fusion catalogue load.")
         return

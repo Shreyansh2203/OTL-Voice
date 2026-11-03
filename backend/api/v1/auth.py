@@ -61,6 +61,14 @@ async def _verify_login(identifier: str, credential: str) -> AuthVerification:
 
 
 async def _load_active_employee(verification: AuthVerification) -> Employee:
+    from ...core.config import is_demo_mode
+
+    if is_demo_mode() and verification.employee_id == auth.DEMO_EMPLOYEE_ID:
+        return Employee(
+            employee_id=auth.DEMO_EMPLOYEE_ID,
+            username="demo",
+            full_name="Demo User",
+        )
     try:
         credential = otl_client.service_credential()
     except OtlConfigError as exc:

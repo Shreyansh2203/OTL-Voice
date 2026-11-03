@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from ...core import auth
 from ...core.auth import SessionContext
-from ...core.config import cors_origins
+from ...core.config import cors_origins, is_demo_mode
 from ...core.limiter import ws_tracker
 from ...schemas.chat import ChatBody, TtsBody
 from ...services import chat, fusion_catalogue, otl_client
@@ -109,6 +109,11 @@ async def chat_stream(
 async def tts(
     body: TtsBody, _: SessionContext = Depends(auth.current_session)
 ) -> Response:
+    if is_demo_mode():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Speech synthesis is disabled in demo mode. Use text chat.",
+        )
     try:
         client = _speech_client()
         audio = await asyncio.to_thread(client.synthesize, body.text, body.rate)
@@ -131,6 +136,12 @@ async def stt_stream(websocket: WebSocket):
     if origin and (not allowed_origins or origin not in allowed_origins):
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION, reason="Origin not allowed"
+        )
+        return
+    if is_demo_mode():
+        logger.info("STT WebSocket rejected in demo mode")
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Voice is disabled in demo mode"
         )
         return
     otl_session = (

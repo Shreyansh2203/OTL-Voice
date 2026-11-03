@@ -20,7 +20,7 @@ import jwt
 from fastapi import Cookie, HTTPException, Request, Response, status
 
 from ..models import Employee
-from .config import is_dev_mode, is_development_or_test, is_test_mode
+from .config import is_demo_mode, is_dev_mode, is_development_or_test, is_test_mode
 from .limiter import set_authenticated_ws_identity
 from .token_blocklist import SessionStoreUnavailable, StoredSession, _blocklist
 
@@ -143,6 +143,24 @@ class LegacyDevelopmentVerifier:
         return AuthVerification(
             employee_id=normalized_identifier, username=normalized_identifier
         )
+
+
+DEMO_EMPLOYEE_ID = "DEMO-0001"
+
+
+class DemoCredentialVerifier:
+    """Accepts exactly the pair demo/demo when DEMO_MODE is on.
+
+    Deliberately narrow: demo mode is a single shared identity over canned data,
+    not a bypass of authentication."""
+
+    async def verify(self, identifier: str, credential: str) -> AuthVerification | None:
+        normalized = identifier.strip().casefold()
+        if constant_time_equals(normalized, "demo") and constant_time_equals(
+            credential, "demo"
+        ):
+            return AuthVerification(employee_id=DEMO_EMPLOYEE_ID, username="demo")
+        return None
 
 
 class OidcTokenVerifier:
@@ -556,6 +574,8 @@ def _verify_scrypt(password: str, password_hash: _PasswordHash) -> bool:
 
 
 def _credential_verifier() -> CredentialVerifier:
+    if is_demo_mode():
+        return DemoCredentialVerifier()
     issuer = os.getenv("OIDC_ISSUER", "").strip()
     audience = os.getenv("OIDC_AUDIENCE", "").strip()
     configured_jwks_url = os.getenv("OIDC_JWKS_URL", "").strip()
@@ -631,7 +651,7 @@ def _jwt_secret() -> str:
     if _is_insecure_placeholder(secret):
         secret = None
     if not secret:
-        if is_dev_mode() or is_test_mode():
+        if is_dev_mode() or is_test_mode() or is_demo_mode():
             if _fallback_jwt_secret is None:
                 with _jwt_secret_lock:
                     if _fallback_jwt_secret is None:

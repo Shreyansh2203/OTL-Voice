@@ -189,6 +189,31 @@ make image-check
 
 The CI container smoke test sets `TEST_MODE=true` and uses only throwaway values. Never copy CI values into a deployed environment.
 
+### Demo mode (no Oracle or OCI credentials)
+
+`DEMO_MODE` runs the real application against a seeded, synthetic catalogue and canned upstreams, so a reviewer can exercise the full sign-in → chat → proposal → review → submit flow with nothing but Python and Node:
+
+```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend run build
+DEMO_MODE=true uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000` and sign in with `demo` / `demo`.
+
+What demo mode does:
+
+- **Seeds a synthetic catalogue** for a single shared identity, `Demo User` (`DEMO-0001`): two projects — *Aurora Field Trial* (`D-1001`, work order `WO-D-1001`) and *Borealis Maintenance* (`D-2042`, work order `WO-D-2042`) — each with two tasks and the demo user as a team member. The assignment picker, the chat system prompt and the submit-time assignment check all read the same seeded data, so proposals resolve exactly as they would against Fusion.
+- **Authenticates one shared identity** (`demo` / `demo`) through the same session cookie, CSRF and rate-limit paths as production. No bypass, no anonymous mode.
+- **Answers chat from a canned assistant** that emits the same fenced `json` timecard block the real model does, so the extract → review → approve → submit path runs end to end.
+- **Validates submissions exactly as production**: project/task assignment, hours, quarter-hour steps, the daily cap, the payroll and expenditure allowlists, and the idempotency store (SQLite). The only fake step is the Oracle write itself: it returns a canned `DEMO-…` record number instead of calling Fusion. The timecard history is empty by design.
+- **Disables voice**: speech-to-text and text-to-speech return `503` with an explicit "disabled in demo mode" message. Use text chat.
+- **Relaxes only the infrastructure knobs** that would otherwise force a Redis/Oracle dependency on a throwaway run (in-memory rate-limit fallback, development CORS origins, an ephemeral session secret). It does not touch CSRF, session, or assignment validation.
+
+To stop, just Ctrl-C the server; the synthetic catalogue lives in `data/catalogue.db` (gitignored) and is reseeded idempotently on every demo start.
+
+Use demo mode for evaluation only. It is a shared identity over canned data — never point it at real employees, and never use it to submit anything you would not want posted to a real OTL instance.
+
 ## Configuration
 
 Copy `.env.example` to a secret-managed environment file. The template is intentionally not a secret store; do not commit `.env`, PEM files, OCI config files, rendered Compose files containing credentials, or browser exports.

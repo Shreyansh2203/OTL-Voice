@@ -9,6 +9,7 @@ from typing import Any
 
 from .oci_genai import GenAIChatClient
 from .otl_client import _business_timezone
+from ..core.config import is_demo_mode
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "prompt.txt"
 
@@ -98,7 +99,54 @@ def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
+def _demo_entries() -> list[dict]:
+    today = datetime.now(_business_timezone()).date().isoformat()
+    return [
+        {
+            "employeeNumber": "DEMO-0001",
+            "employeeName": "Demo User",
+            "projectId": "900001",
+            "projectNo": "D-1001",
+            "projectName": "Aurora Field Trial",
+            "workOrder": "WO-D-1001",
+            "taskId": "81001",
+            "taskDetails": "Field data collection",
+            "hours": 8,
+            "date": today,
+            "payrollTimeType": "Regular",
+            "expenditureType": "Regular Time",
+            "currencyCode": "USD",
+        }
+    ]
+
+
+_DEMO_REPLY = (
+    "Demo mode — no Oracle or OCI credentials were used, and nothing was written "
+    "anywhere.\n\n"
+    "Here is a sample timecard proposal for **Aurora Field Trial** (project D-1001, "
+    "work order WO-D-1001, task *Field data collection*): 8 hours today.\n\n"
+    "```json\n{{\"entries\": {entries}}}\n```\n\n"
+    "Review the proposal and submit it to exercise the approval flow — the write "
+    "against Oracle is replaced with a canned success response in demo mode."
+)
+
+
+def _demo_stream() -> Iterator[str]:
+    import json as _json
+
+    entries = _demo_entries()
+    reply = _DEMO_REPLY.format(entries=_json.dumps(entries, indent=2))
+    # Emit in small chunks so the streaming UI renders it like a live model.
+    chunk = 24
+    for start in range(0, len(reply), chunk):
+        yield _sse({"delta": reply[start : start + chunk]})
+    yield _sse({"done": True})
+
+
 def stream_sse(system_prompt: str, history: list[dict]) -> Iterator[str]:
+    if is_demo_mode():
+        yield from _demo_stream()
+        return
     try:
         client = _client()
     except Exception as exc:

@@ -120,6 +120,10 @@ def new_correlation_id() -> str:
 
 
 def service_credential() -> OtlCredential:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        return OtlCredential(username="demo-service", password="demo-service")
     username = os.getenv("OTL_SERVICE_USERNAME", "").strip()
     password = os.getenv("OTL_SERVICE_PASSWORD", "")
     if not username or not password:
@@ -603,6 +607,10 @@ def list_timecard_entries(
     offset: int = 0,
     person_number: str | None = None,
 ) -> dict[str, Any]:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        return {"items": []}
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
@@ -1009,6 +1017,10 @@ async def close_shared_client() -> None:
 
 
 async def avalidate(cred: OtlCredential) -> dict[str, Any]:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        return {"ok": True, "demo": True}
     client = await get_shared_async_client()
     resp = await _arequest_with_retry(
         client, "GET", base_url(), cred=cred, params={"limit": 1}, idempotent=True
@@ -1059,6 +1071,10 @@ async def alist_timecard_entries(
     offset: int = 0,
     person_number: str | None = None,
 ) -> dict[str, Any]:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        return {"items": []}
     params: dict[str, Any] = {
         "limit": limit,
         "offset": offset,
@@ -1200,6 +1216,10 @@ async def acreate_timecard_entry(
 ) -> dict[str, Any]:
     if client is None:
         client = await get_shared_async_client()
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        return {"timeRecordEventRequestId": f"DEMO-{uuid.uuid4().hex[:8].upper()}"}
     body = map_entry_to_otl(entry)
     request_correlation_id = correlation_id or new_correlation_id()
     resp = await client.post(
