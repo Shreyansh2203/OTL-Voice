@@ -104,9 +104,7 @@ def test_demo_assistant_stream_contains_a_submittable_proposal(
     assert entry["projectNo"] == "D-1001"
 
 
-def test_submission_path_succeeds_without_network(
-    demo_env, tmp_path, monkeypatch
-):
+def test_submission_path_succeeds_without_network(demo_env, tmp_path, monkeypatch):
     monkeypatch.setenv("IDEMPOTENCY_DB_PATH", str(tmp_path / "idempotency.db"))
     from backend.services import otl_client
 
@@ -133,9 +131,7 @@ def test_submission_path_succeeds_without_network(
     assert valid, error
 
     results = asyncio.run(
-        otl_client.acreate_many(
-            otl_client.service_credential(), [entry]
-        )
+        otl_client.acreate_many(otl_client.service_credential(), [entry])
     )
     assert len(results) == 1
     result = results[0]

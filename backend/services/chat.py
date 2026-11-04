@@ -7,9 +7,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ..core.config import is_demo_mode
 from .oci_genai import GenAIChatClient
 from .otl_client import _business_timezone
-from ..core.config import is_demo_mode
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "prompt.txt"
 
@@ -125,7 +125,7 @@ _DEMO_REPLY = (
     "anywhere.\n\n"
     "Here is a sample timecard proposal for **Aurora Field Trial** (project D-1001, "
     "work order WO-D-1001, task *Field data collection*): 8 hours today.\n\n"
-    "```json\n{{\"entries\": {entries}}}\n```\n\n"
+    '```json\n{{"entries": {entries}}}\n```\n\n'
     "Review the proposal and submit it to exercise the approval flow — the write "
     "against Oracle is replaced with a canned success response in demo mode."
 )

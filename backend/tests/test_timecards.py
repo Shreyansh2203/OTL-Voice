@@ -62,6 +62,8 @@ def _assigned_project():
 
 
 def test_timecard_helper_facade_exports_service_helpers():
+    timecard_entries._STRICT_ASSIGNMENT_CACHE = None
+    timecards._STRICT_ASSIGNMENT_CACHE = None
     assert timecards._FENCED_JSON is timecard_entries._FENCED_JSON
     assert timecards._normalize_entry is timecard_entries._normalize_entry
     assert timecards._extract_entries is timecard_entries._extract_entries

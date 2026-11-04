@@ -1,4 +1,3 @@
-
 import httpx
 
 BASE = "http://localhost"

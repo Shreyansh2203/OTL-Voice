@@ -90,11 +90,12 @@ omit = ["backend/tests/*"]
 relative_files = true
 
 [tool.coverage.report]
-# Change this gate by editing fail_under; verify it with `uv run --frozen coverage report` (or `uv run --frozen coverage report --fail-under=<percent>`).
+# Coverage gate: every reachable statement in backend/ must be exercised.
+# Raise this only with tests that earn the new number; never on its own.
 fail_under = 80
 precision = 1
 show_missing = true
-skip_covered = true
+skip_covered = false
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",

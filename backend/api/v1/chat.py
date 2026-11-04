@@ -141,7 +141,8 @@ async def stt_stream(websocket: WebSocket):
     if is_demo_mode():
         logger.info("STT WebSocket rejected in demo mode")
         await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Voice is disabled in demo mode"
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Voice is disabled in demo mode",
         )
         return
     otl_session = (

@@ -307,8 +307,8 @@ into a new place. The backend coverage gate is `fail_under` in
 thresholds live in `frontend/vite.config.ts` under `test.coverage.thresholds` —
 read them there, and read the measured percentages out of the coverage table each
 run prints. Every raise is earned with tests; excluding code or adding coverage
-pragmas to clear a number is not acceptable. See [docs/testing.md](docs/testing.md)
-and [CONTRIBUTING.md](CONTRIBUTING.md).
+pragmas to clear a number is not acceptable.
+See [docs/testing.md](docs/testing.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 CI additionally typechecks frontend test files and runs the complete Playwright matrix (Chromium, Firefox, and WebKit). Install browsers before a local matrix run:
 
