@@ -6,7 +6,7 @@
 [![Python: 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-009688.svg)](https://fastapi.tiangolo.com)
 [![React: 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
-[![TypeScript: 5.9](https://img.shields.io/badge/TypeScript-5.9-3178C6.svg)](frontend/package.json)
+[![TypeScript: 6.0](https://img.shields.io/badge/TypeScript-6.0-3178C6.svg)](frontend/package.json)
 [![Vite: 6](https://img.shields.io/badge/Vite-6-646CFF.svg)](frontend/vite.config.ts)
 [![Docker: GHCR](https://img.shields.io/badge/docker-gHCR-2496ED?logo=docker&logoColor=white)](https://github.com/Shreyansh2203/OTL-Voice/pkgs/container/otl-voice)
 
