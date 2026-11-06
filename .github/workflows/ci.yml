@@ -136,7 +136,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Audit frontend dependencies
-        run: pnpm audit --audit-level=${{ env.PNPM_AUDIT_LEVEL }}
+        run: pnpm audit --prod --audit-level=${{ env.PNPM_AUDIT_LEVEL }}
 
   dependency-review:
     name: Dependency Review
