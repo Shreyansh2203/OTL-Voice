@@ -1,0 +1,79 @@
+name: otl-voice
+
+services:
+  app:
+    image: ${OTL_IMAGE:-otl-voice:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_SAMESITE: "lax"
+      DEV_MODE: "false"
+      TEST_MODE: "false"
+      CSP_DEV_MODE: "false"
+      REDIS_REQUIRED: "true"
+      ALLOW_IN_MEMORY_SESSIONS: "false"
+      IDEMPOTENCY_DB_PATH: /app/data/idempotency/idempotency.sqlite3
+      READINESS_BASE_URL: http://127.0.0.1:8000
+      READINESS_URL: http://127.0.0.1:8000/api/health
+      READINESS_REQUIRE_OTL: ${READINESS_REQUIRE_OTL:-true}
+      READINESS_OTL_URL: ${READINESS_OTL_URL:-http://127.0.0.1:8000/api/health/otl}
+      READINESS_AUTH_TOKEN_FILE: ${READINESS_AUTH_TOKEN_FILE:-/run/secrets/readiness_token}
+    expose:
+      - "8000"
+    user: "10001:10001"
+    volumes:
+      - app_data:/app/data
+      - idempotency_data:/app/data/idempotency
+      - ${READINESS_TOKEN_HOST_FILE:-./secrets/readiness_token}:/run/secrets/readiness_token:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "/app/deploy/readycheck.py"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 45s
+
+  nginx:
+    image: nginx:1.27.4-alpine@sha256:4ff102c5d78d254a6f0da062b3cf39eaf07f01eec0927fd21e219d0af8bc0591
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/otl.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O - https://127.0.0.1/api/health >/dev/null"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  app_data:
+  idempotency_data:
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.7.0/24

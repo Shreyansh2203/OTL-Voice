@@ -1,0 +1,669 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import sqlite3
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from . import fusion_catalogue_client as _client_module
+
+_FetchResult = _client_module._FetchResult
+_CatalogueFetchError = _client_module._CatalogueFetchError
+_fetch_complete = _client_module._fetch_complete
+_has_more = _client_module._has_more
+_host_url = _client_module._host_url
+_ppm_base = _client_module._ppm_base
+_client = _client_module._client
+_fetch_all_projects = _client_module._fetch_all_projects
+_fetch_child_items = _client_module._fetch_child_items
+_fetch_project_tasks = _client_module._fetch_project_tasks
+_fetch_project_team_members = _client_module._fetch_project_team_members
+_fetch_all_resource_assignments = _client_module._fetch_all_resource_assignments
+
+logger = logging.getLogger(__name__)
+_REFRESH_INTERVAL = int(os.getenv("CATALOGUE_REFRESH_SECONDS", str(6 * 3600)))
+_DB_PATH = Path(__file__).parent.parent.parent / "data" / "catalogue.db"
+_thread_local = threading.local()
+_load_lock = threading.Lock()
+_is_loading = False
+
+
+def _existing_projects(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = conn.execute("SELECT project_id, data FROM projects").fetchall()
+    result: dict[str, dict[str, Any]] = {}
+    for project_id, data in rows:
+        try:
+            value = json.loads(data)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            result[str(project_id)] = value
+    return result
+
+
+def _get_db() -> sqlite3.Connection:
+    if not hasattr(_thread_local, "conn") or _thread_local.conn is None:
+        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY, data JSON)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS person_index (name TEXT PRIMARY KEY, projects JSON)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS projects_staging (project_id TEXT PRIMARY KEY, data JSON)"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS person_index_staging (name TEXT PRIMARY KEY, projects JSON)"""
+        )
+        conn.commit()
+        _thread_local.conn = conn
+    return _thread_local.conn
+
+
+def _close_db() -> None:
+    if hasattr(_thread_local, "conn") and _thread_local.conn is not None:
+        _thread_local.conn.close()
+        _thread_local.conn = None
+
+
+def _build_index(
+    projects_data: list[dict], assignments_data: list[dict] | None = None
+) -> dict[str, list[dict]]:
+    index: dict[str, list[dict]] = {}
+    seen_projects: dict[str, set[str]] = {}
+    identity_names: dict[str, set[str]] = {}
+    if assignments_data is None:
+        assignments_data = []
+
+    def _add_to_index(person_id: str, entry: dict, person_name: str = "") -> None:
+        key = person_id.strip().casefold()
+        name = person_name.strip().casefold()
+        if not key:
+            return
+        identity_names.setdefault(key, set())
+        if name:
+            identity_names[key].add(name)
+        if key not in index:
+            index[key] = []
+            seen_projects[key] = set()
+        project_identity = str(
+            entry.get("project_id") or entry.get("project_number") or ""
+        )
+        if project_identity not in seen_projects[key]:
+            seen_projects[key].add(project_identity)
+            index[key].append({**entry, "person_id": person_id.strip()})
+
+    assignments_by_project: dict[str, list[dict]] = {}
+    for assignment in assignments_data:
+        project_id = str(assignment.get("ProjectId") or "").strip()
+        if project_id:
+            assignments_by_project.setdefault(project_id, []).append(assignment)
+
+    for proj in projects_data:
+        proj_entry = {
+            "project_id": str(proj.get("project_id", "")),
+            "project_number": str(proj.get("project_number", "")),
+            "project_name": proj.get("project_name", ""),
+            "status": proj.get("status", ""),
+            "manager": proj.get("manager", ""),
+            "tasks": proj.get("tasks", []),
+        }
+        for member in proj.get("team_members", []):
+            person_id = str(
+                member.get("HCMPersonId") or member.get("PersonId") or ""
+            ).strip()
+            person_name = str(
+                member.get("PersonName") or member.get("TeamMemberName") or ""
+            ).strip()
+            _add_to_index(
+                person_id,
+                {**proj_entry, "role": member.get("ProjectRole", "Team Member")},
+                person_name,
+            )
+
+        for assignment in assignments_by_project.get(proj_entry["project_id"], []):
+            person_id = str(assignment.get("ResourceHCMPersonId") or "").strip()
+            person_name = str(assignment.get("ResourceName") or "").strip()
+            _add_to_index(
+                person_id,
+                {**proj_entry, "role": "Resource Assignment"},
+                person_name,
+            )
+
+        _add_to_index(
+            str(proj.get("manager_id") or "").strip(),
+            {**proj_entry, "role": "Project Manager"},
+            str(proj.get("manager") or "").strip(),
+        )
+
+    for person_id, names in identity_names.items():
+        if len(names) > 1:
+            index.pop(person_id, None)
+    return index
+
+
+def _do_load_catalogue() -> None:
+    correlation_id = uuid.uuid4().hex
+    lock_path = _DB_PATH.with_suffix(".lock")
+    try:
+        if lock_path.exists():
+            try:
+                content = lock_path.read_text()
+                _pid, ts = content.split(":")
+                if time.time() - float(ts) > 3600:
+                    logger.warning("Found stale lock file, reclaiming...")
+                    lock_path.unlink()
+            except Exception:
+                pass
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(lock_fd, f"{os.getpid()}:{time.time()}".encode())
+        os.close(lock_fd)
+    except FileExistsError:
+        logger.warning("Catalogue load already in progress by another worker")
+        return
+    except Exception:
+        logger.error(
+            "Failed to acquire catalogue load lock (correlation_id=%s)",
+            correlation_id,
+        )
+        return
+    conn = _get_db()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'true')"
+        )
+        conn.commit()
+    except Exception:
+        logger.error(
+            "Failed to set catalogue loading state (correlation_id=%s)",
+            correlation_id,
+        )
+        try:
+            os.unlink(lock_path)
+        except Exception:
+            pass
+        return
+    logger.info("Loading Fusion catalogue from live APIs...")
+    start = time.time()
+    try:
+        from . import otl_client
+
+        cred = otl_client.service_credential()
+        client = httpx.Client(
+            auth=cred.auth,
+            timeout=httpx.Timeout(60.0, connect=15.0),
+            headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
+        )
+    except Exception as exc:
+        logger.error(
+            "Cannot create Fusion API client (%s, correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
+        try:
+            os.unlink(lock_path)
+        except Exception:
+            pass
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+            )
+            conn.commit()
+        except Exception:
+            pass
+        return
+    try:
+        raw_projects = _fetch_all_projects(client)
+        if not _fetch_complete(raw_projects):
+            raise _CatalogueFetchError("Fusion project catalogue fetch was incomplete")
+        if not raw_projects:
+            existing_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+            if existing_count:
+                raise _CatalogueFetchError(
+                    "Fusion project catalogue fetch returned no data"
+                )
+        logger.info("Fetched %d projects total.", len(raw_projects))
+        import concurrent.futures
+
+        existing_projects = _existing_projects(conn)
+        enriched = []
+        details_complete = True
+
+        def create_client() -> httpx.Client:
+            from . import otl_client
+
+            cred = otl_client.service_credential()
+            return httpx.Client(
+                auth=cred.auth,
+                timeout=httpx.Timeout(60.0, connect=15.0),
+                headers={"Accept": "application/json", "Accept-Encoding": "gzip"},
+            )
+
+        def fetch_project_details(p):
+            thread_client = create_client()
+            try:
+                p_id = str(p.get("ProjectId", "")).strip()
+                if not p_id:
+                    raise _CatalogueFetchError("Project response omitted ProjectId")
+                p_num = str(p.get("ProjectNumber", ""))
+                p_name = p.get("ProjectName", "")
+                tasks = _fetch_project_tasks(thread_client, p_id)
+                members = _fetch_project_team_members(thread_client, p_id)
+                if not _fetch_complete(tasks) or not _fetch_complete(members):
+                    raise _CatalogueFetchError(
+                        f"Project detail fetch was incomplete for {p_id}"
+                    )
+                old_project = existing_projects.get(p_id, {})
+                if not tasks and old_project.get("tasks"):
+                    raise _CatalogueFetchError(
+                        f"Project task fetch returned partial data for {p_id}"
+                    )
+                if not members and old_project.get("team_members"):
+                    raise _CatalogueFetchError(
+                        f"Project team fetch returned partial data for {p_id}"
+                    )
+                return {
+                    "project_id": p_id,
+                    "project_number": p_num,
+                    "project_name": p_name,
+                    "status": p.get("ProjectStatus", ""),
+                    "manager": p.get("ProjectManagerName", ""),
+                    "manager_id": str(
+                        p.get("ProjectManagerId") or p.get("ProjectManagerEmail") or ""
+                    ).strip(),
+                    "tasks": [
+                        {
+                            "task_id": str(t.get("TaskId", "")),
+                            "task_number": str(t.get("TaskNumber", "")),
+                            "task_name": t.get("TaskName", ""),
+                        }
+                        for t in tasks
+                    ],
+                    "team_members": members,
+                }
+            finally:
+                thread_client.close()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_proj = {
+                executor.submit(fetch_project_details, p): p for p in raw_projects
+            }
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_proj)):
+                try:
+                    enriched.append(future.result())
+                except Exception as exc:
+                    details_complete = False
+                    logger.error(
+                        "Project detail fetch failed (%s, correlation_id=%s)",
+                        type(exc).__name__,
+                        correlation_id,
+                    )
+                if (i + 1) % 10 == 0:
+                    logger.info(
+                        "  Enriched %d/%d projects...", i + 1, len(raw_projects)
+                    )
+        if not details_complete or len(enriched) != len(raw_projects):
+            raise _CatalogueFetchError("Some Fusion project details were unavailable")
+        logger.info("Fetched details for %d projects.", len(enriched))
+        logger.info("Fetching project resource assignments...")
+        assignments = _fetch_all_resource_assignments(client)
+        if not _fetch_complete(assignments):
+            raise _CatalogueFetchError(
+                "Fusion resource assignment fetch was incomplete"
+            )
+        if not assignments:
+            existing_count = max(
+                conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0],
+                conn.execute("SELECT COUNT(*) FROM person_index").fetchone()[0],
+            )
+            if existing_count:
+                raise _CatalogueFetchError(
+                    "Fusion resource assignment fetch returned no data"
+                )
+        logger.info("Fetched %d resource assignments.", len(assignments))
+        logger.info("Building project index...")
+        person_index = _build_index(enriched, assignments_data=assignments)
+        _save_catalogue(conn, enriched, person_index, correlation_id=correlation_id)
+
+        elapsed = time.time() - start
+        logger.info(
+            "Fusion catalogue ready: %d projects, %d persons indexed (%.1fs)",
+            len(enriched),
+            len(person_index),
+            elapsed,
+        )
+    except _CatalogueFetchError as exc:
+        logger.error(
+            "Keeping existing Fusion catalogue after fetch failure "
+            "(error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to load Fusion catalogue; keeping existing catalogue "
+            "(error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id,
+        )
+    finally:
+        client.close()
+        _set_loading_false(conn, lock_path)
+
+
+def _set_loading_false(conn: sqlite3.Connection, lock_path: Path) -> None:
+    global _is_loading
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+        )
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        os.unlink(lock_path)
+    except Exception:
+        pass
+    with _load_lock:
+        _is_loading = False
+
+
+def _save_catalogue(
+    conn: sqlite3.Connection,
+    enriched: list[dict],
+    person_index: dict[str, list[dict]],
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    try:
+        conn.execute("BEGIN IMMEDIATE TRANSACTION")
+        conn.execute("DELETE FROM projects")
+        conn.execute("DELETE FROM person_index")
+        for proj in enriched:
+            conn.execute(
+                "INSERT OR REPLACE INTO projects (project_id, data) VALUES (?, ?)",
+                (proj["project_id"], json.dumps(proj)),
+            )
+        for name, projs in person_index.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO person_index (name, projects) VALUES (?, ?)",
+                (name, json.dumps(projs)),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_refresh', ?)",
+            (str(time.time()),),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loaded', 'true')"
+        )
+        conn.commit()
+    except Exception as exc:
+        logger.error(
+            "Failed to save catalogue to database (error_type=%s correlation_id=%s)",
+            type(exc).__name__,
+            correlation_id or uuid.uuid4().hex,
+        )
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+def _demo_catalogue_payload() -> list[dict[str, Any]]:
+    def member() -> dict[str, Any]:
+        return {
+            "HCMPersonId": "DEMO-0001",
+            "PersonName": "Demo User",
+            "ProjectRole": "Team Member",
+        }
+
+    return [
+        {
+            "project_id": "900001",
+            "project_number": "D-1001",
+            "project_name": "Aurora Field Trial",
+            "status": "Active",
+            "manager": "Demo Manager",
+            "manager_id": "DEMO-0002",
+            "tasks": [
+                {
+                    "task_id": "81001",
+                    "task_number": "10",
+                    "task_name": "Field data collection",
+                },
+                {
+                    "task_id": "81002",
+                    "task_number": "20",
+                    "task_name": "Data review and QA",
+                },
+            ],
+            "team_members": [member()],
+        },
+        {
+            "project_id": "900002",
+            "project_number": "D-2042",
+            "project_name": "Borealis Maintenance",
+            "status": "Active",
+            "manager": "Demo Manager",
+            "manager_id": "DEMO-0002",
+            "tasks": [
+                {
+                    "task_id": "82001",
+                    "task_number": "30",
+                    "task_name": "Preventive maintenance",
+                },
+                {
+                    "task_id": "82002",
+                    "task_number": "40",
+                    "task_name": "Corrective repairs",
+                },
+            ],
+            "team_members": [member()],
+        },
+    ]
+
+
+def _seed_demo_catalogue() -> None:
+    """Seed the synthetic catalogue used by DEMO_MODE. Idempotent: replaces the rows."""
+    from ..core.config import is_demo_mode
+
+    if not is_demo_mode():
+        return
+    logger.warning("DEMO_MODE is on: seeding a synthetic catalogue for Demo User.")
+    enriched = _demo_catalogue_payload()
+    person_index = _build_index(enriched)
+    conn = _get_db()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('is_loading', 'false')"
+        )
+        conn.commit()
+        _save_catalogue(conn, enriched, person_index, correlation_id="demo-seed")
+    except Exception as exc:
+        logger.error("Failed to seed the demo catalogue (%s)", type(exc).__name__)
+        raise
+
+
+def load_catalogue() -> None:
+    from ..core.config import is_demo_mode
+
+    if is_demo_mode():
+        _seed_demo_catalogue()
+        return
+    if os.getenv("TEST_MODE", "false").strip().lower() == "true":
+        logger.info("TEST_MODE is true. Skipping live Fusion catalogue load.")
+        return
+    threading.Thread(target=_do_load_catalogue, daemon=True).start()
+
+
+def get_project_by_id(project_id: str) -> dict | None:
+    conn = _get_db()
+    cur = conn.execute(
+        "SELECT data FROM projects WHERE project_id = ?", (str(project_id),)
+    )
+    row = cur.fetchone()
+    if row:
+        return json.loads(row[0])
+    return None
+
+
+def _find_person_projects(person_id: str, full_name: str = "") -> list[dict]:
+    stable_id = str(person_id or "").strip().casefold()
+    if not stable_id:
+        return []
+    conn = _get_db()
+    row = conn.execute(
+        "SELECT projects FROM person_index WHERE name = ?", (stable_id,)
+    ).fetchone()
+    if row is None:
+        return []
+    try:
+        projects = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(projects, list):
+        return []
+    if any(
+        not isinstance(project, dict)
+        or (
+            project.get("person_id") is not None
+            and str(project.get("person_id")).strip().casefold() != stable_id
+        )
+        for project in projects
+    ):
+        return []
+    if (
+        any("person_id" not in project for project in projects)
+        and not stable_id.isdigit()
+    ):
+        return []
+    return [project for project in projects if isinstance(project, dict)]
+
+
+def _transform_assignments(assigned: list[dict]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for proj in assigned:
+        p_num = proj.get("project_number", "")
+        project_no: Any
+        try:
+            project_no = int(p_num)
+        except (ValueError, TypeError):
+            project_no = p_num
+        tasks = []
+        for t in proj.get("tasks", []):
+            task_id_value = t.get("task_id")
+            raw_id = (
+                task_id_value
+                if task_id_value not in (None, "")
+                else t.get("task_number") or "0"
+            )
+            task_id: int | str
+            try:
+                task_id = int(raw_id)
+            except (ValueError, TypeError):
+                task_id = raw_id
+            task = {
+                "taskId": task_id,
+                "taskDetails": t.get("task_name", ""),
+            }
+            if t.get("task_number") not in (None, ""):
+                task["taskNumber"] = t.get("task_number")
+            tasks.append(task)
+        result.append(
+            {
+                "workOrder": f"WO-{p_num}",
+                "projects": [
+                    {
+                        "projectId": proj.get("project_id", ""),
+                        "projectNo": project_no,
+                        "projectName": proj.get("project_name", ""),
+                        "tasks": tasks,
+                    }
+                ],
+            }
+        )
+    return result
+
+
+def is_catalogue_loaded() -> bool:
+    conn = _get_db()
+    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loaded'")
+    row = cur.fetchone()
+    return bool(row and row[0] == "true")
+
+
+def list_assignments_for_worker(
+    employee_number: str, full_name: str = ""
+) -> list[dict[str, Any]]:
+    stable_id = str(employee_number or "").strip()
+    if not stable_id:
+        return []
+    if not is_catalogue_loaded():
+        logger.warning("Catalogue not loaded")
+        return []
+    assigned = _find_person_projects(stable_id)
+    if not assigned:
+        return []
+    return _transform_assignments(assigned)
+
+
+async def alist_assignments_for_worker(
+    employee_number: str, full_name: str = ""
+) -> list[dict[str, Any]] | None:
+    return await asyncio.to_thread(list_assignments_for_worker, employee_number)
+
+
+def catalogue_age_seconds() -> float | None:
+    conn = _get_db()
+    cur = conn.execute("SELECT value FROM meta WHERE key = 'last_refresh'")
+    row = cur.fetchone()
+    if row:
+        return time.time() - float(row[0])
+    return None
+
+
+def status() -> dict[str, Any]:
+    conn = _get_db()
+    is_loaded = is_catalogue_loaded()
+    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
+    row = cur.fetchone()
+    is_loading = row and row[0] == "true"
+    cur = conn.execute("SELECT COUNT(*) FROM projects")
+    total_projects = cur.fetchone()[0]
+    cur = conn.execute("SELECT COUNT(*) FROM person_index")
+    total_persons = cur.fetchone()[0]
+    return {
+        "isLoaded": is_loaded,
+        "isLoading": is_loading,
+        "totalProjects": total_projects,
+        "totalPersonsIndexed": total_persons,
+        "catalogueAgeSeconds": catalogue_age_seconds(),
+        "refreshIntervalSeconds": _REFRESH_INTERVAL,
+    }
+
+
+async def refresh_catalogue() -> None:
+    conn = _get_db()
+    cur = conn.execute("SELECT value FROM meta WHERE key = 'is_loading'")
+    row = cur.fetchone()
+    is_loading = row and row[0] == "true"
+    if not is_loading:
+        load_catalogue()

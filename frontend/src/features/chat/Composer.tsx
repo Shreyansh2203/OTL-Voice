@@ -1,0 +1,321 @@
+import { KeyboardEvent, useState, useRef, useEffect } from 'react';
+import ShinyText from '../../components/ui/ShinyText';
+import { MicIcon, SendIcon, StopIcon } from '../../components/ui/icons';
+import VoiceOrb from '../../components/ui/VoiceOrb';
+import { playMicStart, playMicStop } from '../../lib/audio';
+import { useMicLevel } from '../../lib/useMicLevel';
+export interface ComposerProps {
+  disabled: boolean;
+
+  sending?: boolean;
+  onSend: (text: string, isVoice?: boolean) => void;
+  supported?: boolean;
+  listening?: boolean;
+  onStartMic?: (
+    onFinal: (spoken: string) => void,
+    onInterim?: (spoken: string) => void,
+    onSpeechStart?: () => void
+  ) => void;
+  onStopMic?: () => void;
+  errorMsg?: string | null;
+  notice?: string | null;
+  voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
+  handsFree?: boolean;
+  onRegisterTrigger?: (trigger: () => void) => void;
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
+}
+
+export default function Composer({
+  disabled,
+  sending = false,
+  onSend,
+  supported = false,
+  listening = false,
+  onStartMic,
+  onStopMic,
+  errorMsg = null,
+  notice = null,
+  voiceState = 'idle',
+  handsFree = false,
+  onRegisterTrigger,
+  draft,
+  onDraftChange,
+}: ComposerProps) {
+  const [localText, setLocalText] = useState('');
+  const text = draft ?? localText;
+  const textRef = useRef(text);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micSessionRef = useRef(0);
+  const micActiveRef = useRef(false);
+  const ringRef = useRef<HTMLSpanElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const micLevel = useMicLevel((_level) => {
+    if (ringRef.current)
+      ringRef.current.style.transform = `scale(${1 + _level * 0.5})`;
+  });
+
+  // A sentence that already sounds complete needs less confirmation silence
+  // than one that trails off mid-thought — mirrors how a human listener
+  // waits less after "...see you tomorrow." than after "...and then, um".
+  const SILENCE_MS_COMPLETE = 900;
+  const SILENCE_MS_TRAILING = 1800;
+  const TERMINAL_PUNCTUATION = /[.?!]\s*$/;
+
+  const updateText = (value: string) => {
+    textRef.current = value;
+    setLocalText(value);
+    onDraftChange?.(value);
+  };
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      micSessionRef.current += 1;
+      micActiveRef.current = false;
+      clearSilenceTimer();
+      micLevel.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const blockingError = errorMsg && !notice;
+    if (!handsFree || blockingError || !listening) clearSilenceTimer();
+  }, [errorMsg, handsFree, listening, notice]);
+
+  const finishMic = () => {
+    micSessionRef.current += 1;
+    micActiveRef.current = false;
+    clearSilenceTimer();
+    onStopMicRef.current?.();
+    micLevel.stop();
+    void playMicStop();
+  };
+
+  function send() {
+    clearSilenceTimer();
+    const trimmed = text.trim();
+    if (!trimmed || disabled || sending) return;
+    if (listening || micActiveRef.current) {
+      finishMic();
+    }
+    onSend(trimmed, false);
+    updateText('');
+    // Focus stays with the draft: the send button is about to be disabled, and
+    // a disabled control drops focus to <body>.
+    textareaRef.current?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  }
+
+  const listeningRef = useRef(listening);
+  const disabledRef = useRef(disabled);
+  const onStartMicRef = useRef(onStartMic);
+  const onStopMicRef = useRef(onStopMic);
+  const onSendRef = useRef(onSend);
+  const handsFreeRef = useRef(handsFree);
+
+  useEffect(() => {
+    listeningRef.current = listening;
+    disabledRef.current = disabled;
+    onStartMicRef.current = onStartMic;
+    onStopMicRef.current = onStopMic;
+    onSendRef.current = onSend;
+    handsFreeRef.current = handsFree;
+  });
+
+  const toggleMic = () => {
+    if (listeningRef.current || micActiveRef.current) {
+      finishMic();
+      return;
+    }
+
+    const playerStopEvent = new CustomEvent('otl:barge-in');
+    window.dispatchEvent(playerStopEvent);
+    void playMicStart();
+    void micLevel.start();
+
+    const baseDraft = textRef.current.trim();
+    let acceptedDraft = baseDraft;
+    const session = ++micSessionRef.current;
+    micActiveRef.current = true;
+    const isCurrent = () =>
+      micSessionRef.current === session && micActiveRef.current;
+
+    // Adaptive end-of-speech wait: short once the sentence already sounds
+    // finished, longer if the person trailed off mid-thought. This is a
+    // closer approximation of how a person actually waits during a
+    // conversation than a single fixed timeout.
+    const resetSilenceTimer = () => {
+      clearSilenceTimer();
+
+      const draft = textRef.current.trim();
+      const wait = TERMINAL_PUNCTUATION.test(draft)
+        ? SILENCE_MS_COMPLETE
+        : SILENCE_MS_TRAILING;
+      silenceTimerRef.current = setTimeout(() => {
+        if (!isCurrent()) return;
+        const toSend = textRef.current.trim();
+        if (toSend && !disabledRef.current) {
+          finishMic();
+          // Always auto-send if hands-free mode is enabled (which it is by default in ChatView)
+          if (handsFreeRef.current) {
+            onSendRef.current(toSend, true);
+            updateText('');
+          }
+        }
+      }, wait);
+    };
+
+    onStartMicRef.current?.(
+      (finalTranscript) => {
+        if (!isCurrent() || !finalTranscript) return;
+        const fullSpoken = (
+          baseDraft ? baseDraft + ' ' + finalTranscript : finalTranscript
+        ).trim();
+        acceptedDraft = fullSpoken;
+        updateText(fullSpoken);
+        resetSilenceTimer();
+      },
+      (interimTranscript) => {
+        if (!isCurrent()) return;
+        const preview = (
+          baseDraft
+            ? baseDraft + ' ' + (interimTranscript || '')
+            : interimTranscript || ''
+        ).trim();
+        updateText(interimTranscript ? preview : acceptedDraft);
+        clearSilenceTimer();
+      },
+      () => {
+        if (!isCurrent()) return;
+        const evt = new CustomEvent('otl:barge-in');
+        window.dispatchEvent(evt);
+      }
+    );
+  };
+
+  const toggleMicRef = useRef(toggleMic);
+  useEffect(() => {
+    toggleMicRef.current = toggleMic;
+  });
+
+  useEffect(() => {
+    if (onRegisterTrigger) {
+      onRegisterTrigger(() => {
+        if (!listeningRef.current && !disabledRef.current) {
+          toggleMicRef.current();
+        }
+      });
+      return () => onRegisterTrigger(() => {});
+    }
+  }, [onRegisterTrigger]);
+
+  const getPlaceholder = () => {
+    if (voiceState === 'speaking') {
+      return 'Assistant speaking… Tap the mic to interrupt.';
+    }
+    if (voiceState === 'thinking') {
+      return 'Thinking… Tap the mic to interrupt.';
+    }
+    if (listening) {
+      return 'Listening… Speak naturally or type…';
+    }
+    return 'Type or speak your reply…';
+  };
+
+  const getStatusLabel = () => {
+    if (voiceState === 'speaking') return 'Speaking';
+    if (voiceState === 'thinking') return 'Thinking';
+    if (listening) return 'Listening';
+    return null;
+  };
+  const statusLabel = getStatusLabel();
+
+  return (
+    <div className="composer-wrapper">
+      {errorMsg && (
+        <div
+          className="error small"
+          role="status"
+          style={{ marginBottom: 8, padding: '6px 12px' }}
+        >
+          {errorMsg}
+        </div>
+      )}
+      {statusLabel && (
+        <div className="voice-status-row" role="status" aria-live="polite">
+          <VoiceOrb state={voiceState} ringRef={ringRef} size={12} />
+          <ShinyText
+            text={statusLabel}
+            disabled={false}
+            speed={2}
+            className="status-label-shiny"
+          />
+        </div>
+      )}
+      <label className="composer-label" htmlFor="chat-message">
+        Message
+      </label>
+      <div
+        className={`prompt-bar-container ${listening ? 'listening' : ''} ${
+          voiceState === 'speaking' ? 'speaking' : ''
+        }`}
+      >
+        <div className="prompt-bar">
+          {supported && (
+            <button
+              type="button"
+              className={`icon-btn mic ${listening ? 'active' : ''}`}
+              onClick={toggleMic}
+              title={listening ? 'Stop recording' : 'Speak'}
+              aria-label={listening ? 'Stop recording' : 'Speak'}
+            >
+              {listening ? <StopIcon /> : <MicIcon />}
+            </button>
+          )}
+          <textarea
+            id="chat-message"
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => {
+              if (listening || micActiveRef.current) finishMic();
+              updateText(e.target.value);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder={getPlaceholder()}
+            rows={1}
+            disabled={disabled}
+          />
+          <button
+            type="button"
+            className="icon-btn send"
+            onClick={send}
+            disabled={disabled || sending || !text.trim()}
+            title="Send"
+            aria-label="Send"
+          >
+            <SendIcon />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

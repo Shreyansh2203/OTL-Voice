@@ -1,0 +1,24 @@
+# Normalize text to LF in the working tree on every platform. Without this,
+# core.autocrlf=true on Windows checks files out with CRLF, which makes
+# `make format-check` (prettier's default endOfLine: lf) fail on every
+# frontend source file even though the committed blobs are LF.
+* text=auto eol=lf
+
+# Windows launchers must stay CRLF to be executable from cmd.exe and PowerShell.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Native/mobile assets and packaged archives are never text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp3 binary
+*.wav binary
+*.jar binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.keystore binary

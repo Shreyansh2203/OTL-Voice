@@ -1,0 +1,29 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # `release-type` is deliberately NOT passed as an action input. In
+      # release-please-action v5, loadOrBuildManifest() short-circuits on
+      # `if (inputs.releaseType)` and builds a hardcoded manifest, never
+      # reading `config-file`. Passing it here silently ignored every key in
+      # release-please-config.json, including `extra-files`.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
