@@ -15,20 +15,20 @@
 <details open>
 <summary><b>Table of Contents</b></summary>
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Quick Start](#-quick-start)
-- [Demo Mode](#-demo-mode)
-- [Configuration](#-configuration)
-- [API Endpoints](#-api-endpoints)
-- [Production Go-Live](#-production-go-live)
-- [Security](#-security)
-- [Testing](#-testing)
-- [Deployment](#-deployment)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Demo Mode](#demo-mode)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Production Go-Live](#production-go-live)
+- [Security](#security)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
 </details>
 
@@ -234,7 +234,7 @@ python provision.py --dry-run # validate without writing
 
 ## Production Go-Live
 
-See [docs/PRODUCTION-CHECKLIST.md](docs/PRODUCTION-CHECKLIST.md) for the full operator checklist. Summary:
+See the operator go-live checklist for the full production readiness steps. Summary:
 
 1. Obtain Fusion / OCI / Redis / TLS / IdP credentials from your operator
 2. Run `deploy/provision.py` to generate `.env` (secrets are never printed)
