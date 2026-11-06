@@ -612,13 +612,13 @@ def is_catalogue_loaded() -> bool:
 
 def list_assignments_for_worker(
     employee_number: str, full_name: str = ""
-) -> list[dict[str, Any]] | None:
+) -> list[dict[str, Any]]:
     stable_id = str(employee_number or "").strip()
     if not stable_id:
         return []
     if not is_catalogue_loaded():
         logger.warning("Catalogue not loaded")
-        return None
+        return []
     assigned = _find_person_projects(stable_id)
     if not assigned:
         return []

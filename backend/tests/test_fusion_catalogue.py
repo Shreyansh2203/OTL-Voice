@@ -343,7 +343,7 @@ def test_find_person_projects(mock_db):
 
 @patch("backend.services.fusion_catalogue.time.sleep")
 def test_list_assignments_for_worker(mock_sleep, mock_db):
-    assert list_assignments_for_worker("1", "Bob") is None
+    assert list_assignments_for_worker("1", "Bob") == []
     mock_db.execute("INSERT INTO meta (key, value) VALUES ('is_loaded', 'true')")
     mock_db.commit()
     assert list_assignments_for_worker("missing", "Nobody") == []
