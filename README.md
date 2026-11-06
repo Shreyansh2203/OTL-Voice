@@ -10,6 +10,11 @@
 [![Vite: 6](https://img.shields.io/badge/Vite-6-646CFF.svg)](frontend/vite.config.ts)
 [![Docker: GHCR](https://img.shields.io/badge/docker-gHCR-2496ED?logo=docker&logoColor=white)](https://github.com/Shreyansh2203/OTL-Voice/pkgs/container/otl-voice)
 
+> Capture a shift by voice or text, then review an assignment-validated timecard proposal before anything is submitted to Oracle Fusion.
+>
+> **Try it without Oracle or OCI credentials:** [Run the demo](#demo-mode-no-oracle-or-oci-credentials). For setup, see [Quick start](#quick-start);
+> for operations, see [Configuration](docs/configuration.md), [Security](docs/security.md), and [Deployment](docs/deployment.md).
+
 ## The problem
 
 Recording time in Oracle Fusion Cloud Time and Labour is a form-filling exercise, and
@@ -51,7 +56,7 @@ separately provisioned test identity.
 | Storage | SQLite (WAL) for the assignment catalogue and the idempotency store | Durable write deduplication; both volumes are operator-provisioned |
 | Rate limiting | `redis.asyncio` with a dev-only in-memory fallback | Per-IP request limits and per-user WebSocket caps |
 | Errors | Sentry SDK with credential-scrubbing `before_send`, `before_send_transaction`, and `before_breadcrumb` processors | Sensitive flows dropped entirely; query strings, request bodies, cookies, headers, user/tag identity, the raw ASGI scope, and local variables stripped; breadcrumbs never retained |
-| Frontend | React 19, TypeScript 5.9, Vite 6, TanStack Query, Workbox | Voice/text chat, assignment picker, review panel, installable PWA shell |
+| Frontend | React 19, TypeScript 6.0, Vite 6, TanStack Query, Workbox | Voice/text chat, assignment picker, review panel, installable PWA shell |
 | Native | Capacitor 8 | Optional iOS and Android shells around the same PWA |
 | Quality | Ruff, mypy, pytest + coverage, ESLint, Vitest + coverage, Playwright + axe, CodeQL | Gates enforced in `make verify` and CI |
 | Delivery | Docker + GHCR, release-please, Dependabot, Ansible, nginx | Pinned images with SBOM/provenance/Trivy scan, protected production handoff |
@@ -128,7 +133,7 @@ The catalogue is refreshed in the background and is stored under `/app/data`. Ti
 ### Linux and macOS
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Shreyansh2203/OTL-Voice.git
 cd OTL-Voice
 cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -158,7 +163,7 @@ The development stack uses `SESSION_COOKIE_SECURE=false` and is not a production
 ### Windows PowerShell
 
 ```powershell
-git clone <repository-url>
+git clone https://github.com/Shreyansh2203/OTL-Voice.git
 Set-Location OTL-Voice
 Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(32))"
