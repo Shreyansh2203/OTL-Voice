@@ -15,6 +15,7 @@ Usage (from the repository root)::
     python deploy/provision.py --dry-run    # report what it would do, write nothing
     python deploy/provision.py --help
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PLACEHOLDER_MARKERS = ("replace-with", "generate_a_secure", "your-", "your_", "<your", "example.com")
+PLACEHOLDER_MARKERS = (
+    "replace-with",
+    "generate_a_secure",
+    "your-",
+    "your_",
+    "<your",
+    "example.com",
+)
 
 # Operator values preflight requires that this script cannot invent.
 OPERATOR_REQUIRED = (
@@ -86,7 +94,9 @@ def main() -> int:
     generated: dict[str, str] = {}
     for name in ("SESSION_SECRET_KEY", "ADMIN_API_KEY"):
         if _is_placeholder(existing.get(name, "")):
-            generated[name] = secrets.token_urlsafe(48)  # >=32 bytes for SESSION_SECRET_KEY
+            generated[name] = secrets.token_urlsafe(
+                48
+            )  # >=32 bytes for SESSION_SECRET_KEY
 
     # Rebuild .env from the example so every documented variable exists,
     # keeping any real operator values already in place.
@@ -118,9 +128,13 @@ def main() -> int:
     args.token_file.write_text(secrets.token_urlsafe(32), encoding="utf-8")
 
     print(f"provision: wrote {args.env_file} ({len(generated)} secret(s) generated)")
-    print(f"provision: wrote {args.token_file} (mode 0400; rotate through the session process)")
+    print(
+        f"provision: wrote {args.token_file} (mode 0400; rotate through the session process)"
+    )
     print(f"provision: operator must still supply: {', '.join(OPERATOR_REQUIRED)}")
-    print("provision: then place fullchain.pem/privkey.pem in deploy/nginx/certs/ and run:")
+    print(
+        "provision: then place fullchain.pem/privkey.pem in deploy/nginx/certs/ and run:"
+    )
     print("provision:   python deploy/preflight.py --env-file .env --mode production")
     return 0
 
